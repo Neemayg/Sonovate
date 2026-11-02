@@ -3,8 +3,26 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { Brand } from "@/components/Brand";
 import { ErrorMessage } from "@/components/Status";
 import { isGoogleSignInEnabled, signIn, signInWithGoogle, signUp } from "@/lib/api";
+
+// Decorative trace for the brand panel: a fixed, deterministic signal
+// (a few sines under a slow envelope). It is not data and is hidden from
+// assistive technology.
+const TRACE = (() => {
+  const points: string[] = [];
+  for (let i = 0; i <= 400; i++) {
+    const t = i / 400;
+    const envelope = 0.35 + 0.65 * Math.sin(Math.PI * t) ** 2;
+    const y =
+      Math.sin(t * 2 * Math.PI * 9) * 0.55 +
+      Math.sin(t * 2 * Math.PI * 23 + 1.3) * 0.3 +
+      Math.sin(t * 2 * Math.PI * 61 + 0.4) * 0.15;
+    points.push(`${(t * 800).toFixed(1)},${(55 - y * envelope * 42).toFixed(1)}`);
+  }
+  return `M${points.join(" L")}`;
+})();
 
 export default function LoginPage() {
   const { session } = useAuth();
@@ -63,59 +81,79 @@ export default function LoginPage() {
   const title = mode === "sign-in" ? "Sign in" : "Create an account";
 
   return (
-    <main className="container narrow">
-      <h1>Sonovate</h1>
-      <section className="card" aria-labelledby="auth-title">
-        <h2 id="auth-title">{title}</h2>
-        <form className="form" onSubmit={handleSubmit} noValidate>
-          {error && <ErrorMessage>{error}</ErrorMessage>}
-          {info && (
-            <div className="notice" role="status">
-              {info}
+    <div className="auth-layout">
+      <aside className="auth-panel" aria-label="About Sonovate">
+        <Brand href="/login" />
+        <div>
+          <p className="eyebrow">Research prototype</p>
+          <h1>Listen for what changed in a machine&apos;s sound.</h1>
+          <p>
+            Record a bearing or gearbox while it runs normally, then compare new recordings against that baseline. Low
+            sensitivity; not a diagnosis or failure prediction.
+          </p>
+        </div>
+        <svg className="auth-trace" viewBox="0 0 800 110" preserveAspectRatio="none" aria-hidden="true">
+          <line x1="0" y1="55" x2="800" y2="55" strokeWidth="1" />
+          <path d={TRACE} pathLength={1} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        </svg>
+      </aside>
+
+      <main className="auth-form">
+        <section className="card" aria-labelledby="auth-title">
+          <p className="eyebrow">{mode === "sign-in" ? "Welcome back" : "New account"}</p>
+          <h2 id="auth-title" className="auth-title">
+            {title}
+          </h2>
+          <form className="form" onSubmit={handleSubmit} noValidate>
+            {error && <ErrorMessage>{error}</ErrorMessage>}
+            {info && (
+              <div className="notice" role="status">
+                {info}
+              </div>
+            )}
+            <div className="field">
+              <label htmlFor="email">Email</label>
+              <input id="email" name="email" type="email" autoComplete="email" required />
+            </div>
+            <div className="field">
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+                minLength={10}
+                required
+              />
+              {mode === "sign-up" && <p className="muted small">At least 10 characters.</p>}
+            </div>
+            <div className="actions">
+              <button type="submit" disabled={busy}>
+                {busy ? "Please wait…" : title}
+              </button>
+              <button
+                type="button"
+                className="button-link"
+                onClick={() => {
+                  setMode(mode === "sign-in" ? "sign-up" : "sign-in");
+                  setError(null);
+                  setInfo(null);
+                }}
+              >
+                {mode === "sign-in" ? "Create an account instead" : "I already have an account"}
+              </button>
+            </div>
+          </form>
+          {googleEnabled && (
+            <div className="alt-auth">
+              <p className="divider">or</p>
+              <button type="button" className="button-secondary" onClick={handleGoogle} disabled={busy}>
+                Continue with Google
+              </button>
             </div>
           )}
-          <div className="field">
-            <label htmlFor="email">Email</label>
-            <input id="email" name="email" type="email" autoComplete="email" required />
-          </div>
-          <div className="field">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
-              minLength={10}
-              required
-            />
-            {mode === "sign-up" && <p className="muted small">At least 10 characters.</p>}
-          </div>
-          <div className="actions">
-            <button type="submit" disabled={busy}>
-              {busy ? "Please wait…" : title}
-            </button>
-            <button
-              type="button"
-              className="button-link"
-              onClick={() => {
-                setMode(mode === "sign-in" ? "sign-up" : "sign-in");
-                setError(null);
-                setInfo(null);
-              }}
-            >
-              {mode === "sign-in" ? "Create an account instead" : "I already have an account"}
-            </button>
-          </div>
-        </form>
-        {googleEnabled && (
-          <div className="alt-auth">
-            <p className="muted small">or</p>
-            <button type="button" className="button-secondary" onClick={handleGoogle} disabled={busy}>
-              Continue with Google
-            </button>
-          </div>
-        )}
-      </section>
-    </main>
+        </section>
+      </main>
+    </div>
   );
 }

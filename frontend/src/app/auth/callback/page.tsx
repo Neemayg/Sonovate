@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { Brand } from "@/components/Brand";
 import { ErrorMessage, Loading } from "@/components/Status";
 
 // Google (via Supabase Auth) redirects here with ?code=... on success or
@@ -33,7 +34,10 @@ export default function AuthCallbackPage() {
 
   return (
     <main className="container narrow">
-      <h1>Sonovate</h1>
+      <p style={{ margin: "1rem 0 1.5rem" }}>
+        <Brand href="/login" />
+      </p>
+      <h1 className="visually-hidden">Finishing sign-in</h1>
       {failed ? (
         <>
           <ErrorMessage>{providerError ?? "Google sign-in did not complete. Please try again."}</ErrorMessage>
