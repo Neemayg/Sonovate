@@ -479,5 +479,20 @@ Status: **Complete: AST is better overall (narrowly), driven by gearbox; bearing
   - Neither system is a strong detector at a low-false-alarm operating point.
   - Clear next steps for detection quality are fine-tuning on condition labels, or stronger pretrained models.
   - Either would need another untouched test set (for example DCASE 2023 or 2024 data) to verify.
+
+### EXP-010 — AST with only a machine's 10 baseline recordings as references
+Status: **Pre-registered, not yet run.** This plan is committed before the run. It checks the app setup (ADR-008); it is not a new comparison of models.
+- **Date:** 2026-11-03
+- **Research question:** In the app, AST compares a recording with about 10 baseline recordings of the same machine, not thousands of training clips. Does detection hold up, and does a threshold from the baseline clips alone keep false alarms low?
+- **Hypothesis:** Mean false-positive rate of 0.10 or below in both domains of bearing 00 and gearbox 00, with AUC lower than with full references.
+- **Dataset/version:** MIMII DG development set (`test` role), using the EXP-007 AST embeddings. The DCASE 2022 evaluation data is not reused.
+- **Protocol:** For each section, domain and draw (200 draws, seed 0):
+  - Pick 10 normal clips as the baseline.
+  - Score the other 40 normal clips and all 50 anomaly clips by k = 1 cosine distance to the baseline.
+  - Threshold = mean + 2 standard deviations of the baseline clips' leave-one-out log scores (each baseline clip against the other 9).
+- **Metrics:** Per section-domain, mean AUC, false-positive rate and recall over draws, against EXP-007 AST k1 (full references) and EXP-005 (autoencoder at the baseline threshold).
+- **Success criterion:** Mean false-positive rate of 0.10 or below in both domains of bearing 00 and gearbox 00. If not met, the app keeps the autoencoder until a working threshold exists.
+- **Results:** Pending.
+- **Conclusion / next experiment:** Pending.
 - **Artifacts path:** `artifacts/EXP-006/`
 - **Conclusion / next experiment:** Pending.

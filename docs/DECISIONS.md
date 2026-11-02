@@ -81,6 +81,24 @@ Only record accepted decisions here. Proposed options belong in an issue or task
 - **Consequences/trade-offs:** "Below threshold" must never be presented as "healthy". Bearing results are especially weak and must say so. Model weights stay out of git and are loaded from a versioned bundle.
 - **Evidence:** EXP-002 and EXP-005 in `docs/EXPERIMENT_LOG.md`.
 
+## ADR-008 — Product model switches to frozen AST with nearest-neighbour scoring
+- **Status:** Accepted
+- **Date:** 2026-11-03
+- **Context:** On untouched DCASE 2022 evaluation data, frozen AST with k = 1 nearest-neighbour scoring beat the autoencoder overall: mean official AUC 0.678 vs 0.650, ΔAUC +0.028 (95% +0.001 to +0.055). It was clearly better on gearbox (0.730 vs 0.654) and not better on bearing (0.626 vs 0.646) (EXP-009).
+- **Decision:**
+  - The app uses frozen AST (`MIT/ast-finetuned-audioset-10-10-0.4593`, BSD-3) for both bearing and gearbox.
+  - Each machine's references are its own baseline recordings: a new recording's score is its cosine distance to the nearest baseline embedding.
+  - The threshold is mean + 2 standard deviations of the baseline clips' leave-one-out log scores, provided EXP-010 supports this setup.
+  - ADR-007's prototype labelling and 10-recording minimum still apply.
+- **Alternatives considered:**
+  - Keeping the autoencoder.
+  - A per-machine mix (AST for gearbox, autoencoder for bearing), rejected because choosing it from EXP-009 results would be tuning on the test set.
+- **Consequences/trade-offs:**
+  - Bearing results must say that AST was not better than the autoencoder on bearing.
+  - The backend needs `transformers` and AST weights (about 346 MB) in the bundle.
+  - Scoring cost rises from a small dense network to a transformer pass per recording.
+- **Evidence:** EXP-007, EXP-009 and EXP-010 in `docs/EXPERIMENT_LOG.md`.
+
 ## Pending decisions
 - Feature representation beyond the EXP-002 setup.
 - Recording hardware and context-sensor strategy.

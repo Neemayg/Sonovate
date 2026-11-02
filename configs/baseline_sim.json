@@ -1,0 +1,16 @@
+{
+  "experiment": "EXP-010",
+  "data_config": "configs/mimii_dg.json",
+  "embeddings": "artifacts/EXP-007/embeddings_ast.npz",
+  "full_reference_results": "artifacts/EXP-007/develop.json",
+  "output": "artifacts/EXP-010",
+  "machines": ["bearing", "gearbox"],
+  "baseline": {
+    "clips": 10,
+    "spread": 2.0,
+    "repeats": 200,
+    "seed": 0
+  },
+  "primary_sections": ["bearing/00", "gearbox/00"],
+  "max_false_positive_rate": 0.1
+}
