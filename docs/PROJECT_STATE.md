@@ -3,8 +3,8 @@
 > Update at milestone boundaries. Keep this file short enough to scan quickly.
 
 ## Current status
-- **Phase:** 4 — Context comparison complete; direction decision pending
-- **Status:** EXP-003 and EXP-004 both found no gain from operating-condition context
+- **Phase:** 4 closed (ADR-006: audio-only product model); threshold work done
+- **Status:** EXP-005: a per-machine baseline controls false alarms; detection stays weak
 - **Last updated:** 2026-11-02
 - **Current owner:** Team
 - **Working title:** Environment-Aware Acoustic Machine Health
@@ -26,26 +26,27 @@ Decide how the project continues now that operating-condition context did not he
 - [x] Audio-only reference (EXP-002; pre-registered bar narrowly missed)
 - [x] Context-aware comparison (EXP-003; inconclusive, leaning negative)
 - [x] Condition score normalization (EXP-004; no gain anywhere)
+- [x] Research direction decided: audio-only product model (ADR-006)
+- [x] Baseline-calibrated threshold (EXP-005; false alarms 2–9%, recall low)
 - [x] Application foundation built and merged (PR #1, PR #2; local only, no model registered)
 
 ## Current task
-Choose the project direction after EXP-003. Phase 4's exit gate requires documenting a negative result and revising the research direction.
+Decide how the app presents the audio-only model, then package it for the backend with a per-machine baseline step.
 
 ## Blockers
 - No model meets a bar for users. The best is audio-only Model A (EXP-002 setup), and its threshold misses most anomalies.
 - Phase 5 (alerts over time) has no timestamped data.
 
 ## Decisions needed
-1. Research direction after EXP-004 (option (a) is done):
-   - (b) Accept the negative result and continue audio-only.
-   - (c) Plan a small data-collection study with real temperature, humidity and speed sensors.
+1. Research direction: decided, audio-only (ADR-006). A data-collection study remains a possible follow-up.
 2. What the app may show: keep "no validated model", or show Model A labelled as a research prototype.
 3. Phase 5 data source: own timestamped recordings, or a clearly labelled simulation.
 
 ## Next action
-Record the direction decision, then either pre-register EXP-004 or start model packaging for the backend.
+Export a versioned model bundle (weights, preprocessing settings, parity fixtures), then have the backend load it and compute each machine's threshold from its baseline recordings (EXP-005 method).
 
 ## Latest verified results
+- **EXP-005 (baseline-calibrated threshold, 10 clips):** mean false-positive rate 0.02–0.09 in every section, but recall only 0.06–0.08 on bearing 00 (chance level) and 0.17–0.30 on gearbox 00.
 - **EXP-004 (score normalization), target ΔAUC:** bearing 00 −0.009 (−0.024 to +0.002), gearbox 00 −0.017 (−0.074 to +0.040). Model A's scores barely vary with condition, so there is nothing for normalization to remove.
 - **EXP-003 (3 seeds), target ΔAUC from context:** bearing 00 −0.002 (−0.036 to +0.036), gearbox 00 −0.074 (−0.159 to +0.007). Context hurt gearbox 00's low-false-alarm region (ΔpAUC −0.231) and helped only at seen conditions (bearing 00 source +0.053).
 - **Audio-only Model A, 3-seed mean AUC:** bearing 00 0.552 source, 0.655 target; gearbox 00 0.691 source, 0.591 target.

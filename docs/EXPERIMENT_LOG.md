@@ -237,7 +237,7 @@ Status: **Complete: inconclusive under the pre-registered rule, no gain anywhere
   - Testing environmental context properly needs data where it is measured and varies: a controlled collection study (ADR-004).
 
 ### EXP-005 — Alert threshold calibrated on the machine's own normal recordings
-Status: **Pre-registered, not yet run.** This plan is committed before EXP-005 is run. **Fifth use of this test set.** It is a threshold study, not a model comparison, and it uses test *normal* clips for calibration on purpose (see Split protocol).
+Status: **Complete: criterion met (false alarms controlled), detection weak.** The plan was committed at `41728b1`, and the run used that commit. **Fifth use of this test set.** It is a threshold study, not a model comparison, and it uses test *normal* clips for calibration on purpose (see Split protocol).
 - **Date:** 2026-11-02
 - **Research question:** Can an alert threshold set from a few normal recordings of the same machine, in the same domain, keep false alarms low? And how many anomalies does it then catch?
 - **Hypothesis:** False alarms fall to about 10% or below, because the baseline recordings share the recording shift that broke the earlier thresholds. Recall stays modest, because AUC is only about 0.55–0.70.
@@ -254,9 +254,39 @@ Status: **Pre-registered, not yet run.** This plan is committed before EXP-005 i
 - **Threshold selection method:** As described above.
 - **Metrics:** False-positive rate and recall, averaged over splits and seeds, with the 5th–95th percentile range across splits. Compared against EXP-002's two thresholds.
 - **Success criterion:** Mean false-positive rate of 0.10 or below in both domains of bearing 00 and gearbox 00. Recall is reported as found; no recall target is set.
-- **Results:** Pending.
-- **Error analysis:** Pending.
-- **Limitations:** Pending.
+- **Results:** Means over 200 baseline draws × 3 seeds. Ranges are the 5th–95th percentile across draws. Primary rows are in bold.
+
+  | Section / domain | FPR | FPR range | Recall | Recall range |
+  |---|---|---|---|---|
+  | **bearing 00 source** | 0.051 | 0.00–0.23 | 0.056 | 0.00–0.26 |
+  | **bearing 00 target** | 0.077 | 0.00–0.33 | 0.084 | 0.00–0.28 |
+  | bearing 01 source | 0.045 | 0.00–0.17 | 0.077 | 0.00–0.22 |
+  | bearing 01 target | 0.067 | 0.00–0.23 | 0.221 | 0.00–0.58 |
+  | bearing 02 source | 0.027 | 0.00–0.28 | 0.034 | 0.00–0.14 |
+  | bearing 02 target | 0.018 | 0.00–0.10 | 0.016 | 0.00–0.08 |
+  | **gearbox 00 source** | 0.067 | 0.00–0.20 | 0.300 | 0.14–0.46 |
+  | **gearbox 00 target** | 0.046 | 0.00–0.15 | 0.174 | 0.00–0.38 |
+  | gearbox 01 source | 0.082 | 0.00–0.25 | 0.238 | 0.10–0.42 |
+  | gearbox 01 target | 0.085 | 0.00–0.30 | 0.087 | 0.00–0.20 |
+  | gearbox 02 source | 0.086 | 0.00–0.28 | 0.455 | 0.36–0.64 |
+  | gearbox 02 target | 0.078 | 0.00–0.23 | 0.199 | 0.00–0.44 |
+
+- **Error analysis:**
+  - **False alarms are controlled everywhere.** Mean FPR was 0.018–0.086 in all 12 section-domains, against 0.84–1.00 on bearing with the `validation` threshold and 0.44–0.48 on bearing 02 with the held-out-condition threshold (EXP-002). A baseline from the same domain shares its recording shift, which supports the EXP-001 explanation.
+  - **Detection is weak.**
+    - Bearing 00 recall (0.056 / 0.084) is about equal to its false-positive rate, which is no better than chance at this operating point.
+    - Gearbox 00 catches 17–30% of anomalies, and gearbox 02 source 46%.
+    - This matches the modest AUCs (about 0.55–0.75).
+  - **Ten baseline clips give an unstable threshold.** Across draws, FPR reaches 0.20–0.33 at the 95th percentile in several sections. More baseline clips should narrow that, but this was not tested.
+- **Limitations:**
+  - Baseline and evaluation clips come from the same test pool, standing in for one machine's recordings.
+  - The settings (10 clips, mean + 2 standard deviations) were fixed, not tuned.
+  - Only one baseline size was tried.
+  - Fifth use of this test set.
 - **Reproduction command/config path:** `uv run python -m ml.enroll --config configs/enroll_ae.json`
 - **Artifacts path:** `artifacts/EXP-005/`
-- **Conclusion / next experiment:** Pending.
+- **Conclusion / next experiment:** A per-machine baseline step makes false alarms controllable. That is evidence for the product's "record normal baseline" step. It does not make the model a good detector:
+  - Bearing 00 is at chance at this operating point.
+  - Gearbox catches a minority of anomalies.
+  - Any product use must be labelled as a research prototype with low sensitivity.
+  - Improving detection needs a stronger audio model, which is a separate experiment.
