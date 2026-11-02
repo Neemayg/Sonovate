@@ -28,7 +28,7 @@ Record each meaningful experiment. Do not overwrite old results.
 Do not add illustrative/example numbers as actual results.
 
 ### EXP-001 — Audio-only kNN baseline
-Status: **Pre-registered, not yet run.** This plan was committed before any test evaluation.
+Status: **Complete: the baseline performs poorly and its threshold failed.** The plan was committed before test evaluation (`bb8f653`), and the test stage was run once on that commit. Keep these results as they are.
 - **Date:** 2026-11-02
 - **Research question:** How well does a simple audio-only detector work at training conditions and at unseen operating conditions, and how many false alarms does it raise at unseen conditions?
 - **Hypothesis:** Detection falls and false alarms rise on the target domain. If not, the case for context is weak.
@@ -40,9 +40,36 @@ Status: **Pre-registered, not yet run.** This plan was committed before any test
 - **Training details / random seed:** No stochastic training. Bootstrap seed 0, 2,000 resamples.
 - **Threshold selection method:** 95th percentile of `validation` scores per section. No anomalies are available for tuning, and settings are fixed in advance rather than tuned.
 - **Metrics:** Per section and domain: AUC, pAUC over false-positive rate 0–0.1 (a random detector scores about 0.05), each with a 95% bootstrap interval, plus false-positive rate and recall at the threshold. Primary sections: bearing 00, gearbox 00.
-- **Results:** Pending.
-- **Error analysis:** Pending. False alarms and misses by condition.
-- **Limitations:** Pending.
+- **Results:** Test set, 50 normal and 50 anomaly clips per domain per section. Intervals are 95% bootstrap. Primary sections are in bold.
+
+  | Section | Domain | AUC | AUC 95% | pAUC | False-positive rate | Recall |
+  |---|---|---|---|---|---|---|
+  | **bearing 00** | source | 0.550 | 0.441–0.665 | 0.132 | 1.00 | 1.00 |
+  | **bearing 00** | target | 0.464 | 0.349–0.579 | 0.104 | 1.00 | 1.00 |
+  | bearing 01 | source | 0.533 | 0.420–0.651 | 0.072 | 0.26 | 0.38 |
+  | bearing 01 | target | 0.471 | 0.354–0.586 | 0.068 | 0.84 | 0.88 |
+  | bearing 02 | source | 0.657 | 0.554–0.765 | 0.188 | 1.00 | 1.00 |
+  | bearing 02 | target | 0.618 | 0.504–0.730 | 0.188 | 1.00 | 1.00 |
+  | **gearbox 00** | source | 0.472 | 0.358–0.584 | 0.120 | 0.26 | 0.34 |
+  | **gearbox 00** | target | 0.376 | 0.265–0.490 | 0.044 | 0.28 | 0.14 |
+  | gearbox 01 | source | 0.696 | 0.586–0.790 | 0.252 | 0.04 | 0.24 |
+  | gearbox 01 | target | 0.540 | 0.420–0.655 | 0.040 | 0.08 | 0.06 |
+  | gearbox 02 | source | 0.679 | 0.570–0.780 | 0.352 | 0.12 | 0.40 |
+  | gearbox 02 | target | 0.617 | 0.507–0.723 | 0.036 | 0.18 | 0.22 |
+
+- **Error analysis:**
+  - **Primary sections show no reliable detection.** Bearing 00 and gearbox 00 source intervals include 0.5. Gearbox 00 target is below 0.5 with an interval excluding it, so anomalies scored lower than normal clips there.
+  - **The threshold failed.** It was set for about 5% false positives but flagged every clip, normal and anomaly, in both domains of bearing 00 and bearing 02. Bearing 00 did so at all 13 speeds. Only gearbox 01 stayed close to 5%.
+  - **Cause (diagnosed on normal clips only, after the test run):** `validation` scores match train-against-train scores (bearing 00 median 4.50 vs 4.78), but source test normal clips at the same conditions score far higher (bearing 00 median 12.41, gearbox 00 9.89, gearbox 01 5.54). Band offsets between train and test normal clips reach about 7 dB in bearing 00, 2.7 dB in gearbox 00 and 1.1 dB in gearbox 01. Feature processing is identical across roles, and overall level differs by under 1 dB. A shift between how train and test clips were recorded fits this, but the data has no session IDs, so that explanation is inferred, not confirmed.
+  - **No conclusion on the hypothesis.** Target AUC is numerically below source in all 6 sections, but intervals overlap, and false-alarm rates cannot be compared because the threshold is invalid.
+- **Published comparison:** The DCASE 2022 Task 2 autoencoder baseline reports AUC of about 68/60 (source/target) for bearing 00 and 65/65 for gearbox 00, and 0.5 is chance. See https://arxiv.org/abs/2206.05876. So the task is hard, but this baseline is weaker on the primary sections. That comparison assumes those sections match the data used here, which was not separately verified. Only AUC is comparable, since that paper's pAUC is computed differently, and its Bearing rows are identical in both baseline tables.
+- **Limitations:**
+  - The result covers one fixed configuration, deliberately untuned.
+  - Clip-level mean and standard deviation discard temporal detail.
+  - Each interval rests on 100 clips.
+  - The `adaptation` clips were not used.
+  - Random validation clips cannot reveal the train/test shift, so this split cannot set a usable threshold.
+  - Test normal clips have now informed the diagnosis, so later experiments must disclose that they are not fully blind.
 - **Reproduction command/config path:** `uv run python -m ml.baseline --config configs/baseline_knn.json --stage test`
 - **Artifacts path:** `artifacts/EXP-001/`
-- **Conclusion / next experiment:** Pending.
+- **Conclusion / next experiment:** This is not a credible reference point yet. A shift at the *same* known condition is also a risk for the project hypothesis, because a model given the speed value cannot explain a change that happens at the same speed. EXP-002 needs a stronger audio model and a threshold method that does not rely on random held-out clips, and it must be pre-registered before touching test data again.

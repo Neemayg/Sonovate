@@ -137,7 +137,8 @@ Defined in `ml/splits.py` and `configs/mimii_dg.json` (seed 0, validation fracti
 
 - **No labelled anomalies for tuning:** Anomalies exist only in `test`, so thresholds must come from normal score distributions. Tuning on test anomalies would invalidate the result.
 - **Validation is source-only:** It cannot show how a threshold behaves at target conditions. Report threshold-free metrics alongside any thresholded result.
-- **Near-duplicate risk:** Only exact duplicates were checked. Whether neighbouring clips come from one continuous recording is unknown, which could make `validation` optimistic.
+- **Near-duplicate risk:** Only exact duplicates were checked. Validation clips' nearest training clips are not neighbours in file order, but file order may not be recording order.
+- **Validation is optimistic (confirmed by EXP-001):** Source test normal clips score well above `validation` at the same conditions, so `validation` does not represent test recordings. The gap is large in bearing 00 and gearbox 00 and small in gearbox 01. It is probably a recording-session difference, but no session IDs exist to confirm that.
 
 ## Accepted choices
 Recorded as ADR-001 to ADR-004 in `DECISIONS.md` on 2026-11-02.

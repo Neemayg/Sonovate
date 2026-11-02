@@ -4,7 +4,7 @@
 
 ## Current status
 - **Phase:** 3 — Audio-only baseline (Phases 0–2 complete)
-- **Status:** Not started
+- **Status:** EXP-001 complete; the baseline is not yet a credible reference point
 - **Last updated:** 2026-11-02
 - **Current owner:** Team
 - **Working title:** Environment-Aware Acoustic Machine Health
@@ -23,31 +23,33 @@ Establish a credible audio-only reference point on the accepted protocol.
 - [x] Dataset, machine family, generalization target and context scope accepted (ADR-001 to ADR-004)
 - [x] Reproducible data pipeline
 - [ ] Representative clips listened to by a person
-- [ ] Audio-only baseline implemented
-- [ ] Baseline evaluated on held-out data
+- [x] First audio-only baseline implemented (EXP-001)
+- [x] First baseline evaluated on held-out data (poor result)
+- [ ] Credible baseline established
 - [ ] Context-aware comparison completed
 
 ## Current task
-Plan the audio-only baseline. Do not start frontend/backend implementation yet.
+Pre-register EXP-002. Do not start Phase 4 or frontend/backend implementation yet.
 
 ## Blockers
-None.
+- No credible audio-only reference point, so a context comparison would mean little.
+- Normal sound shifts between train and test at the same known condition. Context values may not explain that.
 
 ## Decisions needed
-1. Baseline features and model (pending in `DECISIONS.md`).
-2. Whether baselines use the `adaptation` role. Both models in a comparison must make the same choice.
+1. EXP-002 scope: stronger audio model and a threshold method that does not rely on random held-out clips.
+2. Whether models use the `adaptation` role. Both models in a comparison must make the same choice.
 3. Application stack: Supabase, FastAPI and Next.js are proposed, not accepted.
 
 ## Next action
-Write the Phase 3 experiment plan, then implement the simplest baseline against the `train` role, setting thresholds from `validation` normal scores only.
+Pre-register EXP-002 in `EXPERIMENT_LOG.md`, develop it without test data, then evaluate once.
 
 ## Latest verified results
-No model has been trained. No performance claims are established. Data checks only: 7,199 clips validated, uniform format, no exact duplicates (see `DATASET_REGISTER.md`).
+EXP-001 on the test set: bearing 00 AUC 0.550 source, 0.464 target; gearbox 00 AUC 0.472 source, 0.376 target. No reliable detection on the primary sections, and the threshold failed (100% false positives on bearing 00). Full table in `EXPERIMENT_LOG.md`. Anomaly scores are not probabilities.
 
 ## Session handoff
-- **Changed:** Recorded ADR-001 to ADR-004. Added `ml/audio.py`, `ml/splits.py`, `ml/prepare.py`, `configs/mimii_dg.json` and split outputs in `data/manifests/`. The manifest now stores each clip's MD5, so a changed raw clip changes its hash.
-- **Reproduce:** `uv run python -m ml.prepare --config configs/mimii_dg.json`. Needs the two archives in `data/raw/mimii_dg/archives/`.
-- **Checks run:** `uv run pytest` (36 passed); pipeline run twice with byte-identical manifest, splits and summary; output files audited separately from the pipeline code.
-- **Not verified:** How the audio sounds; near-duplicates between neighbouring clips (only exact duplicates were checked).
-- **Blocker:** None.
+- **Changed:** Added `ml/features.py`, `ml/metrics.py`, `ml/baseline.py` and `configs/baseline_knn.json`. Ran EXP-001 and diagnosed its threshold failure.
+- **Reproduce:** `uv run python -m ml.prepare --config configs/mimii_dg.json`, then `uv run python -m ml.baseline --config configs/baseline_knn.json --stage test`. Needs the two archives in `data/raw/mimii_dg/archives/`.
+- **Checks run:** `uv run pytest` (52 passed); validation stage; test stage once on commit `bb8f653`; normal-clip diagnosis of the score gap.
+- **Not verified:** How the audio sounds; the cause of the train/test shift (no session IDs).
+- **Blocker:** See Blockers.
 - **Next task:** The Next action above.
