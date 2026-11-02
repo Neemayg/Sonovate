@@ -4,7 +4,7 @@
 
 ## Current status
 - **Phase:** 4 — Context comparison complete; direction decision pending
-- **Status:** EXP-003 inconclusive, leaning negative: context did not help at unseen conditions
+- **Status:** EXP-003 and EXP-004 both found no gain from operating-condition context
 - **Last updated:** 2026-11-02
 - **Current owner:** Team
 - **Working title:** Environment-Aware Acoustic Machine Health
@@ -25,6 +25,7 @@ Decide how the project continues now that operating-condition context did not he
 - [ ] Representative clips listened to by a person
 - [x] Audio-only reference (EXP-002; pre-registered bar narrowly missed)
 - [x] Context-aware comparison (EXP-003; inconclusive, leaning negative)
+- [x] Condition score normalization (EXP-004; no gain anywhere)
 - [x] Application foundation built and merged (PR #1, PR #2; local only, no model registered)
 
 ## Current task
@@ -35,8 +36,7 @@ Choose the project direction after EXP-003. Phase 4's exit gate requires documen
 - Phase 5 (alerts over time) has no timestamped data.
 
 ## Decisions needed
-1. Research direction:
-   - (a) One more pre-registered context method, such as normalizing scores by condition, with no retraining.
+1. Research direction after EXP-004 (option (a) is done):
    - (b) Accept the negative result and continue audio-only.
    - (c) Plan a small data-collection study with real temperature, humidity and speed sensors.
 2. What the app may show: keep "no validated model", or show Model A labelled as a research prototype.
@@ -46,6 +46,7 @@ Choose the project direction after EXP-003. Phase 4's exit gate requires documen
 Record the direction decision, then either pre-register EXP-004 or start model packaging for the backend.
 
 ## Latest verified results
+- **EXP-004 (score normalization), target ΔAUC:** bearing 00 −0.009 (−0.024 to +0.002), gearbox 00 −0.017 (−0.074 to +0.040). Model A's scores barely vary with condition, so there is nothing for normalization to remove.
 - **EXP-003 (3 seeds), target ΔAUC from context:** bearing 00 −0.002 (−0.036 to +0.036), gearbox 00 −0.074 (−0.159 to +0.007). Context hurt gearbox 00's low-false-alarm region (ΔpAUC −0.231) and helped only at seen conditions (bearing 00 source +0.053).
 - **Audio-only Model A, 3-seed mean AUC:** bearing 00 0.552 source, 0.655 target; gearbox 00 0.691 source, 0.591 target.
 - Full tables are in `EXPERIMENT_LOG.md`. Anomaly scores are not probabilities.

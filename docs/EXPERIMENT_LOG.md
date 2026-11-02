@@ -185,7 +185,7 @@ Status: **Complete: inconclusive under the pre-registered rule, leaning negative
   - Any further context experiment must be pre-registered, and should be weighed against the growing number of looks at this test set.
 
 ### EXP-004 — Audio-only scores normalized by operating condition
-Status: **Pre-registered, not yet run.** This plan is committed before any EXP-004 test evaluation. **This is the fourth evaluation on this test set**, and the second testing context, so a positive result here is weaker evidence than a first look would be. Not fully blind, as for EXP-002.
+Status: **Complete: inconclusive under the pre-registered rule, no gain anywhere.** The plan was committed at `f6b36d5`, and the run used that commit. **This is the fourth evaluation on this test set**, and the second testing context, so a positive result here is weaker evidence than a first look would be. Not fully blind, as for EXP-002.
 - **Date:** 2026-11-02
 - **Research question:** Does judging each clip's anomaly score against what is normal *at that operating condition* improve detection, especially at unseen conditions?
 - **Hypothesis:** Normalization raises target-domain AUC in bearing 00 and gearbox 00, by removing score differences that come from the condition rather than from anomalies.
@@ -202,9 +202,36 @@ Status: **Pre-registered, not yet run.** This plan is committed before any EXP-0
 - **Threshold selection method:** None. This comparison is threshold-free.
 - **Metrics:** As EXP-003: ΔAUC and ΔpAUC (N − A, seed means) with 95% paired bootstrap intervals. Interpolation check, run without test data: leave each validation value out, predict its mean from the others, and report the error alongside the spread of means between conditions.
 - **Decision rule:** As EXP-003, on target-domain ΔAUC for bearing 00 and gearbox 00. Normalization helps only if both intervals exclude 0 on the positive side.
-- **Results:** Pending.
-- **Error analysis:** Pending.
-- **Limitations:** Pending.
+- **Results:** AUC averaged over seeds 0–2. ΔAUC is N − A with 95% paired bootstrap intervals. Model A seed 0 reproduced EXP-002. Primary rows are in bold.
+
+  | Section / domain | Parameter | AUC A | AUC N | ΔAUC | ΔAUC 95% | ΔpAUC |
+  |---|---|---|---|---|---|---|
+  | bearing 00 source | vel | 0.552 | 0.519 | −0.033 | −0.067 to +0.000 | −0.020 |
+  | **bearing 00 target** | vel | 0.655 | 0.646 | −0.009 | −0.024 to +0.002 | +0.000 |
+  | bearing 01 source | vel | 0.590 | 0.567 | −0.023 | −0.061 to +0.014 | +0.026 |
+  | bearing 01 target | vel | 0.776 | 0.726 | −0.051 | −0.105 to −0.001 | +0.034 |
+  | bearing 02 source | vel | 0.484 | 0.484 | 0.000 | 0.000 to 0.000 | 0.000 |
+  | bearing 02 target | vel | 0.486 | 0.486 | 0.000 | 0.000 to 0.000 | 0.000 |
+  | gearbox 00 source | volt | 0.691 | 0.649 | −0.042 | −0.114 to +0.030 | −0.141 |
+  | **gearbox 00 target** | volt | 0.591 | 0.574 | −0.017 | −0.074 to +0.040 | −0.051 |
+  | gearbox 01 source | wt | 0.691 | 0.680 | −0.012 | −0.046 to +0.023 | −0.010 |
+  | gearbox 01 target | wt | 0.548 | 0.540 | −0.008 | −0.041 to +0.027 | −0.017 |
+  | gearbox 02 | none | 0.760 / 0.669 | unchanged | 0.000 | — | 0.000 |
+
+  Interpolation check on validation, log scores, seed mean (mean error vs spread of condition means): bearing 00 0.065 vs 0.048; gearbox 00 0.014 vs 0.012; gearbox 01 0.031 vs 0.022. Bearing 01 and 02 have only two speeds, so they could not be checked.
+- **Error analysis:**
+  - **No gain in any section or domain.** Both primary target intervals include 0, and point estimates are slightly negative. Bearing 01 target got worse (−0.051, −0.105 to −0.001).
+  - **Why it does not help:** Model A's normal scores barely vary with condition. Between-condition spread is about 0.01–0.05 in log score, about 1–5%. The interpolation error is *larger* than that spread in every checked section. So there is no reliable condition effect in the scores to remove, and normalizing mostly adds noise.
+  - **Bearing 02 is unchanged, and that is correct.** Normalization was applied, but the clip ranking within each domain stayed the same. Test log scores sit far above validation at both speeds (vel 14: test 2.68–3.13 vs validation 1.97–2.26), so this is again a validation-to-test shift that normalization cannot remove. Checked on seed 0.
+- **Limitations:**
+  - Statistics come from about 20 validation clips per condition value.
+  - Linear interpolation is the only scheme tested.
+  - Bearing 01 and 02 have just two condition values.
+  - Fourth look at this test set; not fully blind.
 - **Reproduction command/config path:** `uv run python -m ml.normalize --config configs/normalize_ae.json`
 - **Artifacts path:** `artifacts/EXP-004/`
-- **Conclusion / next experiment:** Pending.
+- **Conclusion / next experiment:** Two different ways of using operating condition (EXP-003, EXP-004) both failed to improve detection at unseen conditions.
+  - The evidence points to one cause: the trained audio model's errors are not driven by the known operating condition. They are driven by shifts that the condition does not describe, such as validation-to-test or recording differences at the same speed or voltage.
+  - On MIMII DG, the context hypothesis is therefore not supported, and the problem it targets is not the main source of error here.
+  - Further context variants on this test set are not recommended; the evidence would only get weaker with each look.
+  - Testing environmental context properly needs data where it is measured and varies: a controlled collection study (ADR-004).
