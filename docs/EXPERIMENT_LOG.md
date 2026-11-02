@@ -409,5 +409,33 @@ Status: **Complete: not selected (0.672 vs 0.673); AST k1 stays.** The plan was 
   - AST k1 stays the selected system.
   - AST is also the licence-clean option (BSD-3) for the app.
   - Next: one pre-registered evaluation of AST k1 against the autoencoder on the untouched DCASE 2022 evaluation sections.
+
+### EXP-009 — Final test on untouched data: AST k1 vs autoencoder
+Status: **Pre-registered, not yet run.** This plan is committed before any clip of this test set is scored. **First and only planned use of this test set.**
+- **Date:** 2026-11-02
+- **Research question:** On data neither system has seen, does frozen AST with nearest-neighbour scoring (selected in EXP-007/008) detect anomalies better than the autoencoder?
+- **Hypothesis:** AST k1 has a higher mean AUC over the 12 section-domains.
+- **Dataset/version:** DCASE 2022 Task 2 evaluation sections 03–05 for bearing and gearbox (MIMII DG family).
+  - Test clips: Zenodo 6586456 (600 per machine).
+  - Normal reference and training clips: Zenodo 6462969 (3,000 per machine).
+  - Labels and domains: the organiser's ground truth (`Kota-Dohi/dcase2022_evaluator`, MIT): label 1 = anomaly, domain 0 = source, 1 = target.
+  - The licence is treated as CC-BY-NC-SA-4.0, so these clips are used for evaluation only.
+  - Archive MD5s match Zenodo.
+- **Split protocol:** References and autoencoder training use only the training archive clips, with source and target normal clips combined as in EXP-002. Test clips are scored once.
+- **Systems:**
+  - **AST k1:** exactly as EXP-007, with references from the same section's training clips.
+  - **Autoencoder:** exactly as EXP-002, one model per machine trained on these sections' training clips, seed 0 (CPU).
+- **Metrics:** AUC and pAUC (FPR 0–0.1) per section and domain, under two definitions:
+  - (a) official DCASE 2022: domain normal clips against all anomalies of the section;
+  - (b) within-domain: domain normal clips against domain anomalies, as in EXP-002 to EXP-008.
+  - Mean AUC over the 12 section-domains.
+  - Paired bootstrap 95% interval for the mean ΔAUC (AST − autoencoder), resampling clips within each section-domain, 2,000 resamples, seed 0.
+  - Secondary: AST's false-positive rate and recall at the EXP-005 baseline threshold (10 clips, mean + 2 standard deviations of log score, 200 draws).
+- **Decision rule, on definition (a):**
+  - **AST is better:** mean ΔAUC > 0 and its interval excludes 0.
+  - **AST is worse:** the interval lies wholly below 0.
+  - **Inconclusive:** anything else.
+- **Results:** Pending.
+- **Conclusion / next experiment:** Pending.
 - **Artifacts path:** `artifacts/EXP-006/`
 - **Conclusion / next experiment:** Pending.

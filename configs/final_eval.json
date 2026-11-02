@@ -1,0 +1,27 @@
+{
+  "experiment": "EXP-009",
+  "audio_config": "configs/baseline_ae.json",
+  "raw_root": "data/raw/dcase2022_eval",
+  "truth_dir": "data/raw/dcase2022_eval/ground_truth",
+  "output": "artifacts/EXP-009",
+  "machines": ["bearing", "gearbox"],
+  "seed": 0,
+  "encoder": {
+    "name": "ast",
+    "model_id": "MIT/ast-finetuned-audioset-10-10-0.4593",
+    "device": "mps",
+    "batch_size": 8
+  },
+  "baseline": {
+    "clips": 10,
+    "spread": 2.0,
+    "repeats": 200,
+    "seed": 0
+  },
+  "max_fpr": 0.1,
+  "bootstrap": {
+    "samples": 2000,
+    "seed": 0
+  },
+  "threads": 4
+}
