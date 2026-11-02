@@ -5,9 +5,10 @@ Run with: uv run uvicorn app.main:create_app --factory --port 8000
 
 
 import logging
+import math
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 import httpx
 from fastapi import Depends, FastAPI, Header, Request
@@ -17,12 +18,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.audio import AudioValidationError, validate_wav
+from app.audio import AudioValidationError, ValidatedAudio, validate_wav
 from app.auth import AuthenticatedUser, AuthError, JwksKeyResolver, TokenVerifier
-from app.config import Settings, load_settings
-from app.registry import MODELLED_MACHINE_TYPES, EmptyModelRegistry, ModelRegistry
+from app.config import ConfigError, Settings, load_settings
+from app.registry import MODELLED_MACHINE_TYPES, AnomalyModel, EmptyModelRegistry, ModelRegistry
 from app.supabase_data import (
     PredictionStore,
+    Recording,
     RecordingNotFound,
     RecordingSource,
     RecordingTooLarge,
@@ -30,19 +32,23 @@ from app.supabase_data import (
     SupabaseRecordingSource,
     UpstreamError,
 )
+from app.thresholds import baseline_threshold, decide
 
 logger = logging.getLogger("sonovate.inference")
 
 SCORE_DISCLAIMER = (
     "The score is an uncalibrated anomaly score, not a failure probability or a diagnosis."
 )
+# ADR-007: shown with every result.
+PROTOTYPE_NOTICE = "Research prototype, low sensitivity. Not a diagnosis or failure prediction."
 
 
 class ApiError(Exception):
-    def __init__(self, status: int, code: str, message: str) -> None:
+    def __init__(self, status: int, code: str, message: str, details: dict[str, Any] | None = None) -> None:
         self.status = status
         self.code = code
         self.message = message
+        self.details = details
 
 
 class AnalysisRequest(BaseModel):
@@ -60,9 +66,13 @@ class ModelSummary(BaseModel):
 class PredictionOut(BaseModel):
     id: uuid.UUID
     score: float
+    log_score: float
+    # This machine's baseline threshold, in log space.
     threshold: float
     decision: Literal["below_threshold", "above_threshold"]
+    baseline_count: int
     model: ModelSummary
+    limitations: list[str]
     created_at: datetime
 
 
@@ -70,11 +80,23 @@ class AnalysisResponse(BaseModel):
     status: Literal["completed"]
     recording_id: uuid.UUID
     prediction: PredictionOut
+    notice: str
     disclaimer: str
 
 
-def _error(status: int, code: str, message: str) -> JSONResponse:
-    return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
+def _error(status: int, code: str, message: str, details: dict[str, Any] | None = None) -> JSONResponse:
+    error: dict[str, Any] = {"code": code, "message": message}
+    if details is not None:
+        error["details"] = details
+    return JSONResponse(status_code=status, content={"error": error})
+
+
+def default_registry(settings: Settings) -> ModelRegistry:
+    if settings.bundles_dir is None:
+        return EmptyModelRegistry()
+    from app.bundle import BundleRegistry  # imports torch; only when bundles are configured
+
+    return BundleRegistry(settings.bundles_dir)
 
 
 def create_app(
@@ -86,7 +108,9 @@ def create_app(
     prediction_store: PredictionStore | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
-    registry = registry or EmptyModelRegistry()
+    registry = registry or default_registry(settings)
+    if registry.has_any_model() and prediction_store is None and not settings.supabase_secret_key:
+        raise ConfigError("Model bundles are configured, so SUPABASE_SECRET_KEY must be set to store results.")
     http = httpx.Client(timeout=10.0)
     verifier = verifier or TokenVerifier(JwksKeyResolver(settings.jwks_url), settings.jwt_issuer)
     recording_source = recording_source or SupabaseRecordingSource(settings, http)
@@ -101,7 +125,7 @@ def create_app(
 
     @app.exception_handler(ApiError)
     async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
-        return _error(exc.status, exc.code, exc.message)
+        return _error(exc.status, exc.code, exc.message, exc.details)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(_: Request, __: RequestValidationError) -> JSONResponse:
@@ -173,17 +197,40 @@ def create_app(
                 f"There is no validated model for {recording.machine_type} machines yet. Nothing was stored.",
             )
 
-        score = float(model.score(audio, recording.machine_type, recording.context))
-        info = model.info
-        decision: Literal["below_threshold", "above_threshold"] = (
-            "above_threshold" if score > info.threshold else "below_threshold"
-        )
+        if recording.kind == "baseline":
+            raise ApiError(
+                422,
+                "baseline_recording",
+                "This is a baseline recording. It is used to set this machine's threshold and is not analysed itself.",
+            )
+
         store = prediction_store or SupabasePredictionStore(settings, http)
         try:
-            stored = store.save(recording, info.model_version_id, score, info.threshold, decision)
+            baselines = recording_source.list_baselines(user, recording.machine_id)
+            required = model.rule.minimum_baseline_recordings
+            if len(baselines) < required:
+                raise ApiError(
+                    409,
+                    "baseline_required",
+                    f"This machine has {len(baselines)}/{required} baseline recordings. Upload "
+                    f"{required - len(baselines)} more, made while it runs normally, before results can be shown. "
+                    "Nothing was stored.",
+                    {"baseline_count": len(baselines), "baseline_required": required},
+                )
+            threshold = machine_threshold(user, model, recording, baselines, store)
+
+            score = float(model.score(audio, recording.machine_type, recording.context))
+            if not (math.isfinite(score) and score > 0):
+                raise RuntimeError("model returned a non-positive score")
+            log_score = math.log(score)
+            decision: Literal["below_threshold", "above_threshold"] = decide(log_score, threshold)  # type: ignore[assignment]
+            info = model.info
+            stored = store.save(
+                recording, info.model_version_id, score, log_score, threshold, decision, len(baselines)
+            )
         except UpstreamError as exc:
-            logger.warning("prediction write failed: %s", exc)
-            raise ApiError(502, "upstream_unavailable", "The result could not be saved. Please try again.")
+            logger.warning("upstream failure: %s", exc)
+            raise ApiError(502, "upstream_unavailable", "The result could not be computed or saved. Please try again.")
 
         return AnalysisResponse(
             status="completed",
@@ -191,15 +238,61 @@ def create_app(
             prediction=PredictionOut(
                 id=stored.id,
                 score=score,
-                threshold=info.threshold,
+                log_score=log_score,
+                threshold=threshold,
                 decision=decision,
+                baseline_count=len(baselines),
                 model=ModelSummary(
                     machine_type=info.machine_type,
-                    name=info.name, version=info.version, preprocessing_version=info.preprocessing_version
+                    name=info.name,
+                    version=info.version,
+                    preprocessing_version=info.preprocessing_version,
                 ),
+                limitations=list(model.limitations),
                 created_at=stored.created_at,
             ),
+            notice=PROTOTYPE_NOTICE,
             disclaimer=SCORE_DISCLAIMER,
         )
+
+    def machine_threshold(
+        user: AuthenticatedUser,
+        model: AnomalyModel,
+        recording: Recording,
+        baselines: list[Recording],
+        store: PredictionStore,
+    ) -> float:
+        """The stored threshold if it was computed from exactly these baselines;
+        otherwise score every baseline, recompute (EXP-005 rule) and store it."""
+        ids = frozenset(b.id for b in baselines)
+        stored = recording_source.get_threshold(user, recording.machine_id, model.info.model_version_id)
+        if stored is not None and stored.baseline_recording_ids == ids:
+            return stored.threshold
+
+        scores = [float(model.score(_baseline_audio(user, b), b.machine_type, b.context)) for b in baselines]
+        try:
+            computed = baseline_threshold(scores, model.rule)
+        except ValueError:
+            raise RuntimeError("baseline scores could not form a threshold")
+        store.save_threshold(
+            recording.machine_id,
+            recording.owner_id,
+            model.info.model_version_id,
+            computed,
+            model.rule.spread,
+            sorted(ids),
+        )
+        return computed.threshold
+
+    def _baseline_audio(user: AuthenticatedUser, baseline: Recording) -> ValidatedAudio:
+        label = baseline.original_filename or "a baseline recording"
+        try:
+            return validate_wav(recording_source.download(user, baseline))
+        except RecordingNotFound:
+            raise ApiError(422, "baseline_invalid", f"The audio file for baseline {label} is missing.")
+        except RecordingTooLarge:
+            raise ApiError(422, "baseline_invalid", f"Baseline {label} is larger than the 2 MiB limit.")
+        except AudioValidationError as exc:
+            raise ApiError(422, "baseline_invalid", f"Baseline {label} is not usable: {exc.message}")
 
     return app

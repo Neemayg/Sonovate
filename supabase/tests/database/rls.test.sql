@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(46);
+select plan(54);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres, bypassing RLS). Fixed ids keep failures readable.
@@ -44,6 +44,25 @@ insert into public.predictions (recording_id, owner_id, model_version_id, score,
 values
   ('b2000000-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-000000000002',
    'c0000000-0000-0000-0000-000000000001', 1.0, 2.0, 'below_threshold');
+
+insert into public.machine_thresholds (
+  machine_id, owner_id, model_version_id, threshold, log_mean, log_std, spread, baseline_count, baseline_recording_ids)
+values ('b1000000-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-000000000002',
+  'c0000000-0000-0000-0000-000000000001', 3.5, 3.0, 0.25, 2.0, 10,
+  array(select gen_random_uuid() from generate_series(1, 10)));
+
+select throws_ok(
+  $$insert into public.predictions (recording_id, owner_id, model_version_id, score, log_score, threshold, decision)
+    values ('b2000000-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-000000000002',
+    'c0000000-0000-0000-0000-000000000001', 2.718281828, 1.0, 2.0, 'above_threshold')$$,
+  '23514', null, 'a prediction decision must agree with log_score > threshold');
+
+select throws_ok(
+  $$insert into public.machine_thresholds (
+    machine_id, owner_id, model_version_id, threshold, log_mean, log_std, spread, baseline_count, baseline_recording_ids)
+    values ('b1000000-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-000000000002',
+    'c0000000-0000-0000-0000-000000000001', 1, 1, 0, 2, 3, array[gen_random_uuid(), gen_random_uuid(), gen_random_uuid()])$$,
+  '23514', null, 'a threshold needs at least 10 baseline recordings');
 
 insert into storage.objects (bucket_id, name, owner_id)
 values ('recordings',
@@ -132,6 +151,23 @@ select throws_ok(
     'c0000000-0000-0000-0000-000000000001', 0, 1, 'below_threshold')$$,
   '42501', null, 'A cannot write own predictions');
 
+select is((select count(*)::int from public.machine_thresholds), 0, 'A cannot see B threshold');
+
+select throws_ok(
+  $$insert into public.machine_thresholds (
+    machine_id, owner_id, model_version_id, threshold, log_mean, log_std, spread, baseline_count, baseline_recording_ids)
+    values ('a1000000-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000001',
+    'c0000000-0000-0000-0000-000000000001', 99, 1, 0, 2, 10, array(select gen_random_uuid() from generate_series(1, 10)))$$,
+  '42501', null, 'A cannot write a threshold, even for own machine');
+
+select throws_ok(
+  $$update public.machine_thresholds set threshold = 99$$,
+  '42501', null, 'A cannot change thresholds');
+
+select throws_ok(
+  $$delete from public.machine_thresholds$$,
+  '42501', null, 'A cannot delete thresholds');
+
 select throws_ok(
   $$insert into public.model_versions (name, version, preprocessing_version, evidence_ref)
     values ('fake', '1', 'p', 'none')$$,
@@ -200,7 +236,8 @@ select throws_ok(
     'a5000000-0000-0000-0000-000000000005', 'a1000000-0000-0000-0000-000000000001', 'somewhere/else.wav')$$,
   '23514', null, 'storage path must follow the owner/machine/recording layout');
 
-select is((select count(*)::int from public.model_versions), 1, 'authenticated users can read model catalog');
+select is((select count(*)::int from public.model_versions where id = 'c0000000-0000-0000-0000-000000000001'), 1,
+  'authenticated users can read model catalog');
 
 -- ---------------------------------------------------------------------------
 -- As user B: nothing of B's was changed by A, and B cannot see A
@@ -215,6 +252,7 @@ select is((select count(*)::int from public.recordings), 1, 'B recording not del
 select is((select value from public.context_readings), 230::double precision, 'B context unchanged');
 select is((select display_name from public.profiles), null, 'B profile unchanged');
 select is((select count(*)::int from public.predictions), 1, 'B sees own prediction');
+select is((select threshold from public.machine_thresholds), 3.5::double precision, 'B sees own threshold, unchanged');
 select is((select count(*)::int from storage.objects where bucket_id = 'recordings'), 1,
   'B file not deleted and A file hidden');
 
@@ -228,6 +266,8 @@ select is((select count(*)::int from public.recordings where owner_id = 'bbbbbbb
   0, 'deleting a machine cascades to its recordings');
 select is((select count(*)::int from public.predictions where owner_id = 'bbbbbbbb-0000-0000-0000-000000000002'),
   0, 'deleting a machine cascades to its predictions');
+select is((select count(*)::int from public.machine_thresholds where owner_id = 'bbbbbbbb-0000-0000-0000-000000000002'),
+  0, 'deleting a machine cascades to its thresholds');
 
 select * from finish();
 rollback;

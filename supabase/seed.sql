@@ -30,3 +30,30 @@ insert into auth.identities (
   '{"sub":"11111111-1111-4111-8111-111111111111","email":"tech@sonovate.test","email_verified":true}',
   now(), now(), now()
 );
+
+-- Model versions for the two research-prototype bundles (ADR-007). The ids
+-- and bundle.json sha256 values must match ALLOWED_BUNDLES in
+-- backend/app/bundle.py; limitations are copied from each bundle.json.
+insert into public.model_versions (
+  id, name, version, preprocessing_version, evidence_ref, machine_type, bundle_sha256, limitations
+) values
+(
+  '5e1d0000-0000-4000-8000-00000000b001', 'sonovate-autoencoder-bearing', '0.1.0', 'logmel-128-frames-5-v1',
+  'EXP-002 (model), EXP-005 (per-machine baseline threshold); research prototype per ADR-007; bundle.json sha256 3357651c3aca0eec136e31d6626981d292870c8e1a4c1fdc2525011e2ab70a73',
+  'bearing', '3357651c3aca0eec136e31d6626981d292870c8e1a4c1fdc2525011e2ab70a73',
+  array[
+    'Trained on MIMII DG lab bearings only; other machines are out of scope.',
+    'At the baseline threshold, detection was at chance level on bearing section 00 (EXP-005).',
+    'Below threshold does not mean healthy.'
+  ]
+),
+(
+  '5e1d0000-0000-4000-8000-00000000b002', 'sonovate-autoencoder-gearbox', '0.1.0', 'logmel-128-frames-5-v1',
+  'EXP-002 (model), EXP-005 (per-machine baseline threshold); research prototype per ADR-007; bundle.json sha256 ca9ad32773c4e0fd5979cb4b2132f4c9611568f9fc8a202b7674502f95ed89cd',
+  'gearbox', 'ca9ad32773c4e0fd5979cb4b2132f4c9611568f9fc8a202b7674502f95ed89cd',
+  array[
+    'Trained on MIMII DG lab gearboxes only; other machines are out of scope.',
+    'At the baseline threshold, it caught 17-30% of anomalies on gearbox section 00 with 5-7% false alarms (EXP-005).',
+    'Below threshold does not mean healthy.'
+  ]
+);

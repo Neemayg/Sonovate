@@ -10,6 +10,8 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
+import numpy as np
+
 EXPECTED_SAMPLE_RATE_HZ = 16_000
 EXPECTED_CHANNELS = 1
 EXPECTED_DURATION_S = 10.0
@@ -115,3 +117,22 @@ def validate_wav(data: bytes) -> ValidatedAudio:
         frames_offset=data_offset,
         frames_length=data_length,
     )
+
+
+def decode_samples(audio: ValidatedAudio) -> np.ndarray:
+    """Return mono samples as float32 in [-1, 1), scaled as soundfile reads them
+    (PCM divided by 2**(bits-1); float passed through)."""
+    raw = audio.data[audio.frames_offset : audio.frames_offset + audio.frames_length]
+    width = audio.bits_per_sample // 8
+    raw = raw[: len(raw) - len(raw) % width]
+    if audio.encoding == "float":
+        samples = np.frombuffer(raw, dtype="<f4")
+    elif audio.bits_per_sample == 16:
+        samples = np.frombuffer(raw, dtype="<i2").astype(np.float32) / np.float32(2**15)
+    elif audio.bits_per_sample == 24:
+        b = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 3).astype(np.int32)
+        ints = (b[:, 0] << 8) | (b[:, 1] << 16) | (b[:, 2] << 24)  # sign comes from the top byte
+        samples = (ints.astype(np.float64) / 2**31).astype(np.float32)
+    else:
+        samples = (np.frombuffer(raw, dtype="<i4").astype(np.float64) / 2**31).astype(np.float32)
+    return np.ascontiguousarray(samples, dtype=np.float32)

@@ -6,8 +6,15 @@ import { useEffect, useState } from "react";
 import { MachineForm } from "@/components/MachineForm";
 import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
 import { UploadForm } from "@/components/UploadForm";
-import { getMachine, listRecordings, updateMachine, type Machine, type Recording } from "@/lib/api";
-import { machineTypeLabel } from "@/lib/modelInputs";
+import {
+  BASELINE_REQUIRED,
+  getMachine,
+  listRecordings,
+  updateMachine,
+  type Machine,
+  type Recording,
+} from "@/lib/api";
+import { MODEL_INPUTS, machineTypeLabel } from "@/lib/modelInputs";
 
 export function MachineDetail({ id }: { id: string }) {
   const router = useRouter();
@@ -15,6 +22,7 @@ export function MachineDetail({ id }: { id: string }) {
   const [recordings, setRecordings] = useState<Recording[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [lastBaseline, setLastBaseline] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([getMachine(id), listRecordings(id)])
@@ -37,6 +45,10 @@ export function MachineDetail({ id }: { id: string }) {
       </>
     );
   }
+
+  const modelled = MODEL_INPUTS[machine.machine_type].length > 0;
+  const baselineCount = (recordings ?? []).filter((r) => r.kind === "baseline").length;
+  const baselineReady = baselineCount >= BASELINE_REQUIRED;
 
   return (
     <>
@@ -78,13 +90,52 @@ export function MachineDetail({ id }: { id: string }) {
         )}
       </section>
 
+      {modelled && (
+        <section className="card" aria-labelledby="baseline-title">
+          <h2 id="baseline-title">Baseline</h2>
+          <p>
+            Results compare a recording with this machine&apos;s own normal sound. Upload at least{" "}
+            {BASELINE_REQUIRED} baseline recordings, made while the machine runs normally, before analysing.
+          </p>
+          <p id="baseline-progress-label">
+            <strong>
+              {Math.min(baselineCount, BASELINE_REQUIRED)}/{BASELINE_REQUIRED} baseline recordings
+            </strong>
+            {baselineCount > BASELINE_REQUIRED && <span className="muted"> ({baselineCount} in total)</span>}
+            {baselineReady ? " · ready for analysis" : ` · ${BASELINE_REQUIRED - baselineCount} more needed`}
+          </p>
+          <progress
+            value={Math.min(baselineCount, BASELINE_REQUIRED)}
+            max={BASELINE_REQUIRED}
+            aria-labelledby="baseline-progress-label"
+          />
+          {lastBaseline && (
+            <p className="muted small" role="status">
+              Saved {lastBaseline} as a baseline recording.
+            </p>
+          )}
+          <p className="muted small">
+            Adding or removing a baseline recording changes the threshold used for the next analysis.
+          </p>
+        </section>
+      )}
+
       <section className="card" aria-labelledby="upload-title">
         <h2 id="upload-title">Upload a recording</h2>
         <UploadForm
-          key={machine.machine_type}
+          key={`${machine.machine_type}-${baselineReady}`}
           machineId={machine.id}
           machineType={machine.machine_type}
-          onUploaded={(r) => router.push(`/recordings/${r.id}`)}
+          defaultKind={modelled && !baselineReady ? "baseline" : "analysis"}
+          onUploaded={(r) => {
+            if (r.kind === "baseline") {
+              // Stay here so several baseline recordings can be added in a row.
+              setRecordings((current) => [r, ...(current ?? [])]);
+              setLastBaseline(r.original_filename ?? "the recording");
+            } else {
+              router.push(`/recordings/${r.id}`);
+            }
+          }}
         />
       </section>
 

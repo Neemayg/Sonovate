@@ -1,8 +1,10 @@
 # Sonovate inference service
 
 FastAPI service with its own environment (separate from the root ML project).
-It ships with **no model registered**: `POST /v1/analyses` validates the request and
-the audio, then answers `503 no_validated_model` and stores nothing.
+With `SONOVATE_BUNDLES_DIR` unset it has **no model**: `POST /v1/analyses` validates
+the request and the audio, then answers `503 no_validated_model` and stores nothing.
+With the bundles configured it serves the audio-only autoencoder as a labelled research
+prototype (ADR-007), against each machine's own baseline threshold.
 
 ## Local stack (from the repository root)
 
@@ -29,8 +31,13 @@ cd backend
 cp .env.example .env              # paste the publishable key
 uv sync
 uv run --env-file .env uvicorn app.main:create_app --factory --port 8000
-uv run pytest
+SONOVATE_BUNDLES_DIR=/path/to/artifacts/bundles uv run pytest   # parity tests need the bundles
 ```
+
+To serve results, set `SONOVATE_BUNDLES_DIR` (the git-ignored bundle export, for example
+`<main checkout>/artifacts/bundles`) and `SUPABASE_SECRET_KEY` in `.env`; the service refuses
+to start with bundles but no secret key. Without the bundles the parity tests are skipped and
+say why.
 
 ## API
 
@@ -44,12 +51,16 @@ uv run pytest
 | 422 | `invalid_request` | Body is not `{"recording_id": uuid}` |
 | 422 | `not_wav`, `malformed_wav`, `unsupported_encoding`, `wrong_sample_rate`, `wrong_channel_count`, `wrong_duration`, `recording_too_large` | Audio fails the input contract (WAV, 16 kHz, mono, 10 s ± 0.05 s, ≤ 2 MiB) |
 | 422 | `unsupported_machine_type` | Machine type is `other`, or no model is registered for its type |
+| 422 | `baseline_recording` | The recording is a baseline; baselines set the threshold and are not analysed |
+| 409 | `baseline_required` | Fewer than 10 baseline recordings; `details` has `baseline_count` and `baseline_required` |
+| 422 | `baseline_invalid` | A baseline recording's file is missing or fails the input contract |
 | 503 | `no_validated_model` | No validated model is registered for any type (current behaviour for bearing and gearbox) |
 | 502 | `upstream_unavailable` | Supabase could not be reached |
 
-Errors never include file paths, stack traces or internals. When a model is
-registered, a 200 response carries the uncalibrated anomaly score, threshold,
-decision (`below_threshold` / `above_threshold`) and model version.
+Errors never include file paths, stack traces or internals. A 200 response carries the raw
+score, `log_score`, this machine's `threshold` (log space; `above_threshold` when
+`log_score > threshold`), `baseline_count`, model version, the bundle's `limitations` and the
+research-prototype `notice`.
 
 ## Security notes
 

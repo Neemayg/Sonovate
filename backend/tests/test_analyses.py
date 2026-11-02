@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import math
 import uuid
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.auth import TokenVerifier
+from app.auth import AuthenticatedUser, TokenVerifier
+from app.config import ConfigError
 from app.main import create_app
 from app.registry import EmptyModelRegistry
 from app.registry import ContextValue
@@ -134,12 +136,15 @@ def test_error_bodies_do_not_leak_paths(client: TestClient, source: FakeRecordin
 def test_unexpected_error_is_generic_500(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
     class Exploding:
         def has_any_model(self):
-            raise RuntimeError("/secret/path/model.pt missing")
+            return True
 
         def model_for(self, machine_type):
             raise RuntimeError("/secret/path/model.pt missing")
 
-    app = create_app(SETTINGS, verifier=verifier, recording_source=source, registry=Exploding())
+    app = create_app(
+        SETTINGS, verifier=verifier, recording_source=source, registry=Exploding(),
+        prediction_store=RecordingPredictionStore(),
+    )
     c = TestClient(app, raise_server_exceptions=False)
     rid = source.add(USER_A, wav_bytes())
     res = c.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
@@ -179,26 +184,134 @@ def test_float32_wav_passes_validation(client: TestClient, source: FakeRecording
 # --- with a TEST-ONLY fake model -------------------------------------------
 
 
-@pytest.mark.parametrize(("score", "decision"), [(0.2, "below_threshold"), (0.9, "above_threshold")])
-def test_fake_model_result_is_stored(
-    source: FakeRecordingSource, verifier: TokenVerifier, score: float, decision: str
-) -> None:
-    store = RecordingPredictionStore()
+def make_app(source: FakeRecordingSource, verifier: TokenVerifier, *models: FakeModel):
+    store = RecordingPredictionStore(source)
     app = create_app(
-        SETTINGS,
-        verifier=verifier,
-        recording_source=source,
-        registry=FakeRegistry(FakeModel(score)),
-        prediction_store=store,
+        SETTINGS, verifier=verifier, recording_source=source, registry=FakeRegistry(*models), prediction_store=store
     )
-    rid = source.add(USER_A, wav_bytes())
-    res = TestClient(app).post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
-    assert res.status_code == 200
+    return TestClient(app), store
+
+
+BASELINE_SCORES = [1.0, 1.1, 0.9, 1.2, 0.8, 1.05, 0.95, 1.15, 0.85, 1.0]
+
+
+def expected_threshold(scores: list[float]) -> float:
+    logs = [math.log(x) for x in scores]
+    mean = sum(logs) / len(logs)
+    std = math.sqrt(sum((v - mean) ** 2 for v in logs) / len(logs))  # population std
+    return mean + 2.0 * std
+
+
+@pytest.mark.parametrize(("target", "decision"), [(1.0, "below_threshold"), (5.0, "above_threshold")])
+def test_result_uses_this_machines_baseline_threshold(
+    source: FakeRecordingSource, verifier: TokenVerifier, target: float, decision: str
+) -> None:
+    model = FakeModel(BASELINE_SCORES + [target])
+    client, store = make_app(source, verifier, model)
+    machine = source.add_baselines(USER_A, 10)
+    rid = source.add(USER_A, wav_bytes(), machine_id=machine)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 200, res.text
     body = res.json()
-    assert body["prediction"]["decision"] == decision
-    assert body["prediction"]["model"]["name"] == "test-only-fake"
-    assert "not a failure probability" in body["disclaimer"]
-    assert store.saved == [(rid, score, decision)]
+    p = body["prediction"]
+    assert p["decision"] == decision
+    assert p["threshold"] == pytest.approx(expected_threshold(BASELINE_SCORES))
+    assert p["log_score"] == pytest.approx(math.log(target))
+    assert p["score"] == pytest.approx(target)
+    assert p["baseline_count"] == 10
+    assert p["model"]["name"] == "test-only-fake"
+    assert p["limitations"] == ["Test-only fake; its numbers mean nothing."]
+    assert body["notice"] == "Research prototype, low sensitivity. Not a diagnosis or failure prediction."
+    assert store.saved_rows == [
+        {"score": target, "log_score": pytest.approx(math.log(target)),
+         "threshold": pytest.approx(expected_threshold(BASELINE_SCORES)), "decision": decision, "baseline_count": 10}
+    ]
+    assert len(store.threshold_writes) == 1
+
+
+def test_equal_to_threshold_is_below(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    flat = [2.0] * 10  # std 0, so threshold == log(2)
+    client, _ = make_app(source, verifier, FakeModel(flat + [2.0]))
+    machine = source.add_baselines(USER_A, 10)
+    rid = source.add(USER_A, wav_bytes(), machine_id=machine)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.json()["prediction"]["decision"] == "below_threshold"
+
+
+@pytest.mark.parametrize("count", [0, 3, 9])
+def test_fewer_than_ten_baselines_is_baseline_required(
+    source: FakeRecordingSource, verifier: TokenVerifier, count: int
+) -> None:
+    model = FakeModel(1.0)
+    client, store = make_app(source, verifier, model)
+    machine = source.add_baselines(USER_A, count)
+    rid = source.add(USER_A, wav_bytes(), machine_id=machine)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 409
+    error = res.json()["error"]
+    assert error["code"] == "baseline_required"
+    assert error["details"] == {"baseline_count": count, "baseline_required": 10}
+    assert f"{count}/10" in error["message"]
+    assert store.saved == [] and store.threshold_writes == []
+    assert model.calls == []
+
+
+def test_other_machines_and_users_baselines_do_not_count(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    client, _ = make_app(source, verifier, FakeModel(1.0))
+    machine = source.add_baselines(USER_A, 5)
+    source.add_baselines(USER_A, 10)  # a different machine of the same user
+    source.add_baselines(USER_B, 10, machine_id=machine)  # another user's rows on the same id
+    rid = source.add(USER_A, wav_bytes(), machine_id=machine)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.json()["error"]["details"]["baseline_count"] == 5
+
+
+def test_baseline_recordings_are_not_analysed(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    client, store = make_app(source, verifier, FakeModel(1.0))
+    machine = source.add_baselines(USER_A, 10)
+    baseline_id = source.list_baselines(AuthenticatedUser(id=USER_A, access_token='t'), machine)[0].id
+    res = client.post("/v1/analyses", json={"recording_id": str(baseline_id)}, headers=auth())
+    assert res.status_code == 422
+    assert error_code(res) == "baseline_recording"
+    assert store.saved == []
+
+
+def test_threshold_is_reused_until_baselines_change(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    model = FakeModel(1.0)
+    client, store = make_app(source, verifier, model)
+    machine = source.add_baselines(USER_A, 10)
+    rid = source.add(USER_A, wav_bytes(), machine_id=machine)
+
+    client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert len(model.calls) == 11 and len(store.threshold_writes) == 1
+
+    client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert len(model.calls) == 12, "unchanged baselines: only the target is scored"
+    assert len(store.threshold_writes) == 1
+
+    source.add_baselines(USER_A, 1, machine_id=machine)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert len(model.calls) == 12 + 11 + 1, "a new baseline triggers a full recompute"
+    assert len(store.threshold_writes) == 2
+    assert store.threshold_writes[-1].count == 11
+    assert res.json()["prediction"]["baseline_count"] == 11
+
+
+def test_unusable_baseline_is_reported(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    client, store = make_app(source, verifier, FakeModel(1.0))
+    machine = source.add_baselines(USER_A, 9)
+    bad = source.add(USER_A, wav_bytes(channels=2), kind="baseline", machine_id=machine)
+    rid = source.add(USER_A, wav_bytes(), machine_id=machine)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 422
+    assert error_code(res) == "baseline_invalid"
+    assert f"{bad}.wav" in res.json()["error"]["message"]
+    assert store.saved == []
+
+
+def test_models_without_secret_key_refuse_to_start(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    with pytest.raises(ConfigError):
+        create_app(SETTINGS, verifier=verifier, recording_source=source, registry=FakeRegistry(FakeModel(1.0)))
 
 
 def test_fake_model_does_not_bypass_ownership(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
@@ -207,7 +320,8 @@ def test_fake_model_does_not_bypass_ownership(source: FakeRecordingSource, verif
         SETTINGS, verifier=verifier, recording_source=source,
         registry=FakeRegistry(FakeModel(0.9)), prediction_store=store,
     )
-    rid = source.add(USER_B, wav_bytes())
+    machine = source.add_baselines(USER_B, 10)
+    rid = source.add(USER_B, wav_bytes(), machine_id=machine)
     res = TestClient(app).post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth(make_token(USER_A)))
     assert res.status_code == 404
     assert store.saved == []
@@ -269,15 +383,12 @@ def test_model_for_the_machine_type_receives_type_and_context(
     source: FakeRecordingSource, verifier: TokenVerifier
 ) -> None:
     bearing, gearbox = FakeModel(0.9, "bearing"), FakeModel(0.1, "gearbox")
-    store = RecordingPredictionStore()
-    app = create_app(
-        SETTINGS, verifier=verifier, recording_source=source,
-        registry=FakeRegistry(bearing, gearbox), prediction_store=store,
-    )
+    client, _ = make_app(source, verifier, bearing, gearbox)
     context = {"voltage": ContextValue(1.3, "V"), "weight": ContextValue(150.0, "g")}
-    rid = source.add(USER_A, wav_bytes(), machine_type="gearbox", context=context)
-    res = TestClient(app).post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    machine = source.add_baselines(USER_A, 10, machine_type="gearbox")
+    rid = source.add(USER_A, wav_bytes(), machine_type="gearbox", context=context, machine_id=machine)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
     assert res.status_code == 200
     assert res.json()["prediction"]["model"]["machine_type"] == "gearbox"
-    assert gearbox.calls == [("gearbox", context)]
+    assert gearbox.calls[-1] == ("gearbox", context)
     assert bearing.calls == []

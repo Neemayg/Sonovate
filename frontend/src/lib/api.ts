@@ -22,8 +22,14 @@ export type MachineInput = Pick<Machine, "name" | "machine_type" | "location" | 
 export type ContextInput = { name: string; value: number; unit: string };
 
 export type Prediction = Tables["predictions"]["Row"] & {
-  model_versions: Pick<Tables["model_versions"]["Row"], "name" | "version" | "preprocessing_version"> | null;
+  model_versions: Pick<
+    Tables["model_versions"]["Row"],
+    "name" | "version" | "preprocessing_version" | "machine_type" | "limitations"
+  > | null;
 };
+
+// Minimum baseline recordings before results are shown (ADR-007, EXP-005).
+export const BASELINE_REQUIRED = 10;
 
 export type RecordingDetail = Recording & {
   machines: Pick<Machine, "id" | "name" | "machine_type"> | null;
@@ -222,7 +228,7 @@ export async function createRecording(input: NewRecording): Promise<Recording> {
 export async function listMachineHistory(machineId: string): Promise<HistoryEntry[]> {
   const { data, error } = await supabase()
     .from("recordings")
-    .select("*, context_readings(*), predictions(*, model_versions(name, version, preprocessing_version))")
+    .select("*, context_readings(*), predictions(*, model_versions(name, version, preprocessing_version, machine_type, limitations))")
     .eq("machine_id", machineId)
     .order("created_at", { ascending: false })
     .order("created_at", { referencedTable: "predictions", ascending: false });
@@ -233,7 +239,7 @@ export async function listMachineHistory(machineId: string): Promise<HistoryEntr
 export async function listPredictions(recordingId: string): Promise<Prediction[]> {
   const { data, error } = await supabase()
     .from("predictions")
-    .select("*, model_versions(name, version, preprocessing_version)")
+    .select("*, model_versions(name, version, preprocessing_version, machine_type, limitations)")
     .eq("recording_id", recordingId)
     .order("created_at", { ascending: false });
   if (error) fail("Could not load analysis results.", error);
@@ -243,20 +249,11 @@ export async function listPredictions(recordingId: string): Promise<Prediction[]
 // --- inference service ------------------------------------------------------
 
 export type AnalysisResult =
-  | {
-      status: "completed";
-      prediction: {
-        id: string;
-        score: number;
-        threshold: number;
-        decision: "below_threshold" | "above_threshold";
-        model: { name: string; version: string; preprocessing_version: string };
-        created_at: string;
-      };
-      disclaimer: string;
-    }
+  | { status: "completed"; notice: string }
   | { status: "no_validated_model"; message: string }
   | { status: "unsupported_machine_type"; message: string }
+  | { status: "baseline_required"; message: string; count: number; required: number }
+  | { status: "baseline_recording"; message: string }
   | { status: "error"; code: string; message: string };
 
 export async function requestAnalysis(recordingId: string): Promise<AnalysisResult> {
@@ -282,10 +279,22 @@ export async function requestAnalysis(recordingId: string): Promise<AnalysisResu
   }
 
   const body = await res.json().catch(() => null);
-  if (res.ok && body?.status === "completed") return body;
+  // The stored prediction is re-read from the database for display, so the
+  // page shows exactly what was saved.
+  if (res.ok && body?.status === "completed") return { status: "completed", notice: String(body.notice ?? "") };
   const code: string = body?.error?.code ?? "unexpected_response";
   const message: string = body?.error?.message ?? `Unexpected response from the analysis service (${res.status}).`;
   if (code === "no_validated_model") return { status: "no_validated_model", message };
   if (code === "unsupported_machine_type") return { status: "unsupported_machine_type", message };
+  if (code === "baseline_recording") return { status: "baseline_recording", message };
+  if (code === "baseline_required") {
+    const details = body?.error?.details ?? {};
+    return {
+      status: "baseline_required",
+      message,
+      count: Number(details.baseline_count ?? 0),
+      required: Number(details.baseline_required ?? BASELINE_REQUIRED),
+    };
+  }
   return { status: "error", code, message };
 }

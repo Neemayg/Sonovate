@@ -47,9 +47,14 @@ function parseContext(rows: ContextRow[]): ContextInput[] | string {
   return out;
 }
 
-type Props = { machineId: string; machineType: MachineType; onUploaded: (r: Recording) => void };
+type Props = {
+  machineId: string;
+  machineType: MachineType;
+  defaultKind?: RecordingKind;
+  onUploaded: (r: Recording) => void;
+};
 
-export function UploadForm({ machineId, machineType, onUploaded }: Props) {
+export function UploadForm({ machineId, machineType, defaultKind = "analysis", onUploaded }: Props) {
   const [modelValues, setModelValues] = useState<Record<string, string>>({});
   const [rows, setRows] = useState<ContextRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -117,10 +122,18 @@ export function UploadForm({ machineId, machineType, onUploaded }: Props) {
       <div className="field-row">
         <div className="field">
           <label htmlFor={`${uid}-kind`}>Purpose</label>
-          <select id={`${uid}-kind`} name="kind" defaultValue="analysis">
+          <select
+            id={`${uid}-kind`}
+            name="kind"
+            defaultValue={defaultKind}
+            aria-describedby={`${uid}-kind-help`}
+          >
             <option value="analysis">Analysis</option>
-            <option value="baseline">Baseline (known normal operation)</option>
+            <option value="baseline">Baseline (machine running normally)</option>
           </select>
+          <p id={`${uid}-kind-help`} className="muted small">
+            Baseline recordings set this machine&apos;s threshold and are not analysed.
+          </p>
         </div>
         <div className="field">
           <label htmlFor={`${uid}-recorded-at`}>
