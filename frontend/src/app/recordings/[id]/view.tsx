@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { ContextList, PredictionView, SCORE_NOTE } from "@/components/RecordingDetails";
 import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
 import {
+  deleteRecording,
   getRecording,
   listPredictions,
   requestAnalysis,
@@ -15,6 +18,7 @@ import {
 import { machineTypeLabel } from "@/lib/modelInputs";
 
 export function RecordingAnalysis({ id }: { id: string }) {
+  const router = useRouter();
   const [recording, setRecording] = useState<RecordingDetail | null | undefined>(undefined);
   const [predictions, setPredictions] = useState<Prediction[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -212,6 +216,30 @@ export function RecordingAnalysis({ id }: { id: string }) {
           </div>
         </section>
       )}
+
+      <section className="card danger-zone" aria-labelledby="delete-recording-title">
+        <h2 id="delete-recording-title">Delete recording</h2>
+        <ConfirmDelete
+          label="Delete recording"
+          onConfirm={async () => {
+            await deleteRecording(recording);
+            router.replace(machine ? `/machines/${machine.id}` : "/machines");
+          }}
+        >
+          <p>
+            This removes the audio file
+            {predictions && predictions.length > 0
+              ? ", its operating context and its analysis results."
+              : " and its operating context."}
+          </p>
+          {recording.kind === "baseline" && (
+            <p>
+              It is a baseline recording, so this machine&apos;s threshold will be recomputed at the next
+              analysis. With fewer than 10 baseline recordings, no results are shown.
+            </p>
+          )}
+        </ConfirmDelete>
+      </section>
     </>
   );
 }

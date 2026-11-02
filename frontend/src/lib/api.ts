@@ -223,6 +223,54 @@ export async function createRecording(input: NewRecording): Promise<Recording> {
   return row;
 }
 
+// Supabase blocks deleting storage objects from SQL, so files are removed
+// here, before the rows. If the row delete then fails, the row stays with
+// no file and the delete can simply be retried (removing a missing file is
+// a no-op). The other order could leave an orphaned file nobody can see.
+async function removeFiles(paths: string[]): Promise<void> {
+  const db = supabase();
+  for (let i = 0; i < paths.length; i += 100) {
+    const { error } = await db.storage.from(BUCKET).remove(paths.slice(i, i + 100));
+    if (error) fail("Could not delete the audio files.", error);
+  }
+}
+
+// Deletes one recording: its audio file, then the row. Context readings
+// and results go with the row (foreign-key cascade). Deleting a baseline
+// changes the baseline set, so the machine's threshold is recomputed at its
+// next analysis.
+export async function deleteRecording(recording: Pick<Recording, "id" | "storage_path">): Promise<void> {
+  await removeFiles([recording.storage_path]);
+  const { data, error } = await supabase().from("recordings").delete().eq("id", recording.id).select("id");
+  if (error) fail("Could not delete the recording.", error);
+  if (data.length !== 1) throw new Error("Recording not found. It may already have been deleted.");
+}
+
+// Deletes a machine with everything under it: every file in its storage
+// folder (including any left behind by an interrupted upload), then the
+// machine row, which cascades to recordings, context, results and thresholds.
+export async function deleteMachine(machineId: string): Promise<void> {
+  const ownerId = await requireUserId();
+  const db = supabase();
+  const folder = `${ownerId}/${machineId}`;
+
+  const { data: rows, error: rowsError } = await db
+    .from("recordings")
+    .select("storage_path")
+    .eq("machine_id", machineId);
+  if (rowsError) fail("Could not list the machine's recordings.", rowsError);
+  const { data: objects, error: listError } = await db.storage.from(BUCKET).list(folder, { limit: 1000 });
+  if (listError) fail("Could not list the machine's audio files.", listError);
+
+  const paths = new Set(rows.map((r) => r.storage_path));
+  for (const object of objects) paths.add(`${folder}/${object.name}`);
+  await removeFiles([...paths]);
+
+  const { data, error } = await db.from("machines").delete().eq("id", machineId).select("id");
+  if (error) fail("Could not delete the machine.", error);
+  if (data.length !== 1) throw new Error("Machine not found. It may already have been deleted.");
+}
+
 // Every recording of a machine with its context and any stored predictions,
 // newest first. Predictions exist only once a validated model is registered.
 export async function listMachineHistory(machineId: string): Promise<HistoryEntry[]> {

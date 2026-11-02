@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(54);
+select plan(57);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres, bypassing RLS). Fixed ids keep failures readable.
@@ -230,6 +230,19 @@ select lives_ok(
     'a4000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000001', 'baseline',
     'aaaaaaaa-0000-0000-0000-000000000001/a1000000-0000-0000-0000-000000000001/a4000000-0000-0000-0000-000000000004.wav')$$,
   'A can add a baseline recording (owner_id defaults to auth.uid())');
+
+select lives_ok(
+  $$insert into public.context_readings (recording_id, name, value, unit)
+    values ('a4000000-0000-0000-0000-000000000004', 'voltage', 1.3, 'V')$$,
+  'A can add context to own recording');
+
+select lives_ok(
+  $$delete from public.recordings where id = 'a4000000-0000-0000-0000-000000000004'$$,
+  'A can delete own recording');
+
+select is(
+  (select count(*)::int from public.context_readings where recording_id = 'a4000000-0000-0000-0000-000000000004'),
+  0, 'deleting a recording cascades to its context');
 
 select throws_ok(
   $$insert into public.recordings (id, machine_id, storage_path) values (
