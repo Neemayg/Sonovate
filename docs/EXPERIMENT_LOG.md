@@ -62,7 +62,7 @@ Status: **Complete: the baseline performs poorly and its threshold failed.** The
   - **The threshold failed.** It was set for about 5% false positives but flagged every clip, normal and anomaly, in both domains of bearing 00 and bearing 02. Bearing 00 did so at all 13 speeds. Only gearbox 01 stayed close to 5%.
   - **Cause (diagnosed on normal clips only, after the test run):** `validation` scores match train-against-train scores (bearing 00 median 4.50 vs 4.78), but source test normal clips at the same conditions score far higher (bearing 00 median 12.41, gearbox 00 9.89, gearbox 01 5.54). Band offsets between train and test normal clips reach about 7 dB in bearing 00, 2.7 dB in gearbox 00 and 1.1 dB in gearbox 01. Feature processing is identical across roles, and overall level differs by under 1 dB. A shift between how train and test clips were recorded fits this, but the data has no session IDs, so that explanation is inferred, not confirmed.
   - **No conclusion on the hypothesis.** Target AUC is numerically below source in all 6 sections, but intervals overlap, and false-alarm rates cannot be compared because the threshold is invalid.
-- **Published comparison:** The DCASE 2022 Task 2 autoencoder baseline reports AUC of about 68/60 (source/target) for bearing 00 and 65/65 for gearbox 00, and 0.5 is chance. See https://arxiv.org/abs/2206.05876. So the task is hard, but this baseline is weaker on the primary sections. That comparison assumes those sections match the data used here, which was not separately verified. Only AUC is comparable, since that paper's pAUC is computed differently, and its Bearing rows are identical in both baseline tables.
+- **Published comparison:** The DCASE 2022 Task 2 autoencoder baseline reports AUC of about 68/60 (source/target) for bearing 00 and 65/65 for gearbox 00, and 0.5 is chance. See https://arxiv.org/abs/2206.05876. So the task is hard, but this baseline is weaker on the primary sections. That paper states it uses MIMII DG. Only AUC is comparable, since that paper's pAUC is computed differently, and its Bearing rows are identical in both baseline tables.
 - **Limitations:**
   - The result covers one fixed configuration, deliberately untuned.
   - Clip-level mean and standard deviation discard temporal detail.
@@ -73,3 +73,23 @@ Status: **Complete: the baseline performs poorly and its threshold failed.** The
 - **Reproduction command/config path:** `uv run python -m ml.baseline --config configs/baseline_knn.json --stage test`
 - **Artifacts path:** `artifacts/EXP-001/`
 - **Conclusion / next experiment:** This is not a credible reference point yet. A shift at the *same* known condition is also a risk for the project hypothesis, because a model given the speed value cannot explain a change that happens at the same speed. EXP-002 needs a stronger audio model and a threshold method that does not rely on random held-out clips, and it must be pre-registered before touching test data again.
+
+### EXP-002 — Audio-only autoencoder with held-out-condition threshold
+Status: **Pre-registered, not yet run.** This plan is committed before any EXP-002 test evaluation. **Not fully blind:** test normal clips informed the EXP-001 diagnosis that motivated this design, and EXP-001 test scores motivated the model choice.
+- **Date:** 2026-11-02
+- **Research question:** (1) Does a published-style autoencoder give a credible audio-only reference point? (2) Does a threshold from held-out conditions control false alarms better than one from random held-out clips?
+- **Hypothesis:** AUC comes close to the published baseline on bearing 00 and gearbox 00, and false-positive rates are closer to 5% than in EXP-001.
+- **Dataset/version:** As EXP-001.
+- **Split protocol:** `configs/mimii_dg.json` roles. Fit on `train` plus `adaptation`, as the published baseline trains on source and target clips. `validation` is held out. Later comparisons must use `adaptation` the same way.
+- **Inputs/features:** Audio only. Log-mel frames, 5 consecutive frames stacked into one 640-value vector, hop of 1 frame.
+- **Preprocessing:** 16 kHz, Hann window, 1,024-sample FFT, 512-sample hop, 128 mel bands, 0–8 kHz, 10·log10 power, no standardization.
+- **Model and configuration:** One model per machine type, following the official DCASE 2022 settings (https://github.com/Kota-Dohi/dcase2022_task2_baseline_ae): dense layers 128×4, 8, 128×4, each with batch normalization and ReLU, linear output. Adam at 0.001, 100 epochs, batch 512, mean squared error. Clip score is mean reconstruction error. Deviations: PyTorch instead of Keras, this project's own mel filterbank, no internal validation split.
+- **Training details / random seed:** CPU, seed 0 for the main model, seed 0 + fold for threshold folds. One seed only, and the published results vary between runs.
+- **Threshold selection method:** Primary: split each section's source conditions into 5 folds. For each fold, retrain with those conditions removed and score the removed `train` clips. The threshold is the 95th percentile of those scores per section. Secondary, for comparison: the 95th percentile of `validation` scores, as in EXP-001.
+- **Metrics:** As EXP-001, with false-positive rate and recall reported at both thresholds. Primary sections: bearing 00, gearbox 00. Credibility bar: both primary sections have source and target AUC intervals above 0.5.
+- **Results:** Pending.
+- **Error analysis:** Pending.
+- **Limitations:** Pending.
+- **Reproduction command/config path:** `uv run python -m ml.autoencoder --config configs/baseline_ae.json --stage validation`, then `--stage test`
+- **Artifacts path:** `artifacts/EXP-002/`
+- **Conclusion / next experiment:** Pending.

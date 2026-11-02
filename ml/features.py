@@ -37,6 +37,12 @@ def log_mel(samples: np.ndarray, filters: np.ndarray, n_fft: int, hop: int) -> n
     return 10.0 * np.log10(power @ filters.T + LOG_FLOOR)
 
 
+def stack_frames(spectrogram: np.ndarray, n_frames: int) -> np.ndarray:
+    """Join consecutive frames, giving shape (frames - n_frames + 1, n_frames * n_mels)."""
+    windows = np.lib.stride_tricks.sliding_window_view(spectrogram, n_frames, axis=0)
+    return windows.transpose(0, 2, 1).reshape(windows.shape[0], -1)
+
+
 def clip_embedding(spectrogram: np.ndarray) -> np.ndarray:
     """Summarize a clip as per-band mean and standard deviation over time."""
     return np.concatenate([spectrogram.mean(axis=0), spectrogram.std(axis=0)])

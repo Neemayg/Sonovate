@@ -1,0 +1,29 @@
+{
+  "experiment": "EXP-002",
+  "data_config": "configs/mimii_dg.json",
+  "output": "artifacts/EXP-002",
+  "seed": 0,
+  "features": {
+    "n_fft": 1024,
+    "hop": 512,
+    "n_mels": 128,
+    "n_frames": 5
+  },
+  "model": {
+    "hidden": 128,
+    "bottleneck": 8,
+    "depth": 4,
+    "learning_rate": 0.001,
+    "epochs": 100,
+    "batch_size": 512
+  },
+  "threshold": {
+    "quantile": 0.95,
+    "folds": 5
+  },
+  "max_fpr": 0.1,
+  "bootstrap": {
+    "samples": 2000,
+    "seed": 0
+  }
+}
