@@ -6,6 +6,7 @@ of the nearest source and nearest target distances.
 
 Usage: python -m ml.pretrained --config configs/pretrained_knn.json --stage embed
        python -m ml.pretrained --config configs/pretrained_knn.json --stage develop
+       python -m ml.pretrained --config configs/pretrained_knn.json --stage combine
 """
 
 from __future__ import annotations
@@ -107,6 +108,82 @@ def domain_min_scores(
     return np.minimum.reduce(scores)
 
 
+def leave_one_out_scores(source_refs: np.ndarray, target_refs: np.ndarray) -> np.ndarray:
+    """k = 1 domain-min score of every reference clip against the others, excluding itself."""
+    references = np.concatenate([source_refs, target_refs])
+    distances = 1.0 - references @ references.T
+    np.fill_diagonal(distances, np.inf)
+    split = len(source_refs)
+    nearest = [distances[:, :split].min(axis=1)]
+    if len(target_refs):
+        nearest.append(distances[:, split:].min(axis=1))
+    return np.minimum.reduce(nearest)
+
+
+def combined_section_scores(
+    rows: list[Row], vectors_by_encoder: dict[str, dict[str, np.ndarray]]
+) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """Mean of per-encoder k = 1 scores, each standardized by its reference clips' own scores."""
+    results = {}
+    for machine, section in sorted({(r["machine"], r["section"]) for r in rows}):
+        section_rows = [r for r in rows if (r["machine"], r["section"]) == (machine, section)]
+        refs = [r for r in section_rows if r["role"] in TRAINING_ROLES]
+        test = [r for r in section_rows if r["role"] == "test"]
+        standardized = []
+        for vectors in vectors_by_encoder.values():
+            source = np.stack([vectors[r["path"]] for r in refs if r["domain"] == "source"])
+            target_list = [vectors[r["path"]] for r in refs if r["domain"] == "target"]
+            target = np.stack(target_list) if target_list else np.empty((0, source.shape[1]))
+            reference_scores = leave_one_out_scores(source, target)
+            scores = domain_min_scores(np.stack([vectors[r["path"]] for r in test]), source, target, 1)
+            standardized.append((scores - reference_scores.mean()) / (reference_scores.std() + 1e-12))
+        combined = np.mean(standardized, axis=0)
+        for domain in ("source", "target"):
+            keep = [i for i, r in enumerate(test) if r["domain"] == domain]
+            labels = np.array([test[i]["label"] == "anomaly" for i in keep])
+            results[f"{machine}/{section}/{domain}"] = (combined[keep], labels)
+    return results
+
+
+def run_combine(config: dict) -> dict:
+    data = json.loads(Path(config["data_config"]).read_text())
+    rows = [r for r in load_rows(data) if r["machine"] in config["machines"]]
+    develop = json.loads((Path(config["output"]) / "develop.json").read_text())
+    vectors_by_encoder = {}
+    for name in config["combine"]:
+        cached = np.load(cache_path(config, name))
+        vectors_by_encoder[name] = dict(zip(cached["paths"], normalize_rows(cached["vectors"])))
+
+    sections = {
+        key: {
+            "auc": auc(scores[~labels], scores[labels]),
+            "pauc": partial_auc(scores[~labels], scores[labels], config["max_fpr"]),
+        }
+        for key, (scores, labels) in combined_section_scores(rows, vectors_by_encoder).items()
+    }
+    mean_auc = float(np.mean([v["auc"] for v in sections.values()]))
+    incumbent = develop["selected"]
+    incumbent_auc = develop["candidates"][incumbent]["mean_auc"]
+    report = {
+        "git_commit": git_commit(),
+        "combine": config["combine"],
+        "sections": sections,
+        "mean_auc": mean_auc,
+        "incumbent": incumbent,
+        "incumbent_mean_auc": incumbent_auc,
+        "selected": "combined" if mean_auc > incumbent_auc else incumbent,
+    }
+    out = Path(config["output"])
+    (out / "combine.json").write_text(json.dumps(report, indent=2) + "\n")
+    lines = [f"Combined {' + '.join(config['combine'])} (commit {report['git_commit'][:7]})", ""]
+    lines.append(f"{'section/domain':<20}{incumbent:>10}{'combined':>10}")
+    for key, value in sections.items():
+        lines.append(f"{key:<20}{develop['candidates'][incumbent]['sections'][key]['auc']:>10.3f}{value['auc']:>10.3f}")
+    lines += [f"{'mean':<20}{incumbent_auc:>10.3f}{mean_auc:>10.3f}", "", f"Selected by pre-registered rule: {report['selected']}"]
+    (out / "COMBINE_SUMMARY.txt").write_text("\n".join(lines) + "\n")
+    return report
+
+
 def cache_path(config: dict, encoder: str) -> Path:
     return Path(config["output"]) / f"embeddings_{encoder}.npz"
 
@@ -187,15 +264,18 @@ def summarise(report: dict, reference: dict) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
-    parser.add_argument("--stage", choices=["embed", "develop"], required=True)
+    parser.add_argument("--stage", choices=["embed", "develop", "combine"], required=True)
     args = parser.parse_args()
 
     config = json.loads(args.config.read_text())
     if args.stage == "embed":
         run_embed(config)
-    else:
+    elif args.stage == "develop":
         run_develop(config)
         print((Path(config["output"]) / "DEVELOP_SUMMARY.txt").read_text())
+    else:
+        run_combine(config)
+        print((Path(config["output"]) / "COMBINE_SUMMARY.txt").read_text())
 
 
 if __name__ == "__main__":

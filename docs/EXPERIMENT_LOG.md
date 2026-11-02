@@ -366,5 +366,23 @@ Status: **Complete: AST with k = 1 selected, beating the autoencoder with no tra
 - **Conclusion / next experiment:** The plan's gate is passed: a frozen pretrained encoder beats the autoencoder on development. Next, developed on this same set:
   - combine the encoders, or fine-tune one;
   - then evaluate the final choice once on the untouched DCASE 2022 evaluation data (sections 03–05), which is now downloaded with its labels.
+
+### EXP-008 — Combining AST and Dasheng scores (development selection)
+Status: **Pre-registered, not yet run.** This plan is committed before the run. Development set only; it uses the EXP-007 embeddings, with no new model runs.
+- **Date:** 2026-11-02
+- **Research question:** Does averaging AST and Dasheng nearest-neighbour scores beat AST alone?
+- **Hypothesis:** Yes, because the encoders lead in different sections (EXP-007).
+- **Method:**
+  - Score: k = 1, smaller of source and target distances, as EXP-007.
+  - For each encoder and section, score every reference clip (`train`, `adaptation`) against the other reference clips, excluding itself.
+  - Standardize the encoder's scores with the mean and standard deviation of those reference scores.
+  - Combined score = the mean of the two standardized scores.
+  - No test labels are used for standardization.
+- **Metrics:** Development AUC per section and domain, and the mean over the 12 section-domains.
+- **Selection rule:**
+  - The combination replaces AST k1 only if its mean development AUC is higher than 0.673. Otherwise AST k1 stays.
+  - **Licence:** Dasheng's official weights are GPL-3.0 (Zenodo 11511780). If the combination wins, using it in the app needs that licence settled; the research comparison does not.
+- **Results:** Pending.
+- **Conclusion / next experiment:** Pending.
 - **Artifacts path:** `artifacts/EXP-006/`
 - **Conclusion / next experiment:** Pending.

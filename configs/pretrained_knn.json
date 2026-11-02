@@ -16,5 +16,6 @@
     }
   },
   "k_values": [1, 5],
+  "combine": ["ast", "dasheng"],
   "max_fpr": 0.1
 }

@@ -6,7 +6,16 @@ import numpy as np
 import pytest
 
 from ml import pretrained
-from ml.pretrained import domain_min_scores, knn_scores, normalize_rows, run_develop, run_embed
+from ml.pretrained import (
+    combined_section_scores,
+    domain_min_scores,
+    knn_scores,
+    leave_one_out_scores,
+    normalize_rows,
+    run_combine,
+    run_develop,
+    run_embed,
+)
 from tests.test_autoencoder import project_config
 
 
@@ -34,6 +43,33 @@ def test_domain_min_works_without_target_references():
     scores = domain_min_scores(source, source, np.empty((0, 2)), k=5)
 
     assert scores.shape == (2,)
+
+
+def test_leave_one_out_excludes_each_clip_itself():
+    source = normalize_rows(np.array([[1.0, 0.0], [1.0, 0.0], [0.0, 1.0]]))
+
+    scores = leave_one_out_scores(source, np.empty((0, 2)))
+
+    assert scores[:2] == pytest.approx([0.0, 0.0])
+    assert scores[2] == pytest.approx(1.0)
+
+
+def test_combined_scores_put_encoders_on_one_scale():
+    rows = [
+        {"path": f"r{i}", "machine": "m", "section": "00", "domain": "source", "role": "train", "label": "normal"}
+        for i in range(4)
+    ] + [
+        {"path": "n", "machine": "m", "section": "00", "domain": "source", "role": "test", "label": "normal"},
+        {"path": "a", "machine": "m", "section": "00", "domain": "source", "role": "test", "label": "anomaly"},
+    ]
+    angles = {"r0": 0.0, "r1": 0.1, "r2": 0.2, "r3": 0.3, "n": 0.15, "a": 1.5}
+    small = {p: np.array([np.cos(t), np.sin(t)]) for p, t in angles.items()}
+    large = {p: np.array([np.cos(t / 2), np.sin(t / 2)]) for p, t in angles.items()}
+
+    scores, labels = combined_section_scores(rows, {"x": small, "y": large})["m/00/source"]
+
+    assert labels.tolist() == [False, True]
+    assert scores[1] > scores[0]
 
 
 class FakeEncoder:
@@ -69,3 +105,7 @@ def test_embed_then_develop_end_to_end(tmp_path, monkeypatch):
     assert report["selected"] == "fake/k1"
     assert report["candidates"]["fake/k1"]["sections"]["gearbox/00/target"]["auc"] == 1.0
     assert (tmp_path / "out" / "DEVELOP_SUMMARY.txt").exists()
+
+    combined = run_combine({**config, "combine": ["fake"]})
+    assert combined["selected"] in {"combined", "fake/k1"}
+    assert (tmp_path / "out" / "COMBINE_SUMMARY.txt").exists()
