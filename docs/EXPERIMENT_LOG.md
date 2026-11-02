@@ -290,3 +290,31 @@ Status: **Complete: criterion met (false alarms controlled), detection weak.** T
   - Gearbox catches a minority of anomalies.
   - Any product use must be labelled as a research prototype with low sensitivity.
   - Improving detection needs a stronger audio model, which is a separate experiment.
+
+### EXP-006 — Condition-classifier embeddings vs the autoencoder
+Status: **Pre-registered, not yet run.** This plan is committed before EXP-006 is trained or tested. **Sixth use of this test set**, so a positive result is weaker evidence than a first look. Not fully blind, as for EXP-002.
+- **Date:** 2026-11-02
+- **Research question:** Does a CNN trained to classify normal clips by machine, section and operating condition give better anomaly scores than the autoencoder (Model A)?
+- **Hypothesis:** Model C beats Model A on target-domain AUC in bearing 00 and gearbox 00, and catches more anomalies at the EXP-005 baseline threshold. This design follows strong DCASE 2022–2024 systems; this project has not tested it before.
+- **Dataset/version:** As EXP-002.
+- **Split protocol:** As EXP-003. Train on `train` plus `adaptation`; `validation` is used only to report classification accuracy as a training-health check.
+- **Inputs/features:** Audio only at scoring time. Log-mel spectrogram as in EXP-002 (128 mels, 1,024 FFT, 512 hop), 313 frames per clip, standardized with one mean and spread computed on training clips.
+- **Model and configuration:**
+  - Model C: one CNN for both machines. Four blocks of [3×3 conv, batch norm, ReLU, 3×3 conv, batch norm, ReLU, 2×2 max-pool], with 16, 32, 64 and 128 channels. Then global average pooling, a 128-dimensional embedding, and a linear classifier.
+  - Classes: each distinct (machine, section, attributes) among training clips. Operating conditions are used as labels only, never as inputs.
+  - Training: cross-entropy, Adam at 0.001, 30 epochs, batch 64, random 128-frame crops.
+  - Embedding at scoring time: the mean over 128-frame windows with a 64-frame hop, L2-normalized.
+  - Score: 1 − the highest cosine similarity to the embeddings of the same section's training clips.
+- **Training details / random seed:** Seeds 0, 1, 2. CPU. Model A uses the saved EXP-003 audio models with the same seeds.
+- **Threshold selection method:** None for the primary comparison. Secondary: the EXP-005 baseline rule (10 clips, mean + 2 standard deviations of log score, 200 draws), applied to Model C.
+- **Metrics:** As EXP-003: ΔAUC and ΔpAUC (C − A, seed means) with 95% paired bootstrap intervals. Secondary: Model C's false-positive rate and recall at the baseline threshold.
+- **Decision rule:**
+  - **Model C is stronger:** target ΔAUC is positive in both bearing 00 and gearbox 00, and both intervals exclude 0.
+  - **Model C is weaker:** either primary target interval lies wholly below 0.
+  - **Inconclusive:** anything else.
+- **Results:** Pending.
+- **Error analysis:** Pending.
+- **Limitations:** Pending.
+- **Reproduction command/config path:** `uv run python -m ml.embedding --config configs/embedding_cnn.json --stage train`, then `--stage test`
+- **Artifacts path:** `artifacts/EXP-006/`
+- **Conclusion / next experiment:** Pending.

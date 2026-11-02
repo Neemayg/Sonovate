@@ -1,0 +1,29 @@
+{
+  "experiment": "EXP-006",
+  "audio_config": "configs/baseline_ae.json",
+  "models_a_dir": "artifacts/EXP-003",
+  "output": "artifacts/EXP-006",
+  "machines": ["bearing", "gearbox"],
+  "seeds": [0, 1, 2],
+  "model": {
+    "channels": [16, 32, 64, 128],
+    "embedding": 128,
+    "learning_rate": 0.001,
+    "epochs": 30,
+    "batch_size": 64,
+    "crop_frames": 128
+  },
+  "baseline": {
+    "clips": 10,
+    "spread": 2.0,
+    "repeats": 200,
+    "seed": 0
+  },
+  "primary_sections": ["bearing/00", "gearbox/00"],
+  "max_fpr": 0.1,
+  "bootstrap": {
+    "samples": 2000,
+    "seed": 0
+  },
+  "threads": 8
+}
