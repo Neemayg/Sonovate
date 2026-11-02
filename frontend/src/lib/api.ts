@@ -120,10 +120,51 @@ async function requireUserId(): Promise<string> {
 
 // --- machines ---------------------------------------------------------------
 
-export async function listMachines(): Promise<Machine[]> {
-  const { data, error } = await supabase().from("machines").select("*").order("created_at", { ascending: false });
+export type MachineOverview = Machine & {
+  recordingCount: number;
+  baselineCount: number;
+  lastUploadAt: string | null;
+  // The most recent stored result across the machine's recordings, if any.
+  latest: { decision: string; created_at: string; recording_id: string } | null;
+};
+
+type OverviewRow = Machine & {
+  recordings: {
+    id: string;
+    kind: RecordingKind;
+    created_at: string;
+    predictions: { decision: string; created_at: string }[];
+  }[];
+};
+
+// Every machine with what the overview needs, in one request. Counts are
+// worked out here; fine for a handful of machines, not for thousands.
+export async function listMachineOverviews(): Promise<MachineOverview[]> {
+  const { data, error } = await supabase()
+    .from("machines")
+    .select("*, recordings(id, kind, created_at, predictions(decision, created_at))")
+    .order("created_at", { ascending: false });
   if (error) fail("Could not load machines.", error);
-  return data;
+  return (data as OverviewRow[]).map(summarise);
+}
+
+export function summarise(row: Machine & Partial<Pick<OverviewRow, "recordings">>): MachineOverview {
+  const { recordings = [], ...machine } = row;
+  let latest: MachineOverview["latest"] = null;
+  let lastUploadAt: string | null = null;
+  for (const r of recordings) {
+    if (!lastUploadAt || r.created_at > lastUploadAt) lastUploadAt = r.created_at;
+    for (const p of r.predictions) {
+      if (!latest || p.created_at > latest.created_at) latest = { ...p, recording_id: r.id };
+    }
+  }
+  return {
+    ...machine,
+    recordingCount: recordings.length,
+    baselineCount: recordings.filter((r) => r.kind === "baseline").length,
+    lastUploadAt,
+    latest,
+  };
 }
 
 export async function getMachine(id: string): Promise<Machine | null> {
