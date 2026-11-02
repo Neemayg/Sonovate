@@ -1,0 +1,19 @@
+{
+  "experiment": "EXP-001",
+  "data_config": "configs/mimii_dg.json",
+  "output": "artifacts/EXP-001",
+  "features": {
+    "n_fft": 1024,
+    "hop": 512,
+    "n_mels": 64
+  },
+  "model": {
+    "k": 5
+  },
+  "threshold_quantile": 0.95,
+  "max_fpr": 0.1,
+  "bootstrap": {
+    "samples": 2000,
+    "seed": 0
+  }
+}
