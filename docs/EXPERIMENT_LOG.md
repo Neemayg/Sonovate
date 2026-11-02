@@ -235,3 +235,28 @@ Status: **Complete: inconclusive under the pre-registered rule, no gain anywhere
   - On MIMII DG, the context hypothesis is therefore not supported, and the problem it targets is not the main source of error here.
   - Further context variants on this test set are not recommended; the evidence would only get weaker with each look.
   - Testing environmental context properly needs data where it is measured and varies: a controlled collection study (ADR-004).
+
+### EXP-005 — Alert threshold calibrated on the machine's own normal recordings
+Status: **Pre-registered, not yet run.** This plan is committed before EXP-005 is run. **Fifth use of this test set.** It is a threshold study, not a model comparison, and it uses test *normal* clips for calibration on purpose (see Split protocol).
+- **Date:** 2026-11-02
+- **Research question:** Can an alert threshold set from a few normal recordings of the same machine, in the same domain, keep false alarms low? And how many anomalies does it then catch?
+- **Hypothesis:** False alarms fall to about 10% or below, because the baseline recordings share the recording shift that broke the earlier thresholds. Recall stays modest, because AUC is only about 0.55–0.70.
+- **Dataset/version:** As EXP-002.
+- **Split protocol:** This simulates the product's baseline step. For each machine, section, domain and seed, repeat 200 times (random seed 0):
+  - Draw 10 of the 50 test normal clips as "baseline recordings".
+  - Set the threshold from them.
+  - Evaluate on the other 40 normal clips and all 50 anomaly clips.
+  - Baseline and evaluation clips never overlap. In deployment the baseline would come from the user's own machine, which is what this mimics.
+- **Inputs/features:** Model A scores (EXP-002 setup, seeds 0–2, `artifacts/EXP-003/`). No retraining.
+- **Preprocessing:** As EXP-002.
+- **Model and configuration:** The threshold is the mean plus 2 standard deviations of the baseline clips' log scores. These settings are fixed in advance and not tuned.
+- **Training details / random seed:** None. Split seed 0.
+- **Threshold selection method:** As described above.
+- **Metrics:** False-positive rate and recall, averaged over splits and seeds, with the 5th–95th percentile range across splits. Compared against EXP-002's two thresholds.
+- **Success criterion:** Mean false-positive rate of 0.10 or below in both domains of bearing 00 and gearbox 00. Recall is reported as found; no recall target is set.
+- **Results:** Pending.
+- **Error analysis:** Pending.
+- **Limitations:** Pending.
+- **Reproduction command/config path:** `uv run python -m ml.enroll --config configs/enroll_ae.json`
+- **Artifacts path:** `artifacts/EXP-005/`
+- **Conclusion / next experiment:** Pending.

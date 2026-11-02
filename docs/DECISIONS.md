@@ -59,6 +59,15 @@ Only record accepted decisions here. Proposed options belong in an issue or task
 - **Consequences/trade-offs:** Row-level security is the primary access control and must be tested. The inference service must not import `ml/` wholesale and ships with no model registered until an experiment validates one. Local only: no cloud project exists.
 - **Evidence:** `docs/ARCHITECTURE.md`; RLS tests in `supabase/tests/`; backend tests in `backend/tests/`.
 
+## ADR-006 — Product model is audio-only; context is shown, not modelled
+- **Status:** Accepted
+- **Date:** 2026-11-02
+- **Context:** Two pre-registered ways of using operating condition did not improve detection at unseen conditions on MIMII DG (EXP-003, EXP-004). The audio model's errors are driven by recording shifts at the same condition, not by the condition itself.
+- **Decision:** The product uses the audio-only autoencoder (EXP-002 setup). Operating context is recorded and displayed next to results, but not fed to the model. No further context variants are run on the MIMII DG test set. Testing environmental context properly is deferred to a controlled data-collection study (ADR-004).
+- **Alternatives considered:** More context variants on this test set, rejected because the evidence weakens with every extra look. Starting data collection first, deferred.
+- **Consequences/trade-offs:** The original differentiator is not supported on this data and must not be claimed. The product's honest framing is audio-based anomaly detection that shows the operating context beside each result.
+- **Evidence:** EXP-003 and EXP-004 in `docs/EXPERIMENT_LOG.md`.
+
 ## Pending decisions
-- Model approach and feature representation.
+- Feature representation beyond the EXP-002 setup.
 - Recording hardware and context-sensor strategy.

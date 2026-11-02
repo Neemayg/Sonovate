@@ -1,0 +1,17 @@
+{
+  "experiment": "EXP-005",
+  "audio_config": "configs/baseline_ae.json",
+  "models_dir": "artifacts/EXP-003",
+  "output": "artifacts/EXP-005",
+  "machines": ["bearing", "gearbox"],
+  "seeds": [0, 1, 2],
+  "baseline": {
+    "clips": 10,
+    "spread": 2.0,
+    "repeats": 200,
+    "seed": 0
+  },
+  "primary_sections": ["bearing/00", "gearbox/00"],
+  "max_false_positive_rate": 0.1,
+  "threads": 4
+}
