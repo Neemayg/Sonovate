@@ -1,0 +1,40 @@
+{
+  "dataset": "MIMII DG, Zenodo 6529888, v1.0",
+  "clips": 7199,
+  "manifest_sha256": "a5a32c522538530cbb2bb3a786dd8c4935ace32de47d742585e19b1450070bc5",
+  "splits_sha256": "deede117958a4bb8a4b980556ee0b8f7ba3e0be2aff718724ad0a921bc22d399",
+  "roles": {
+    "bearing/00/adaptation": 10,
+    "bearing/00/test": 200,
+    "bearing/00/train": 890,
+    "bearing/00/validation": 100,
+    "bearing/01/adaptation": 9,
+    "bearing/01/test": 200,
+    "bearing/01/train": 894,
+    "bearing/01/validation": 96,
+    "bearing/02/adaptation": 10,
+    "bearing/02/test": 200,
+    "bearing/02/train": 890,
+    "bearing/02/validation": 100,
+    "gearbox/00/adaptation": 10,
+    "gearbox/00/test": 200,
+    "gearbox/00/train": 890,
+    "gearbox/00/validation": 100,
+    "gearbox/01/adaptation": 10,
+    "gearbox/01/test": 200,
+    "gearbox/01/train": 890,
+    "gearbox/01/validation": 100,
+    "gearbox/02/adaptation": 10,
+    "gearbox/02/test": 200,
+    "gearbox/02/train": 891,
+    "gearbox/02/validation": 99
+  },
+  "split": {
+    "validation_fraction": 0.1,
+    "seed": 0
+  },
+  "audio": {
+    "sample_rate": 16000,
+    "clip_seconds": 10
+  }
+}

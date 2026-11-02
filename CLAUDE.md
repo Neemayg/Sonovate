@@ -49,4 +49,4 @@ Ask before proceeding if a missing decision materially changes the implementatio
 `docs/PROJECT_STATE.md` is the living source of truth for the current phase, completed work, blockers, next task, and unresolved questions. Update it at milestone boundaries, not after every tiny edit. Keep historical experiment details in `EXPERIMENT_LOG.md`, not in `CLAUDE.md`.
 
 ## Current starting point
-The project is in planning/data-discovery. No dataset, model architecture, tech stack, or performance result is approved yet. First deliverable: dataset feasibility audit and a defensible audio-only baseline plan.
+The dataset and evaluation protocol are accepted (`docs/DECISIONS.md`). No model architecture, tech stack, or performance result is approved yet. See `docs/PROJECT_STATE.md` for the current task. Prepare data with `uv run python -m ml.prepare --config configs/mimii_dg.json`; run tests with `uv run pytest`.

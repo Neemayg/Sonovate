@@ -3,7 +3,9 @@
 This document describes only the architecture that has actually been agreed or implemented. Keep proposed designs clearly labelled.
 
 ## Current state
-No technology stack or production architecture has been selected.
+No production stack or architecture has been selected.
+
+Implemented so far: the data layer, in Python (`ml/`), with `ml/prepare.py` as the entry point. It verifies archives, builds the manifest (`ml/manifest.py`), checks audio format (`ml/audio.py`) and assigns split roles (`ml/splits.py`).
 
 ## Intended logical components
 1. **Data layer:** raw audio, metadata manifests, context measurements, processed features/splits.

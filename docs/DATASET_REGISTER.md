@@ -125,7 +125,22 @@ Test clips were used only for format and integrity checks and for a few example 
 - **Load/RPM/state available?** Secondary sources report a tachometer channel, microphone, and a speed sweep of about 12–61 Hz. One derivative work reports unreliable tachometer results.
 - **Why kept:** It could offer a *measured* speed signal, unlike the set-points in MIMII DG, if reviewers challenge the set-point approach. Verify the license before any use.
 
-## Recommendation (proposed, not yet an accepted decision)
+## Split protocol (MIMII DG, Phase 2)
+Defined in `ml/splits.py` and `configs/mimii_dg.json` (seed 0, validation fraction 0.1). Output: `data/manifests/mimii_dg_splits.csv`.
+
+| Role | Clips | Contents | Use |
+|---|---|---|---|
+| train | 5,345 | Source normal | Fit models |
+| validation | 595 | Source normal, stratified by section and condition | Set thresholds, choose settings |
+| adaptation | 59 | Target normal | Optional; same choice for models being compared |
+| test | 1,200 | Official test set, 50/50 normal and anomaly | Final evaluation only |
+
+- **No labelled anomalies for tuning:** Anomalies exist only in `test`, so thresholds must come from normal score distributions. Tuning on test anomalies would invalidate the result.
+- **Validation is source-only:** It cannot show how a threshold behaves at target conditions. Report threshold-free metrics alongside any thresholded result.
+- **Near-duplicate risk:** Only exact duplicates were checked. Whether neighbouring clips come from one continuous recording is unknown, which could make `validation` optimistic.
+
+## Accepted choices
+Recorded as ADR-001 to ADR-004 in `DECISIONS.md` on 2026-11-02.
 1. **Dataset:** MIMII DG.
 2. **Machine family:** rotating machinery, using **bearing** and **gearbox** (1.72 GB in total). Bearing section 00 (speed) and gearbox section 00 (voltage) are the primary context experiments; gearbox section 01 (weight) is secondary.
 3. **Generalization target:** unseen operating condition, on the official source/target split.

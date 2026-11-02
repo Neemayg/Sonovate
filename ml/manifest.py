@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -24,7 +25,7 @@ CLIP_NAME = re.compile(
     r"_(?P<label>normal|anomaly)_(?P<index>\d{4})(?:_(?P<attributes>.*))?\.wav$"
 )
 ATTRIBUTE_PAIR = re.compile(r"([A-Za-z0-9-]+)_([^_]+)")
-FIELDS = ["path", "machine", "section", "domain", "split", "label", "index", "attributes"]
+FIELDS = ["path", "machine", "section", "domain", "split", "label", "index", "attributes", "md5"]
 
 
 class ManifestError(ValueError):
@@ -41,6 +42,7 @@ class Clip:
     label: str
     index: str
     attributes: dict[str, float | str]
+    md5: str
 
 
 def parse_value(raw: str) -> float | str:
@@ -88,6 +90,7 @@ def parse_clip(path: Path, raw_root: Path) -> Clip:
         label=match["label"],
         index=match["index"],
         attributes=attributes,
+        md5=hashlib.md5(path.read_bytes()).hexdigest(),
     )
 
 

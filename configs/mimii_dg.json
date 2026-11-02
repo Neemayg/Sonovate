@@ -1,0 +1,19 @@
+{
+  "dataset": "MIMII DG, Zenodo 6529888, v1.0",
+  "raw_root": "data/raw/mimii_dg",
+  "manifest": "data/manifests/mimii_dg.csv",
+  "splits": "data/manifests/mimii_dg_splits.csv",
+  "summary": "data/manifests/mimii_dg_summary.json",
+  "archives": {
+    "bearing": "6381a00f9efc0ced779c8ad847e4ff59",
+    "gearbox": "c165dfef8c404256bd719c6fe1f7036f"
+  },
+  "split": {
+    "validation_fraction": 0.1,
+    "seed": 0
+  },
+  "audio": {
+    "sample_rate": 16000,
+    "clip_seconds": 10
+  }
+}
