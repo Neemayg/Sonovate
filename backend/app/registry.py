@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from app.audio import ValidatedAudio
+from app.thresholds import ThresholdRule
 
 MachineType = Literal["bearing", "gearbox", "other"]
 # Types a model could ever be registered for. 'other' never has a model.
@@ -41,12 +42,14 @@ class ModelInfo:
     name: str
     version: str
     preprocessing_version: str
-    # Decision threshold on the uncalibrated anomaly score.
-    threshold: float
 
 
 class AnomalyModel(Protocol):
     info: ModelInfo
+    # Per-machine threshold rule; results need this many baseline recordings.
+    rule: ThresholdRule
+    # Shown with every result (from the bundle).
+    limitations: tuple[str, ...]
 
     def score(
         self,

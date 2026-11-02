@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 class ConfigError(RuntimeError):
@@ -20,6 +21,10 @@ class Settings:
     # model is registered. Never sent to browsers.
     supabase_secret_key: str | None
     cors_origins: tuple[str, ...]
+    # Directory holding the allow-listed model bundles (ADR-007). Unset means
+    # no models: every analysis answers no_validated_model. Only bundles
+    # pinned in app/bundle.py can load from it.
+    bundles_dir: Path | None = None
 
     @property
     def jwks_url(self) -> str:
@@ -41,4 +46,5 @@ def load_settings() -> Settings:
         supabase_publishable_key=key,
         supabase_secret_key=os.environ.get("SUPABASE_SECRET_KEY") or None,
         cors_origins=tuple(o.strip() for o in origins.split(",") if o.strip()),
+        bundles_dir=Path(os.environ["SONOVATE_BUNDLES_DIR"]) if os.environ.get("SONOVATE_BUNDLES_DIR") else None,
     )
