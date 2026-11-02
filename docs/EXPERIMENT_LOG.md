@@ -183,3 +183,28 @@ Status: **Complete: inconclusive under the pre-registered rule, leaning negative
   - What this does not show: that context can never help. Other forms remain untested, such as normalizing scores by condition, or real environmental sensors.
   - For the product: audio-only Model A is the better model on this evidence.
   - Any further context experiment must be pre-registered, and should be weighed against the growing number of looks at this test set.
+
+### EXP-004 — Audio-only scores normalized by operating condition
+Status: **Pre-registered, not yet run.** This plan is committed before any EXP-004 test evaluation. **This is the fourth evaluation on this test set**, and the second testing context, so a positive result here is weaker evidence than a first look would be. Not fully blind, as for EXP-002.
+- **Date:** 2026-11-02
+- **Research question:** Does judging each clip's anomaly score against what is normal *at that operating condition* improve detection, especially at unseen conditions?
+- **Hypothesis:** Normalization raises target-domain AUC in bearing 00 and gearbox 00, by removing score differences that come from the condition rather than from anomalies.
+- **Dataset/version:** As EXP-002.
+- **Split protocol:** As EXP-003. Normalization statistics come only from `validation` clips: held-out source normal clips, never used for training. `adaptation` clips are not used, because Model A trained on them.
+- **Inputs/features:** Model A scores (EXP-002 setup, seeds 0–2, saved in `artifacts/EXP-003/`). No retraining.
+- **Preprocessing:** As EXP-002.
+- **Model and configuration:** Model N is Model A plus normalization, compared with Model A. For each machine, section and seed:
+  1. Pick the section's numeric operating parameter, using the EXP-003 list: `vel`, `volt`, `wt`. Sections without one (gearbox 02) are left unnormalized.
+  2. For each validation value, compute the mean and standard deviation of log scores.
+  3. For a test clip with value x, get the expected mean and spread by linear interpolation between validation values, using the nearest value outside their range.
+  4. Score = (log score − expected mean) / expected spread.
+- **Training details / random seed:** None. Bootstrap seed 0, 2,000 resamples.
+- **Threshold selection method:** None. This comparison is threshold-free.
+- **Metrics:** As EXP-003: ΔAUC and ΔpAUC (N − A, seed means) with 95% paired bootstrap intervals. Interpolation check, run without test data: leave each validation value out, predict its mean from the others, and report the error alongside the spread of means between conditions.
+- **Decision rule:** As EXP-003, on target-domain ΔAUC for bearing 00 and gearbox 00. Normalization helps only if both intervals exclude 0 on the positive side.
+- **Results:** Pending.
+- **Error analysis:** Pending.
+- **Limitations:** Pending.
+- **Reproduction command/config path:** `uv run python -m ml.normalize --config configs/normalize_ae.json`
+- **Artifacts path:** `artifacts/EXP-004/`
+- **Conclusion / next experiment:** Pending.

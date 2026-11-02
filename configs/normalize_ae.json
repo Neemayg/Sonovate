@@ -1,0 +1,17 @@
+{
+  "experiment": "EXP-004",
+  "audio_config": "configs/baseline_ae.json",
+  "models_dir": "artifacts/EXP-003",
+  "output": "artifacts/EXP-004",
+  "machines": ["bearing", "gearbox"],
+  "seeds": [0, 1, 2],
+  "reuse_audio_seed0": "artifacts/EXP-002",
+  "context_parameters": ["vel", "volt", "wt"],
+  "primary_sections": ["bearing/00", "gearbox/00"],
+  "max_fpr": 0.1,
+  "bootstrap": {
+    "samples": 2000,
+    "seed": 0
+  },
+  "threads": 4
+}
