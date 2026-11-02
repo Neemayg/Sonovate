@@ -4,7 +4,7 @@
 
 ## Current status
 - **Phase:** 3 — Audio-only baseline (Phases 0–2 complete)
-- **Status:** EXP-001 complete; the baseline is not yet a credible reference point
+- **Status:** EXP-002 complete: usable reference, pre-registered bar narrowly missed
 - **Last updated:** 2026-11-02
 - **Current owner:** Team
 - **Working title:** Environment-Aware Acoustic Machine Health
@@ -25,31 +25,30 @@ Establish a credible audio-only reference point on the accepted protocol.
 - [ ] Representative clips listened to by a person
 - [x] First audio-only baseline implemented (EXP-001)
 - [x] First baseline evaluated on held-out data (poor result)
-- [ ] Credible baseline established
+- [x] Usable audio-only reference (EXP-002; pre-registered bar narrowly missed)
 - [ ] Context-aware comparison completed
 
 ## Current task
-Pre-register EXP-002. Do not start Phase 4 or frontend/backend implementation yet.
+Decide whether to accept EXP-002 as the Phase 3 reference and start Phase 4.
 
 ## Blockers
-- No credible audio-only reference point, so a context comparison would mean little.
 - Normal sound shifts between train and test at the same known condition. Context values may not explain that.
 
 ## Decisions needed
-1. EXP-002 scope: stronger audio model and a threshold method that does not rely on random held-out clips.
-2. Whether models use the `adaptation` role. Both models in a comparison must make the same choice.
-3. Application stack: Supabase, FastAPI and Next.js are proposed, not accepted.
+1. Accept EXP-002 as the reference despite the narrow miss, or do more audio-only work first.
+2. Phase 4 seed count. Several seeds per model are needed to separate a real difference from run-to-run noise.
+3. Application stack: recorded as ADR-005 on the app branch (PR #1), not yet merged.
 
 ## Next action
-Pre-register EXP-002 in `EXPERIMENT_LOG.md`, develop it without test data, then evaluate once.
+Pre-register EXP-003: audio + operating condition against the EXP-002 setup, same protocol, several seeds, primary sections bearing 00 and gearbox 00.
 
 ## Latest verified results
-EXP-001 on the test set: bearing 00 AUC 0.550 source, 0.464 target; gearbox 00 AUC 0.472 source, 0.376 target. No reliable detection on the primary sections, and the threshold failed (100% false positives on bearing 00). Full table in `EXPERIMENT_LOG.md`. Anomaly scores are not probabilities.
+EXP-002 on the test set: bearing 00 AUC 0.599 source, 0.659 target; gearbox 00 AUC 0.674 source, 0.574 target. That is close to the published autoencoder baseline, on one seed. The held-out-condition threshold keeps false alarms low but misses most anomalies. EXP-001 (kNN) was weaker. Full tables in `EXPERIMENT_LOG.md`. Anomaly scores are not probabilities.
 
 ## Session handoff
-- **Changed:** Added `ml/features.py`, `ml/metrics.py`, `ml/baseline.py` and `configs/baseline_knn.json`. Ran EXP-001 and diagnosed its threshold failure.
-- **Reproduce:** `uv run python -m ml.prepare --config configs/mimii_dg.json`, then `uv run python -m ml.baseline --config configs/baseline_knn.json --stage test`. Needs the two archives in `data/raw/mimii_dg/archives/`.
-- **Checks run:** `uv run pytest` (52 passed); validation stage; test stage once on commit `bb8f653`; normal-clip diagnosis of the score gap.
+- **Changed:** Added `ml/autoencoder.py` and `configs/baseline_ae.json` (PyTorch added). Ran EXP-002.
+- **Reproduce:** `uv run python -m ml.prepare --config configs/mimii_dg.json`, then `uv run python -m ml.autoencoder --config configs/baseline_ae.json --stage validation` and `--stage test`. Training takes a few hours on CPU; keep the Mac awake.
+- **Checks run:** `uv run pytest` (59 passed); validation and test stages on commit `99d6cf7`.
 - **Not verified:** How the audio sounds; the cause of the train/test shift (no session IDs).
 - **Blocker:** See Blockers.
 - **Next task:** The Next action above.

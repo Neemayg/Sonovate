@@ -75,7 +75,7 @@ Status: **Complete: the baseline performs poorly and its threshold failed.** The
 - **Conclusion / next experiment:** This is not a credible reference point yet. A shift at the *same* known condition is also a risk for the project hypothesis, because a model given the speed value cannot explain a change that happens at the same speed. EXP-002 needs a stronger audio model and a threshold method that does not rely on random held-out clips, and it must be pre-registered before touching test data again.
 
 ### EXP-002 — Audio-only autoencoder with held-out-condition threshold
-Status: **Pre-registered, not yet run.** This plan is committed before any EXP-002 test evaluation. **Not fully blind:** test normal clips informed the EXP-001 diagnosis that motivated this design, and EXP-001 test scores motivated the model choice.
+Status: **Complete: much better than EXP-001, but the pre-registered bar was narrowly missed.** The plan was committed at `99d6cf7`, and validation and the single test run both used that commit. **Not fully blind:** test normal clips informed the EXP-001 diagnosis that motivated this design, and EXP-001 test scores motivated the model choice.
 - **Date:** 2026-11-02
 - **Research question:** (1) Does a published-style autoencoder give a credible audio-only reference point? (2) Does a threshold from held-out conditions control false alarms better than one from random held-out clips?
 - **Hypothesis:** AUC comes close to the published baseline on bearing 00 and gearbox 00, and false-positive rates are closer to 5% than in EXP-001.
@@ -87,9 +87,36 @@ Status: **Pre-registered, not yet run.** This plan is committed before any EXP-0
 - **Training details / random seed:** CPU, seed 0 for the main model, seed 0 + fold for threshold folds. One seed only, and the published results vary between runs.
 - **Threshold selection method:** Primary: split each section's source conditions into 5 folds. For each fold, retrain with those conditions removed and score the removed `train` clips. The threshold is the 95th percentile of those scores per section. Secondary, for comparison: the 95th percentile of `validation` scores, as in EXP-001.
 - **Metrics:** As EXP-001, with false-positive rate and recall reported at both thresholds. Primary sections: bearing 00, gearbox 00. Credibility bar: both primary sections have source and target AUC intervals above 0.5.
-- **Results:** Pending.
-- **Error analysis:** Pending.
-- **Limitations:** Pending.
+- **Results:** Test set, 50 normal and 50 anomaly clips per domain per section. Intervals are 95% bootstrap. FPR and recall use the primary held-out-condition threshold; the last column uses the secondary `validation` threshold. Primary sections are in bold.
+
+  | Section | Domain | AUC | AUC 95% | pAUC | FPR | Recall | FPR, validation threshold |
+  |---|---|---|---|---|---|---|---|
+  | **bearing 00** | source | 0.599 | 0.478–0.712 | 0.084 | 0.00 | 0.00 | 1.00 |
+  | **bearing 00** | target | 0.659 | 0.542–0.764 | 0.082 | 0.28 | 0.18 | 0.84 |
+  | bearing 01 | source | 0.620 | 0.505–0.735 | 0.106 | 0.00 | 0.00 | 0.86 |
+  | bearing 01 | target | 0.756 | 0.649–0.843 | 0.162 | 0.06 | 0.20 | 0.90 |
+  | bearing 02 | source | 0.494 | 0.386–0.613 | 0.096 | 0.48 | 0.44 | 1.00 |
+  | bearing 02 | target | 0.468 | 0.350–0.582 | 0.064 | 0.44 | 0.46 | 1.00 |
+  | **gearbox 00** | source | 0.674 | 0.562–0.771 | 0.236 | 0.00 | 0.12 | 0.30 |
+  | **gearbox 00** | target | 0.574 | 0.450–0.680 | 0.194 | 0.02 | 0.00 | 0.34 |
+  | gearbox 01 | source | 0.690 | 0.584–0.791 | 0.196 | 0.04 | 0.18 | 0.06 |
+  | gearbox 01 | target | 0.546 | 0.437–0.662 | 0.080 | 0.04 | 0.10 | 0.12 |
+  | gearbox 02 | source | 0.756 | 0.660–0.849 | 0.420 | 0.02 | 0.38 | 0.04 |
+  | gearbox 02 | target | 0.672 | 0.564–0.774 | 0.148 | 0.04 | 0.10 | 0.08 |
+
+- **Error analysis:**
+  - **Bar not met, narrowly.** Bearing 00 source (lower bound 0.478) and gearbox 00 target (0.450) fall short. The other two primary results clear 0.5.
+  - **Clear gain over EXP-001.** AUC rose in 9 of 12 section-domains, including all four primary ones (bearing 00: 0.550→0.599, 0.464→0.659; gearbox 00: 0.472→0.674, 0.376→0.574). It fell in bearing 02 (0.657→0.494, 0.618→0.468) and was flat in gearbox 01 source.
+  - **Close to the published autoencoder:** bearing 00 0.60/0.66 here vs about 0.68/0.60 published, and gearbox 00 0.67/0.57 vs about 0.65/0.65. Published bearing results vary by about ±0.20 between runs, and this is one seed. That comparison suggests the pipeline itself is sound.
+  - **The held-out-condition threshold controls false alarms, but is too cautious.** False-positive rates were 0.00–0.06 in 8 of 12 section-domains, against 0.84–1.00 on bearing with the `validation` threshold. But recall was 0.00–0.20 in most of them, so it misses most anomalies. Held-out-condition scores sit far above validation scores (bearing 00 medians 19.5 vs 7.6).
+  - **It fails where the shift is not an operating condition.** Bearing 02, whose source/target shift is factory noise, has 0.44–0.48 false positives and chance-level AUC.
+  - **Target beat source in bearing 00 and 01.** Training included the target `adaptation` clips, which may explain this.
+- **Limitations:**
+  - One seed, against known large run-to-run variance.
+  - The threshold leans heavily cautious.
+  - Each interval rests on 100 clips.
+  - Not fully blind (see Status).
+  - Training time was inflated by the Mac sleeping. Results are unaffected, but the script logs no per-fold progress.
 - **Reproduction command/config path:** `uv run python -m ml.autoencoder --config configs/baseline_ae.json --stage validation`, then `--stage test`
 - **Artifacts path:** `artifacts/EXP-002/`
-- **Conclusion / next experiment:** Pending.
+- **Conclusion / next experiment:** This is a usable but imperfect audio-only reference, roughly matching published performance, and it formally misses its own bar. For Phase 4, compare against this exact setup under the identical protocol. Run several seeds for both the audio-only and the context model, because one seed cannot separate a real difference from run-to-run noise.
