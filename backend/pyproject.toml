@@ -1,0 +1,24 @@
+[project]
+name = "sonovate-inference"
+version = "0.1.0"
+description = "Sonovate inference service (FastAPI). Ships with no model registered."
+requires-python = ">=3.12"
+dependencies = [
+    # HTTP API framework and its server.
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    # Server-side calls to local Supabase (PostgREST, Storage, JWKS).
+    "httpx>=0.27",
+    # Supabase access-token verification; [crypto] adds ES256/RS256 support.
+    "pyjwt[crypto]>=2.9",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

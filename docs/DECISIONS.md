@@ -50,7 +50,15 @@ Only record accepted decisions here. Proposed options belong in an issue or task
 - **Decision:** Model B uses operating condition only. Temperature and humidity move to a separate controlled data-collection study, decided after the Phase 4 result.
 - **Consequences/trade-offs:** Condition values are controlled set-points, not sensor logs. Environment claims cannot be made from this data.
 
+## ADR-005 — Application stack: Supabase, FastAPI inference service, Next.js
+- **Status:** Accepted
+- **Date:** 2026-11-02
+- **Context:** The user asked to build backend, frontend, auth and storage in parallel with the ML work, using the proposed stack. No model is validated yet (EXP-001 failed; EXP-002 in progress).
+- **Decision:** Accepted 2026-11-02 at the user's request to build with the proposed stack. Supabase (Postgres, Auth, Storage) for data, users and recordings, developed locally with the Supabase CLI. A separate Python FastAPI inference service in `backend/` with its own environment. A Next.js + TypeScript frontend in `frontend/`.
+- **Alternatives considered:** Not evaluated in this decision; the stack was chosen by the user.
+- **Consequences/trade-offs:** Row-level security is the primary access control and must be tested. The inference service must not import `ml/` wholesale and ships with no model registered until an experiment validates one. Local only: no cloud project exists.
+- **Evidence:** `docs/ARCHITECTURE.md`; RLS tests in `supabase/tests/`; backend tests in `backend/tests/`.
+
 ## Pending decisions
 - Model approach and feature representation.
-- Application architecture and technology stack.
 - Recording hardware and context-sensor strategy.
