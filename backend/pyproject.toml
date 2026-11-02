@@ -15,6 +15,9 @@ dependencies = [
     # Same versions as the root ML project so scores match the bundle parity.
     "numpy==2.5.4",
     "torch==2.15.0",
+    # Frozen AST encoder (ADR-008): ASTFeatureExtractor and ASTModel, loaded
+    # only from the local bundle directory. Same version as the ML project.
+    "transformers==5.22.1",
 ]
 
 [dependency-groups]

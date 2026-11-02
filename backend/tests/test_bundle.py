@@ -1,4 +1,7 @@
-"""Model bundles: parity with the ML export, integrity checks, allow-list.
+"""Autoencoder bundles (superseded by AST, ADR-008): parity, integrity, allow-list.
+
+These bundles are no longer on the default allow-list; the tests load them
+through AUTOENCODER_BUNDLES explicitly so the kept code stays verified.
 
 The bundles are local and git-ignored. Point SONOVATE_BUNDLES_DIR at the
 directory that holds them (by default `<repo>/artifacts/bundles`); tests that
@@ -17,7 +20,15 @@ import numpy as np
 import pytest
 
 from app.audio import decode_samples, validate_wav
-from app.bundle import ALLOWED_BUNDLES, AllowedBundle, BundleError, BundleRegistry, file_sha256, load_bundle
+from app.bundle import (
+    ALLOWED_BUNDLES,
+    AUTOENCODER_BUNDLES,
+    AllowedBundle,
+    BundleError,
+    BundleRegistry,
+    file_sha256,
+    load_bundle,
+)
 from app.thresholds import ThresholdRule, baseline_threshold, decide
 
 BUNDLES_DIR = Path(
@@ -31,16 +42,21 @@ needs_bundles = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def registry() -> BundleRegistry:
-    return BundleRegistry(BUNDLES_DIR)
+    return BundleRegistry(BUNDLES_DIR, AUTOENCODER_BUNDLES)
+
+
+def type_of(entry: AllowedBundle) -> str:
+    (machine_type,) = entry.machine_types
+    return machine_type
 
 
 # --- parity ------------------------------------------------------------------
 
 
 @needs_bundles
-@pytest.mark.parametrize("entry", ALLOWED_BUNDLES, ids=lambda e: e.machine_type)
+@pytest.mark.parametrize("entry", AUTOENCODER_BUNDLES, ids=type_of)
 def test_every_allowed_bundle_loads(registry: BundleRegistry, entry: AllowedBundle) -> None:
-    model = registry.model_for(entry.machine_type)
+    model = registry.model_for(type_of(entry))  # type: ignore[arg-type]
     assert model is not None, f"{entry.directory_name} missing from {BUNDLES_DIR}"
     assert model.info.model_version_id == entry.model_version_id
     assert model.rule == ThresholdRule(minimum_baseline_recordings=10, spread=2.0)
@@ -48,9 +64,9 @@ def test_every_allowed_bundle_loads(registry: BundleRegistry, entry: AllowedBund
 
 
 @needs_bundles
-@pytest.mark.parametrize("entry", ALLOWED_BUNDLES, ids=lambda e: e.machine_type)
+@pytest.mark.parametrize("entry", AUTOENCODER_BUNDLES, ids=type_of)
 def test_parity_through_wav_decoding(registry: BundleRegistry, entry: AllowedBundle) -> None:
-    model = registry.model_for(entry.machine_type)
+    model = registry.model_for(type_of(entry))  # type: ignore[arg-type]
     assert model is not None
     assert len(model.parity) == 3
     for expected in model.parity:
@@ -61,7 +77,7 @@ def test_parity_through_wav_decoding(registry: BundleRegistry, entry: AllowedBun
         assert vectors.shape[0] == expected["vectors"]
         np.testing.assert_allclose(vectors[0, :8], expected["first_vector_head"], rtol=1e-5, atol=1e-4)
         assert float(vectors.mean()) == pytest.approx(expected["feature_mean"], rel=1e-5)
-        score = model.score(audio, entry.machine_type, {})
+        score = model.raw_score(audio, type_of(entry))  # type: ignore[union-attr, arg-type]
         assert score == pytest.approx(expected["score"], rel=1e-5), expected["file"]
 
 
@@ -80,9 +96,9 @@ def test_context_does_not_change_the_score(registry: BundleRegistry) -> None:
     model = registry.model_for("gearbox")
     assert model is not None
     audio = validate_wav((model.directory / "parity_0.wav").read_bytes())
-    plain = model.score(audio, "gearbox", {})
-    with_context = model.score(audio, "gearbox", {"voltage": ContextValue(3.0, "V")})
-    assert plain == with_context
+    plain = model.embed(audio, "gearbox", {})
+    with_context = model.embed(audio, "gearbox", {"voltage": ContextValue(3.0, "V")})
+    assert np.array_equal(plain, with_context)
 
 
 @needs_bundles
@@ -91,7 +107,7 @@ def test_wrong_machine_type_is_refused(registry: BundleRegistry) -> None:
     assert model is not None
     audio = validate_wav((model.directory / "parity_0.wav").read_bytes())
     with pytest.raises(ValueError):
-        model.score(audio, "bearing", {})
+        model.embed(audio, "bearing", {})
 
 
 # --- integrity ---------------------------------------------------------------
@@ -103,7 +119,7 @@ def copy_bundle(entry: AllowedBundle, root: Path) -> Path:
     return target
 
 
-GEARBOX = next(e for e in ALLOWED_BUNDLES if e.machine_type == "gearbox")
+GEARBOX = next(e for e in AUTOENCODER_BUNDLES if "gearbox" in e.machine_types)
 
 
 @needs_bundles
@@ -117,7 +133,7 @@ def test_tampered_weights_are_refused(tmp_path: Path) -> None:
     with pytest.raises(BundleError, match="model.pt does not match"):
         load_bundle(directory, GEARBOX)
     with pytest.raises(BundleError):
-        BundleRegistry(tmp_path)
+        BundleRegistry(tmp_path, AUTOENCODER_BUNDLES)
 
 
 @needs_bundles
@@ -153,7 +169,7 @@ def test_unlisted_bundles_never_load(tmp_path: Path) -> None:
     # A copy under another name/version sits next to nothing allow-listed.
     shutil.copytree(BUNDLES_DIR / GEARBOX.directory_name, tmp_path / "sonovate-autoencoder-gearbox-9.9.9")
     shutil.copytree(BUNDLES_DIR / GEARBOX.directory_name, tmp_path / "evil-model-0.1.0")
-    registry = BundleRegistry(tmp_path)
+    registry = BundleRegistry(tmp_path, AUTOENCODER_BUNDLES)
     assert not registry.has_any_model()
 
 
@@ -161,9 +177,16 @@ def test_unlisted_bundles_never_load(tmp_path: Path) -> None:
 def test_allow_list_pins_bundle_json(tmp_path: Path) -> None:
     directory = copy_bundle(GEARBOX, tmp_path)
     assert file_sha256(directory / "bundle.json") == GEARBOX.bundle_json_sha256
-    impostor = AllowedBundle(GEARBOX.name, GEARBOX.version, "gearbox", "0" * 64, GEARBOX.model_version_id)
+    impostor = AllowedBundle(
+        GEARBOX.name, GEARBOX.version, "autoencoder", GEARBOX.machine_types, "0" * 64, GEARBOX.model_version_id
+    )
     with pytest.raises(BundleError, match="pinned sha256"):
         load_bundle(directory, impostor)
+
+
+def test_autoencoders_are_not_on_the_default_allow_list() -> None:
+    assert all(e.kind == "ast" for e in ALLOWED_BUNDLES)
+    assert not {e.name for e in AUTOENCODER_BUNDLES} & {e.name for e in ALLOWED_BUNDLES}
 
 
 def test_absent_directory_loads_nothing(tmp_path: Path) -> None:

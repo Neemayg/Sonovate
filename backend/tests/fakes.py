@@ -10,10 +10,11 @@ from __future__ import annotations
 import struct
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 
 import jwt
+import numpy as np
 from cryptography.hazmat.primitives.asymmetric import ec
 
 from app.audio import ValidatedAudio
@@ -75,6 +76,7 @@ class FakeRecordingSource:
     def __init__(self) -> None:
         self.rows: dict[uuid.UUID, tuple[Recording, bytes]] = {}
         self.thresholds: dict[tuple[uuid.UUID, uuid.UUID], StoredThreshold] = {}
+        self.embeddings: dict[tuple[uuid.UUID, uuid.UUID], np.ndarray] = {}
 
     def add(
         self,
@@ -133,18 +135,29 @@ class FakeRecordingSource:
     ) -> StoredThreshold | None:
         return self.thresholds.get((machine_id, model_version_id))
 
+    def get_baseline_embeddings(
+        self, user: AuthenticatedUser, model_version_id: uuid.UUID, recording_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, np.ndarray]:
+        return {
+            rid: vec
+            for (rid, version), vec in self.embeddings.items()
+            if version == model_version_id and rid in recording_ids and self.rows[rid][0].owner_id == user.id
+        }
+
 
 TEST_RULE = ThresholdRule(minimum_baseline_recordings=10, spread=2.0)
 
 
 class FakeModel:
-    """Returns scores from a fixed list, in call order, then repeats the last."""
+    """Each embed() returns the next score from a fixed list (then repeats the
+    last) as a 1-value vector; scoring uses that value directly, like the
+    autoencoder adapter. Its numbers mean nothing."""
 
     def __init__(self, score: float | list[float], machine_type: MachineType = "bearing") -> None:
         self._scores = list(score) if isinstance(score, list) else [score]
         self.info = ModelInfo(
             model_version_id=uuid.UUID("cccccccc-0000-4000-8000-000000000003"),
-            machine_type=machine_type,
+            machine_types=frozenset({machine_type}),
             name="test-only-fake",
             version="0",
             preprocessing_version="test",
@@ -153,19 +166,25 @@ class FakeModel:
         self.limitations = ("Test-only fake; its numbers mean nothing.",)
         self.calls: list[tuple[MachineType, dict[str, ContextValue]]] = []
 
-    def score(
+    def embed(
         self, audio: ValidatedAudio, machine_type: MachineType, context: Mapping[str, ContextValue]
-    ) -> float:
+    ) -> np.ndarray:
         self.calls.append((machine_type, dict(context)))
         index = min(len(self.calls) - 1, len(self._scores) - 1)
-        return self._scores[index]
+        return np.array([self._scores[index]])
+
+    def score(self, query: np.ndarray, baselines: Sequence[np.ndarray]) -> float:
+        return float(query[0])
+
+    def baseline_distances(self, baselines: Sequence[np.ndarray]) -> list[float]:
+        return [float(b[0]) for b in baselines]
 
 
 class FakeRegistry:
     """Registry with models for some machine types only."""
 
     def __init__(self, *models: AnomalyModel) -> None:
-        self._models = {m.info.machine_type: m for m in models}
+        self._models = {t: m for m in models for t in m.info.machine_types}
 
     def has_any_model(self) -> bool:
         return bool(self._models)
@@ -182,6 +201,7 @@ class RecordingPredictionStore:
         self.saved: list[tuple[uuid.UUID, float, str]] = []
         self.saved_rows: list[dict] = []
         self.threshold_writes: list[BaselineThreshold] = []
+        self.embedding_writes: list[uuid.UUID] = []
 
     def save(
         self,
@@ -199,6 +219,13 @@ class RecordingPredictionStore:
              "baseline_count": baseline_count}
         )
         return StoredPrediction(id=uuid.uuid4(), created_at=datetime.now(timezone.utc))
+
+    def save_baseline_embedding(
+        self, recording: Recording, model_version_id: uuid.UUID, embedding: np.ndarray
+    ) -> None:
+        self.embedding_writes.append(recording.id)
+        if self.source is not None:
+            self.source.embeddings[(recording.id, model_version_id)] = embedding
 
     def save_threshold(
         self,

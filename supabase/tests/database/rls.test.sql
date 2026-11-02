@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(57);
+select plan(63);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres, bypassing RLS). Fixed ids keep failures readable.
@@ -38,7 +38,9 @@ values
   ('b2000000-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-000000000002', 'voltage', 230, 'V');
 
 insert into public.model_versions (id, name, version, preprocessing_version, evidence_ref)
-values ('c0000000-0000-0000-0000-000000000001', 'rls-test-model', '0', 'p0', 'rls test fixture');
+values
+  ('c0000000-0000-0000-0000-000000000001', 'rls-test-model', '0', 'p0', 'rls test fixture'),
+  ('c0000000-0000-0000-0000-000000000002', 'rls-test-model', '1', 'p0', 'rls test fixture');
 
 insert into public.predictions (recording_id, owner_id, model_version_id, score, threshold, decision)
 values
@@ -63,6 +65,16 @@ select throws_ok(
     values ('b1000000-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-000000000002',
     'c0000000-0000-0000-0000-000000000001', 1, 1, 0, 2, 3, array[gen_random_uuid(), gen_random_uuid(), gen_random_uuid()])$$,
   '23514', null, 'a threshold needs at least 10 baseline recordings');
+
+insert into public.baseline_embeddings (recording_id, owner_id, model_version_id, embedding)
+values ('b2000000-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-000000000002',
+  'c0000000-0000-0000-0000-000000000001', array[0.6, 0.8]::real[]);
+
+select throws_ok(
+  $$insert into public.baseline_embeddings (recording_id, owner_id, model_version_id, embedding)
+    values ('b2000000-0000-0000-0000-000000000002', 'aaaaaaaa-0000-0000-0000-000000000001',
+    'c0000000-0000-0000-0000-000000000002', array[1.0]::real[])$$,
+  '23503', null, 'an embedding cannot be attached to another owner''s recording');
 
 insert into storage.objects (bucket_id, name, owner_id)
 values ('recordings',
@@ -152,6 +164,18 @@ select throws_ok(
   '42501', null, 'A cannot write own predictions');
 
 select is((select count(*)::int from public.machine_thresholds), 0, 'A cannot see B threshold');
+
+select is((select count(*)::int from public.baseline_embeddings), 0, 'A cannot see B baseline embeddings');
+
+select throws_ok(
+  $$insert into public.baseline_embeddings (recording_id, owner_id, model_version_id, embedding)
+    values ('a2000000-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000001',
+    'c0000000-0000-0000-0000-000000000001', array[1.0]::real[])$$,
+  '42501', null, 'A cannot write an embedding, even for own recording');
+
+select throws_ok(
+  $$delete from public.baseline_embeddings$$,
+  '42501', null, 'A cannot delete embeddings');
 
 select throws_ok(
   $$insert into public.machine_thresholds (
@@ -266,6 +290,7 @@ select is((select value from public.context_readings), 230::double precision, 'B
 select is((select display_name from public.profiles), null, 'B profile unchanged');
 select is((select count(*)::int from public.predictions), 1, 'B sees own prediction');
 select is((select threshold from public.machine_thresholds), 3.5::double precision, 'B sees own threshold, unchanged');
+select is((select embedding from public.baseline_embeddings), array[0.6, 0.8]::real[], 'B sees own embedding, unchanged');
 select is((select count(*)::int from storage.objects where bucket_id = 'recordings'), 1,
   'B file not deleted and A file hidden');
 
@@ -281,6 +306,8 @@ select is((select count(*)::int from public.predictions where owner_id = 'bbbbbb
   0, 'deleting a machine cascades to its predictions');
 select is((select count(*)::int from public.machine_thresholds where owner_id = 'bbbbbbbb-0000-0000-0000-000000000002'),
   0, 'deleting a machine cascades to its thresholds');
+select is((select count(*)::int from public.baseline_embeddings where owner_id = 'bbbbbbbb-0000-0000-0000-000000000002'),
+  0, 'deleting a machine cascades through recordings to their embeddings');
 
 select * from finish();
 rollback;

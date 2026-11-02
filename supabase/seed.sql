@@ -57,3 +57,21 @@ insert into public.model_versions (
     'Below threshold does not mean healthy.'
   ]
 );
+
+-- Frozen AST with nearest-neighbour scoring against each machine's own
+-- baselines (ADR-008). Serves bearing and gearbox, so machine_type is null.
+-- The id and bundle.json sha256 must match ALLOWED_BUNDLES in
+-- backend/app/bundle.py; limitations are copied verbatim from bundle.json.
+insert into public.model_versions (
+  id, name, version, preprocessing_version, evidence_ref, machine_type, bundle_sha256, limitations
+) values (
+  '5e1d0000-0000-4000-8000-00000000b003', 'sonovate-ast-knn', '0.2.0', 'ast-feature-extractor@sonovate-ast-knn-0.2.0',
+  'EXP-007 (frozen AST encoder), EXP-009 (final test vs autoencoder), EXP-010 (10-baseline references and leave-one-out threshold); research prototype per ADR-007 and ADR-008; bundle.json sha256 ee073744c900ba035d00bac819919b990df0f197a26d8ee8077645a68b487509',
+  null, 'ee073744c900ba035d00bac819919b990df0f197a26d8ee8077645a68b487509',
+  array[
+    'Validated only on MIMII DG / DCASE 2022 lab bearings and gearboxes; other machines are out of scope.',
+    'On untouched evaluation data, AST was better than the autoencoder on gearbox (AUC 0.730 vs 0.654) but not on bearing (0.626 vs 0.646) (EXP-009).',
+    'At the baseline threshold it caught only about 3-24% of anomalies with 2-7% false alarms (EXP-010).',
+    'Below threshold does not mean healthy.'
+  ]
+);
