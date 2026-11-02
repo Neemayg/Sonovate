@@ -71,10 +71,14 @@ Tests: `supabase/tests/database/rls.test.sql` (pgTAP, two users) and `supabase/t
 ### Known limits
 - Deleting a machine (not exposed in the UI) cascades database rows but leaves its files in Storage.
 - The client-side upload is three steps (row, file, context) with best-effort rollback, not a transaction.
-- Thresholds are recomputed lazily, on the next analysis after the baseline set changes; deleting a baseline does not touch stored thresholds until then. Baseline embeddings are computed lazily too, so the first analysis after adding baselines runs one transformer pass per new baseline.
+- Thresholds are recomputed lazily, on the next analysis after the baseline set changes; deleting a baseline does not touch stored thresholds until then.
+- Ten baseline recordings give an unstable threshold (EXP-005: false-alarm rate up to 0.20–0.33 at the 95th percentile).
+
+### Model limits (AST, ADR-008)
+- Baseline embeddings are computed lazily, so the first analysis after adding baselines runs one transformer pass per new baseline.
 - A baseline identical to another (distance ≈ 0) or a recording identical to a baseline cannot be logged; the service reports `baseline_invalid` or `same_as_baseline` instead.
 - AST weights are about 346 MB and stay in the git-ignored bundle; the service holds them in memory once loaded.
-- Ten baseline recordings give a cautious threshold with low recall (EXP-010: about 3–24% of anomalies caught at 2–7% false alarms).
+- The EXP-005 figure above is for the autoencoder. For AST, ten baseline recordings give a cautious threshold with low recall (EXP-010: about 3–24% of anomalies caught at 2–7% false alarms).
 
 ## Intended logical components
 1. **Data layer:** raw audio, metadata manifests, context measurements, processed features/splits.
