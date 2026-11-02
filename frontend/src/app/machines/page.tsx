@@ -1,56 +1,86 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { MachineCard, machineStatus } from "@/components/MachineCard";
 import { MachineForm } from "@/components/MachineForm";
-import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
-import { createMachine, listMachines, type Machine } from "@/lib/api";
-import { machineTypeLabel } from "@/lib/modelInputs";
+import { PageHead } from "@/components/PageHead";
+import { ErrorMessage, Loading } from "@/components/Status";
+import { createMachine, listMachineOverviews, summarise, type MachineOverview } from "@/lib/api";
+
+function summary(machines: MachineOverview[]): { value: number; label: string }[] {
+  const counts = { needs_baseline: 0, ready: 0, has_result: 0, unsupported: 0 };
+  for (const m of machines) counts[machineStatus(m)] += 1;
+  return [
+    { value: machines.length, label: machines.length === 1 ? "machine" : "machines" },
+    {
+      value: counts.needs_baseline,
+      label: counts.needs_baseline === 1 ? "needs baseline recordings" : "need baseline recordings",
+    },
+    { value: counts.ready, label: "ready for analysis" },
+    { value: counts.has_result, label: "with results" },
+    { value: counts.unsupported, label: "without analysis support" },
+  ].filter((item, i) => i === 0 || item.value > 0);
+}
 
 function MachinesList() {
-  const [machines, setMachines] = useState<Machine[] | null>(null);
+  const [machines, setMachines] = useState<MachineOverview[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listMachines()
+    listMachineOverviews()
       .then(setMachines)
       .catch((err: Error) => setError(err.message));
   }, []);
 
   return (
     <>
-      <h1>Machines</h1>
-      <section className="card" aria-labelledby="machines-list-title">
-        <h2 id="machines-list-title">Your machines</h2>
+      <PageHead
+        eyebrow="Overview"
+        title="Machines"
+        meta="Each machine is compared only with its own baseline recordings."
+      />
+      <section aria-labelledby="machines-list-title">
+        <h2 id="machines-list-title" className="visually-hidden">
+          Your machines
+        </h2>
         {error && <ErrorMessage>{error}</ErrorMessage>}
         {!error && machines === null && <Loading label="Loading machines…" />}
-        {machines?.length === 0 && <Empty>No machines yet. Add your first machine below.</Empty>}
+        {machines?.length === 0 && (
+          <div className="card empty-state">
+            <p>
+              <strong>No machines yet.</strong>
+            </p>
+            <p className="muted">Add a bearing or gearbox below, then record its normal sound as a baseline.</p>
+          </div>
+        )}
         {machines && machines.length > 0 && (
-          <ul className="list">
-            {machines.map((m) => (
-              <li key={m.id}>
-                <Link href={`/machines/${m.id}`} className="list-link">
-                  <span className="list-title">{m.name}</span>
-                  <span className="muted small">
-                    {[machineTypeLabel(m.machine_type), m.location].filter(Boolean).join(" · ")}
-                    {" · added "}
-                    {formatDateTime(m.created_at)}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="summary-strip" aria-label="Summary">
+              {summary(machines).map((item) => (
+                <li key={item.label}>
+                  <span className="num">{item.value}</span> {item.label}
+                </li>
+              ))}
+            </ul>
+            <ul className="machine-grid">
+              {machines.map((m) => (
+                <li key={m.id}>
+                  <MachineCard machine={m} />
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </section>
 
-      <section className="card" aria-labelledby="machine-create-title">
+      <section className="card add-machine" aria-labelledby="machine-create-title">
         <h2 id="machine-create-title">Add a machine</h2>
         <MachineForm
           submitLabel="Add machine"
           onSubmit={async (input) => {
             const created = await createMachine(input);
-            setMachines((current) => [created, ...(current ?? [])]);
+            setMachines((current) => [summarise(created), ...(current ?? [])]);
           }}
         />
       </section>

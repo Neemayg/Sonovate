@@ -3,11 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { BaselineMeter } from "@/components/BaselineMeter";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { MachineForm } from "@/components/MachineForm";
+import { PageHead } from "@/components/PageHead";
 import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
 import { UploadForm } from "@/components/UploadForm";
 import {
   BASELINE_REQUIRED,
+  deleteMachine,
   getMachine,
   listRecordings,
   updateMachine,
@@ -52,92 +56,99 @@ export function MachineDetail({ id }: { id: string }) {
 
   return (
     <>
-      <p className="breadcrumb">
-        <Link href="/machines">Machines</Link> / {machine.name}
-      </p>
-      <h1>{machine.name}</h1>
+      <PageHead
+        crumbs={[{ href: "/machines", label: "Machines" }]}
+        eyebrow={[machineTypeLabel(machine.machine_type), machine.location].filter(Boolean).join(" · ")}
+        title={machine.name}
+        meta={`${recordings?.length ?? 0} ${recordings?.length === 1 ? "recording" : "recordings"}`}
+        actions={
+          <Link href={`/machines/${machine.id}/history`} className="button-like">
+            History
+          </Link>
+        }
+      />
 
-      <section className="card" aria-labelledby="machine-details-title">
-        <div className="card-header">
-          <h2 id="machine-details-title">Details</h2>
-          {!editing && (
-            <button type="button" className="button-secondary" onClick={() => setEditing(true)}>
-              Edit
-            </button>
+      <div className="columns">
+        <div>
+          <section className="card" aria-labelledby="machine-details-title">
+            <div className="card-header">
+              <h2 id="machine-details-title">Details</h2>
+              {!editing && (
+                <button type="button" className="button-secondary" onClick={() => setEditing(true)}>
+                  Edit
+                </button>
+              )}
+            </div>
+            {editing ? (
+              <MachineForm
+                initial={machine}
+                submitLabel="Save changes"
+                onCancel={() => setEditing(false)}
+                onSubmit={async (input) => {
+                  setMachine(await updateMachine(machine.id, input));
+                  setEditing(false);
+                }}
+              />
+            ) : (
+              <dl className="details">
+                <dt>Type</dt>
+                <dd>{machineTypeLabel(machine.machine_type)}</dd>
+                <dt>Location</dt>
+                <dd>{machine.location ?? "—"}</dd>
+                <dt>Notes</dt>
+                <dd>{machine.notes ?? "—"}</dd>
+                <dt>Last updated</dt>
+                <dd>{formatDateTime(machine.updated_at)}</dd>
+              </dl>
+            )}
+          </section>
+
+          {modelled && (
+            <section className="card" aria-labelledby="baseline-title">
+              <h2 id="baseline-title">Baseline</h2>
+              <p>
+                Results compare a recording with this machine&apos;s own normal sound. Upload at least{" "}
+                {BASELINE_REQUIRED} baseline recordings, made while the machine runs normally, before analysing.
+              </p>
+              <BaselineMeter
+                count={baselineCount}
+                required={BASELINE_REQUIRED}
+                caption={
+                  baselineReady
+                    ? `Ready for analysis${baselineCount > BASELINE_REQUIRED ? ` · ${baselineCount} in total` : ""}`
+                    : `${BASELINE_REQUIRED - baselineCount} more needed`
+                }
+              />
+              {lastBaseline && (
+                <p className="muted small" role="status">
+                  Saved {lastBaseline} as a baseline recording.
+                </p>
+              )}
+              <p className="muted small">
+                Adding or removing a baseline recording changes the threshold used for the next analysis.
+              </p>
+            </section>
           )}
         </div>
-        {editing ? (
-          <MachineForm
-            initial={machine}
-            submitLabel="Save changes"
-            onCancel={() => setEditing(false)}
-            onSubmit={async (input) => {
-              setMachine(await updateMachine(machine.id, input));
-              setEditing(false);
+        <section className="card" aria-labelledby="upload-title">
+          <h2 id="upload-title">Upload a recording</h2>
+          <UploadForm
+            key={`${machine.machine_type}-${baselineReady}`}
+            machineId={machine.id}
+            machineType={machine.machine_type}
+            defaultKind={modelled && !baselineReady ? "baseline" : "analysis"}
+            onUploaded={(r) => {
+              if (r.kind === "baseline") {
+                // Stay here so several baseline recordings can be added in a row.
+                setRecordings((current) => [r, ...(current ?? [])]);
+                setLastBaseline(r.original_filename ?? "the recording");
+              } else {
+                router.push(`/recordings/${r.id}`);
+              }
             }}
           />
-        ) : (
-          <dl className="details">
-            <dt>Type</dt>
-            <dd>{machineTypeLabel(machine.machine_type)}</dd>
-            <dt>Location</dt>
-            <dd>{machine.location ?? "—"}</dd>
-            <dt>Notes</dt>
-            <dd>{machine.notes ?? "—"}</dd>
-            <dt>Last updated</dt>
-            <dd>{formatDateTime(machine.updated_at)}</dd>
-          </dl>
-        )}
-      </section>
-
-      {modelled && (
-        <section className="card" aria-labelledby="baseline-title">
-          <h2 id="baseline-title">Baseline</h2>
-          <p>
-            Results compare a recording with this machine&apos;s own normal sound. Upload at least{" "}
-            {BASELINE_REQUIRED} baseline recordings, made while the machine runs normally, before analysing.
-          </p>
-          <p id="baseline-progress-label">
-            <strong>
-              {Math.min(baselineCount, BASELINE_REQUIRED)}/{BASELINE_REQUIRED} baseline recordings
-            </strong>
-            {baselineCount > BASELINE_REQUIRED && <span className="muted"> ({baselineCount} in total)</span>}
-            {baselineReady ? " · ready for analysis" : ` · ${BASELINE_REQUIRED - baselineCount} more needed`}
-          </p>
-          <progress
-            value={Math.min(baselineCount, BASELINE_REQUIRED)}
-            max={BASELINE_REQUIRED}
-            aria-labelledby="baseline-progress-label"
-          />
-          {lastBaseline && (
-            <p className="muted small" role="status">
-              Saved {lastBaseline} as a baseline recording.
-            </p>
-          )}
-          <p className="muted small">
-            Adding or removing a baseline recording changes the threshold used for the next analysis.
-          </p>
         </section>
-      )}
-
-      <section className="card" aria-labelledby="upload-title">
-        <h2 id="upload-title">Upload a recording</h2>
-        <UploadForm
-          key={`${machine.machine_type}-${baselineReady}`}
-          machineId={machine.id}
-          machineType={machine.machine_type}
-          defaultKind={modelled && !baselineReady ? "baseline" : "analysis"}
-          onUploaded={(r) => {
-            if (r.kind === "baseline") {
-              // Stay here so several baseline recordings can be added in a row.
-              setRecordings((current) => [r, ...(current ?? [])]);
-              setLastBaseline(r.original_filename ?? "the recording");
-            } else {
-              router.push(`/recordings/${r.id}`);
-            }
-          }}
-        />
-      </section>
+      </div>
 
       <section className="card" aria-labelledby="recordings-title">
         <div className="card-header">
@@ -160,6 +171,24 @@ export function MachineDetail({ id }: { id: string }) {
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="card danger-zone" aria-labelledby="delete-machine-title">
+        <h2 id="delete-machine-title">Danger zone</h2>
+        <ConfirmDelete
+          label="Delete machine"
+          confirmText={machine.name}
+          onConfirm={async () => {
+            await deleteMachine(machine.id);
+            router.replace("/machines");
+          }}
+        >
+          <p>
+            This deletes {machine.name} and everything under it: {recordings?.length ?? 0}{" "}
+            {recordings?.length === 1 ? "recording" : "recordings"} with their audio files, operating context, analysis
+            results and baseline threshold.
+          </p>
+        </ConfirmDelete>
       </section>
     </>
   );

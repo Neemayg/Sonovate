@@ -45,7 +45,9 @@ let client: ReturnType<typeof createClient<Database>> | null = null;
 
 function supabase() {
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-    throw new Error("Frontend is not configured: set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.");
+    throw new Error(
+      "Frontend is not configured: set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.",
+    );
   }
   // PKCE: OAuth redirects come back with a one-time ?code= that the client
   // exchanges itself (detectSessionInUrl), instead of tokens in the URL.
@@ -120,10 +122,51 @@ async function requireUserId(): Promise<string> {
 
 // --- machines ---------------------------------------------------------------
 
-export async function listMachines(): Promise<Machine[]> {
-  const { data, error } = await supabase().from("machines").select("*").order("created_at", { ascending: false });
+export type MachineOverview = Machine & {
+  recordingCount: number;
+  baselineCount: number;
+  lastUploadAt: string | null;
+  // The most recent stored result across the machine's recordings, if any.
+  latest: { decision: string; created_at: string; recording_id: string } | null;
+};
+
+type OverviewRow = Machine & {
+  recordings: {
+    id: string;
+    kind: RecordingKind;
+    created_at: string;
+    predictions: { decision: string; created_at: string }[];
+  }[];
+};
+
+// Every machine with what the overview needs, in one request. Counts are
+// worked out here; fine for a handful of machines, not for thousands.
+export async function listMachineOverviews(): Promise<MachineOverview[]> {
+  const { data, error } = await supabase()
+    .from("machines")
+    .select("*, recordings(id, kind, created_at, predictions(decision, created_at))")
+    .order("created_at", { ascending: false });
   if (error) fail("Could not load machines.", error);
-  return data;
+  return (data as OverviewRow[]).map(summarise);
+}
+
+export function summarise(row: Machine & Partial<Pick<OverviewRow, "recordings">>): MachineOverview {
+  const { recordings = [], ...machine } = row;
+  let latest: MachineOverview["latest"] = null;
+  let lastUploadAt: string | null = null;
+  for (const r of recordings) {
+    if (!lastUploadAt || r.created_at > lastUploadAt) lastUploadAt = r.created_at;
+    for (const p of r.predictions) {
+      if (!latest || p.created_at > latest.created_at) latest = { ...p, recording_id: r.id };
+    }
+  }
+  return {
+    ...machine,
+    recordingCount: recordings.length,
+    baselineCount: recordings.filter((r) => r.kind === "baseline").length,
+    lastUploadAt,
+    latest,
+  };
 }
 
 export async function getMachine(id: string): Promise<Machine | null> {
@@ -223,12 +266,70 @@ export async function createRecording(input: NewRecording): Promise<Recording> {
   return row;
 }
 
+// Downloads a recording's audio with the user's own session (Storage RLS
+// applies), for playback and the waveform on the analysis page.
+export async function downloadRecordingAudio(storagePath: string): Promise<Blob> {
+  const { data, error } = await supabase().storage.from(BUCKET).download(storagePath);
+  if (error) fail("Could not load the audio file.", error);
+  return data;
+}
+
+// Supabase blocks deleting storage objects from SQL, so files are removed
+// here, before the rows. If the row delete then fails, the row stays with
+// no file and the delete can simply be retried (removing a missing file is
+// a no-op). The other order could leave an orphaned file nobody can see.
+async function removeFiles(paths: string[]): Promise<void> {
+  const db = supabase();
+  for (let i = 0; i < paths.length; i += 100) {
+    const { error } = await db.storage.from(BUCKET).remove(paths.slice(i, i + 100));
+    if (error) fail("Could not delete the audio files.", error);
+  }
+}
+
+// Deletes one recording: its audio file, then the row. Context readings
+// and results go with the row (foreign-key cascade). Deleting a baseline
+// changes the baseline set, so the machine's threshold is recomputed at its
+// next analysis.
+export async function deleteRecording(recording: Pick<Recording, "id" | "storage_path">): Promise<void> {
+  await removeFiles([recording.storage_path]);
+  const { data, error } = await supabase().from("recordings").delete().eq("id", recording.id).select("id");
+  if (error) fail("Could not delete the recording.", error);
+  if (data.length !== 1) throw new Error("Recording not found. It may already have been deleted.");
+}
+
+// Deletes a machine with everything under it: every file in its storage
+// folder (including any left behind by an interrupted upload), then the
+// machine row, which cascades to recordings, context, results and thresholds.
+export async function deleteMachine(machineId: string): Promise<void> {
+  const ownerId = await requireUserId();
+  const db = supabase();
+  const folder = `${ownerId}/${machineId}`;
+
+  const { data: rows, error: rowsError } = await db
+    .from("recordings")
+    .select("storage_path")
+    .eq("machine_id", machineId);
+  if (rowsError) fail("Could not list the machine's recordings.", rowsError);
+  const { data: objects, error: listError } = await db.storage.from(BUCKET).list(folder, { limit: 1000 });
+  if (listError) fail("Could not list the machine's audio files.", listError);
+
+  const paths = new Set(rows.map((r) => r.storage_path));
+  for (const object of objects) paths.add(`${folder}/${object.name}`);
+  await removeFiles([...paths]);
+
+  const { data, error } = await db.from("machines").delete().eq("id", machineId).select("id");
+  if (error) fail("Could not delete the machine.", error);
+  if (data.length !== 1) throw new Error("Machine not found. It may already have been deleted.");
+}
+
 // Every recording of a machine with its context and any stored predictions,
 // newest first. Predictions exist only once a validated model is registered.
 export async function listMachineHistory(machineId: string): Promise<HistoryEntry[]> {
   const { data, error } = await supabase()
     .from("recordings")
-    .select("*, context_readings(*), predictions(*, model_versions(name, version, preprocessing_version, machine_type, limitations))")
+    .select(
+      "*, context_readings(*), predictions(*, model_versions(name, version, preprocessing_version, machine_type, limitations))",
+    )
     .eq("machine_id", machineId)
     .order("created_at", { ascending: false })
     .order("created_at", { referencedTable: "predictions", ascending: false });

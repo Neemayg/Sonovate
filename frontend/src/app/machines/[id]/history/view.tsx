@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { PageHead } from "@/components/PageHead";
 import { ContextList, PredictionView, SCORE_NOTE } from "@/components/RecordingDetails";
 import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
 import { getMachine, listMachineHistory, type HistoryEntry, type Machine } from "@/lib/api";
@@ -42,15 +43,15 @@ export function MachineHistory({ id }: { id: string }) {
 
   return (
     <>
-      <p className="breadcrumb">
-        <Link href="/machines">Machines</Link> / <Link href={`/machines/${machine.id}`}>{machine.name}</Link> /
-        History
-      </p>
-      <h1>History</h1>
-      <p className="muted">
-        {machine.name} · {machineTypeLabel(machine.machine_type)} · {entries.length}{" "}
-        {entries.length === 1 ? "recording" : "recordings"} ({baselines} baseline), {analysed} analysed
-      </p>
+      <PageHead
+        crumbs={[
+          { href: "/machines", label: "Machines" },
+          { href: `/machines/${machine.id}`, label: machine.name },
+        ]}
+        eyebrow={`${machineTypeLabel(machine.machine_type)} · history`}
+        title={machine.name}
+        meta={`${entries.length} ${entries.length === 1 ? "recording" : "recordings"} · ${baselines} baseline · ${analysed} analysed`}
+      />
 
       <section className="card" aria-labelledby="history-title">
         <h2 id="history-title">Recordings over time</h2>
@@ -61,22 +62,24 @@ export function MachineHistory({ id }: { id: string }) {
         ) : (
           <ol className="timeline">
             {entries.map((e) => (
-              <li key={e.id}>
+              <li key={e.id} className={e.kind === "baseline" ? "is-baseline" : undefined}>
                 <h3>
-                  <Link href={`/recordings/${e.id}`}>{formatDateTime(e.recorded_at ?? e.created_at)}</Link>{" "}
+                  <Link href={`/recordings/${e.id}`} className="num">
+                    {formatDateTime(e.recorded_at ?? e.created_at)}
+                  </Link>{" "}
                   <span className={`tag tag-${e.kind}`}>{e.kind === "baseline" ? "Baseline" : "Analysis"}</span>
                 </h3>
                 <p className="muted small">
                   {e.original_filename ?? "Recording"}
                   {e.recorded_at ? ` · uploaded ${formatDateTime(e.created_at)}` : " · recording time not entered"}
                 </p>
-                <h4>Operating context</h4>
+                <h4 className="eyebrow">Operating context</h4>
                 {e.context_readings.length === 0 ? (
                   <p className="empty small">None entered.</p>
                 ) : (
                   <ContextList readings={e.context_readings} machineType={machine.machine_type} />
                 )}
-                <h4>Analysis</h4>
+                <h4 className="eyebrow">Analysis</h4>
                 {e.kind === "baseline" ? (
                   <p className="empty small">Baseline recording: used to set this machine&apos;s threshold.</p>
                 ) : e.predictions.length === 0 ? (
