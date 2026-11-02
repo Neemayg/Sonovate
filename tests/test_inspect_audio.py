@@ -40,7 +40,7 @@ def test_inspect_reports_duplicates_and_silence(tmp_path):
         for label in ("normal", "anomaly"):
             for index in range(2):
                 name = f"{domain}_{label}_{index}.wav"
-                sf.write(clip_dir / name, tone(440 + 50 * index, hash((domain, label)) % 99), RATE)
+                sf.write(clip_dir / name, tone(440 + 50 * index, len(rows)), RATE)
                 rows.append(
                     {
                         "path": f"gearbox/test/{name}",

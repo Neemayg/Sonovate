@@ -68,6 +68,19 @@ Only record accepted decisions here. Proposed options belong in an issue or task
 - **Consequences/trade-offs:** The original differentiator is not supported on this data and must not be claimed. The product's honest framing is audio-based anomaly detection that shows the operating context beside each result.
 - **Evidence:** EXP-003 and EXP-004 in `docs/EXPERIMENT_LOG.md`.
 
+## ADR-007 — App shows the audio-only model as a labelled research prototype
+- **Status:** Accepted
+- **Date:** 2026-11-02
+- **Context:** A per-machine baseline keeps false alarms at about 2–9% (EXP-005), but recall is low: bearing 00 is at chance at that operating point, and gearbox 00 catches 17–30%.
+- **Decision:** The app may show model results only when all of these hold:
+  - The machine type is bearing or gearbox.
+  - The machine has at least 10 baseline recordings, from which its threshold is computed with the EXP-005 rule.
+  - Each result carries a visible notice: research prototype, low sensitivity, not a diagnosis or failure prediction.
+  - The model version row cites EXP-002 and EXP-005.
+- **Alternatives considered:** Keeping the model hidden until a stronger model exists.
+- **Consequences/trade-offs:** "Below threshold" must never be presented as "healthy". Bearing results are especially weak and must say so. Model weights stay out of git and are loaded from a versioned bundle.
+- **Evidence:** EXP-002 and EXP-005 in `docs/EXPERIMENT_LOG.md`.
+
 ## Pending decisions
 - Feature representation beyond the EXP-002 setup.
 - Recording hardware and context-sensor strategy.

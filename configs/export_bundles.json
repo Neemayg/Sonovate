@@ -1,0 +1,27 @@
+{
+  "audio_config": "configs/baseline_ae.json",
+  "output": "artifacts/bundles",
+  "version": "0.1.0",
+  "preprocessing_version": "logmel-128-frames-5-v1",
+  "weights": {
+    "bearing": "artifacts/EXP-002/bearing.pt",
+    "gearbox": "artifacts/EXP-002/gearbox.pt"
+  },
+  "evidence": ["EXP-002", "EXP-005"],
+  "baseline": {
+    "clips": 10,
+    "spread": 2.0
+  },
+  "limitations": {
+    "bearing": [
+      "Trained on MIMII DG lab bearings only; other machines are out of scope.",
+      "At the baseline threshold, detection was at chance level on bearing section 00 (EXP-005).",
+      "Below threshold does not mean healthy."
+    ],
+    "gearbox": [
+      "Trained on MIMII DG lab gearboxes only; other machines are out of scope.",
+      "At the baseline threshold, it caught 17-30% of anomalies on gearbox section 00 with 5-7% false alarms (EXP-005).",
+      "Below threshold does not mean healthy."
+    ]
+  }
+}
