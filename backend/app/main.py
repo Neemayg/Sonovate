@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 import httpx
+import numpy as np
 from fastapi import Depends, FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,6 +40,11 @@ logger = logging.getLogger("sonovate.inference")
 SCORE_DISCLAIMER = (
     "The score is an uncalibrated anomaly score, not a failure probability or a diagnosis."
 )
+# Distances at or below this mean the audio is the same file; log() of them
+# is meaningless. Real AST distances are around 0.005-0.1, autoencoder scores
+# are tens to hundreds.
+SAME_AUDIO_DISTANCE = 1e-6
+
 # ADR-007: shown with every result.
 PROTOTYPE_NOTICE = "Research prototype, low sensitivity. Not a diagnosis or failure prediction."
 
@@ -217,11 +223,20 @@ def create_app(
                     "Nothing was stored.",
                     {"baseline_count": len(baselines), "baseline_required": required},
                 )
-            threshold = machine_threshold(user, model, recording, baselines, store)
+            vectors = baseline_vectors(user, model, baselines, store)
+            threshold = machine_threshold(user, model, recording, baselines, vectors, store)
 
-            score = float(model.score(audio, recording.machine_type, recording.context))
-            if not (math.isfinite(score) and score > 0):
-                raise RuntimeError("model returned a non-positive score")
+            query = model.embed(audio, recording.machine_type, recording.context)
+            score = float(model.score(query, vectors))
+            if not math.isfinite(score):
+                raise RuntimeError("model returned a non-finite score")
+            if score <= SAME_AUDIO_DISTANCE:
+                raise ApiError(
+                    422,
+                    "same_as_baseline",
+                    "This recording sounds identical to one of the machine's baseline recordings, so it cannot "
+                    "be compared with them. Nothing was stored.",
+                )
             log_score = math.log(score)
             decision: Literal["below_threshold", "above_threshold"] = decide(log_score, threshold)  # type: ignore[assignment]
             info = model.info
@@ -243,7 +258,7 @@ def create_app(
                 decision=decision,
                 baseline_count=len(baselines),
                 model=ModelSummary(
-                    machine_type=info.machine_type,
+                    machine_type=recording.machine_type,
                     name=info.name,
                     version=info.version,
                     preprocessing_version=info.preprocessing_version,
@@ -255,25 +270,49 @@ def create_app(
             disclaimer=SCORE_DISCLAIMER,
         )
 
+    def baseline_vectors(
+        user: AuthenticatedUser, model: AnomalyModel, baselines: list[Recording], store: PredictionStore
+    ) -> list[np.ndarray]:
+        """Each baseline's vector, in baseline order. Stored vectors are reused;
+        missing ones are computed from the audio once and stored."""
+        version = model.info.model_version_id
+        stored = recording_source.get_baseline_embeddings(user, version, [b.id for b in baselines])
+        vectors = []
+        for b in baselines:
+            vector = stored.get(b.id)
+            if vector is None:
+                vector = model.embed(_baseline_audio(user, b), b.machine_type, b.context)
+                store.save_baseline_embedding(b, version, vector)
+            vectors.append(vector)
+        return vectors
+
     def machine_threshold(
         user: AuthenticatedUser,
         model: AnomalyModel,
         recording: Recording,
         baselines: list[Recording],
+        vectors: list[np.ndarray],
         store: PredictionStore,
     ) -> float:
         """The stored threshold if it was computed from exactly these baselines;
-        otherwise score every baseline, recompute (EXP-005 rule) and store it."""
+        otherwise recompute it from the baselines' values and store it."""
         ids = frozenset(b.id for b in baselines)
         stored = recording_source.get_threshold(user, recording.machine_id, model.info.model_version_id)
         if stored is not None and stored.baseline_recording_ids == ids:
             return stored.threshold
 
-        scores = [float(model.score(_baseline_audio(user, b), b.machine_type, b.context)) for b in baselines]
+        distances = model.baseline_distances(vectors)
+        if min(distances) <= SAME_AUDIO_DISTANCE:
+            raise ApiError(
+                422,
+                "baseline_invalid",
+                "Two or more baseline recordings sound identical (the same file uploaded twice?). "
+                "Delete the duplicate so the threshold can be computed.",
+            )
         try:
-            computed = baseline_threshold(scores, model.rule)
+            computed = baseline_threshold(distances, model.rule)
         except ValueError:
-            raise RuntimeError("baseline scores could not form a threshold")
+            raise RuntimeError("baseline values could not form a threshold")
         store.save_threshold(
             recording.machine_id,
             recording.owner_id,

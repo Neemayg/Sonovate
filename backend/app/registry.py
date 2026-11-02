@@ -1,22 +1,32 @@
 """Model registry interface.
 
-Models are per machine type (one for bearing, one for gearbox), matching how
-the ML side trains them on MIMII DG lab recordings. The production registry
-is empty: no model has passed a validated experiment (see
-docs/EXPERIMENT_LOG.md), so the service answers every analysis request with
-"no validated model available".
+Results are always relative to a machine's own baseline recordings
+(ADR-007, ADR-008). A model therefore does three things:
 
-A model can only be supplied by passing a registry object to
-``create_app`` in code. There is deliberately no environment variable,
-config file or import-path setting that loads a model.
+* ``embed`` turns one recording into a vector. For baselines this vector is
+  stored (public.baseline_embeddings), so each baseline is embedded once.
+* ``score`` compares a new recording's vector with the baseline vectors and
+  returns an uncalibrated anomaly score (higher means less typical).
+* ``baseline_distances`` gives one value per baseline, from which the
+  machine's threshold is computed (app/thresholds.py).
+
+The shipped model is the frozen AST bundle (app/ast_bundle.py). The older
+autoencoder bundles still implement this interface (app/bundle.py) but are
+not on the default allow-list.
+
+A model can only be supplied by the allow-listed bundles in code or by
+passing a registry to ``create_app``. There is deliberately no setting that
+loads a model from an arbitrary path or import.
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol
+
+import numpy as np
 
 from app.audio import ValidatedAudio
 from app.thresholds import ThresholdRule
@@ -38,7 +48,7 @@ class ContextValue:
 class ModelInfo:
     # Must match a row in public.model_versions.
     model_version_id: uuid.UUID
-    machine_type: MachineType
+    machine_types: frozenset[str]
     name: str
     version: str
     preprocessing_version: str
@@ -51,19 +61,22 @@ class AnomalyModel(Protocol):
     # Shown with every result (from the bundle).
     limitations: tuple[str, ...]
 
-    def score(
+    def embed(
         self,
         audio: ValidatedAudio,
         machine_type: MachineType,
         context: Mapping[str, ContextValue],
-    ) -> float:
-        """Return an uncalibrated anomaly score. Higher means less typical.
+    ) -> np.ndarray:
+        """One vector per recording. Models are audio-only (ADR-006): the
+        context is passed for completeness and must not change the result."""
+        ...
 
-        ``context`` holds every reading entered for the recording, keyed by
-        name (see frontend/src/lib/modelInputs.ts for the names models use).
-        A model must ignore readings it was not trained on, convert units
-        itself and treat missing readings as absent.
-        """
+    def score(self, query: np.ndarray, baselines: Sequence[np.ndarray]) -> float:
+        """Uncalibrated anomaly score of ``query`` against the baselines."""
+        ...
+
+    def baseline_distances(self, baselines: Sequence[np.ndarray]) -> list[float]:
+        """One positive value per baseline; the threshold is computed from these."""
         ...
 
 
@@ -74,7 +87,7 @@ class ModelRegistry(Protocol):
 
 
 class EmptyModelRegistry:
-    """The only registry shipped with the service."""
+    """Used when no bundle directory is configured."""
 
     def has_any_model(self) -> bool:
         return False

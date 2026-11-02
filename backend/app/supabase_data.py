@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Protocol
 
 import httpx
+import numpy as np
 
 from app.audio import MAX_RECORDING_BYTES
 from app.auth import AuthenticatedUser
@@ -70,6 +71,10 @@ class RecordingSource(Protocol):
         self, user: AuthenticatedUser, machine_id: uuid.UUID, model_version_id: uuid.UUID
     ) -> StoredThreshold | None: ...
 
+    def get_baseline_embeddings(
+        self, user: AuthenticatedUser, model_version_id: uuid.UUID, recording_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, np.ndarray]: ...
+
 
 class PredictionStore(Protocol):
     def save(
@@ -91,6 +96,10 @@ class PredictionStore(Protocol):
         computed: BaselineThreshold,
         spread: float,
         baseline_recording_ids: list[uuid.UUID],
+    ) -> None: ...
+
+    def save_baseline_embedding(
+        self, recording: Recording, model_version_id: uuid.UUID, embedding: np.ndarray
     ) -> None: ...
 
 
@@ -170,6 +179,27 @@ class SupabaseRecordingSource:
             baseline_count=int(row["baseline_count"]),
             baseline_recording_ids=frozenset(uuid.UUID(i) for i in row["baseline_recording_ids"]),
         )
+
+    def get_baseline_embeddings(
+        self, user: AuthenticatedUser, model_version_id: uuid.UUID, recording_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, np.ndarray]:
+        found: dict[uuid.UUID, np.ndarray] = {}
+        # Chunked to keep request URLs short for machines with many baselines.
+        for i in range(0, len(recording_ids), 50):
+            chunk = recording_ids[i : i + 50]
+            rows = self._get(
+                user,
+                "baseline_embeddings",
+                {
+                    "model_version_id": f"eq.{model_version_id}",
+                    "recording_id": f"in.({','.join(str(r) for r in chunk)})",
+                    "owner_id": f"eq.{user.id}",
+                    "select": "recording_id,embedding",
+                },
+            )
+            for row in rows:
+                found[uuid.UUID(row["recording_id"])] = np.asarray(row["embedding"], dtype=np.float32)
+        return found
 
     def download(self, user: AuthenticatedUser, recording: Recording) -> bytes:
         url = (
@@ -265,6 +295,23 @@ class SupabasePredictionStore:
             raise UpstreamError(f"database returned {res.status_code}")
         row = res.json()[0]
         return StoredPrediction(id=uuid.UUID(row["id"]), created_at=datetime.fromisoformat(row["created_at"]))
+
+    def save_baseline_embedding(
+        self, recording: Recording, model_version_id: uuid.UUID, embedding: np.ndarray
+    ) -> None:
+        res = self._post(
+            "baseline_embeddings",
+            {
+                "recording_id": str(recording.id),
+                "owner_id": str(recording.owner_id),
+                "model_version_id": str(model_version_id),
+                "embedding": [float(v) for v in np.asarray(embedding, dtype=np.float32)],
+            },
+            "resolution=merge-duplicates,return=minimal",
+            params={"on_conflict": "recording_id,model_version_id"},
+        )
+        if res.status_code not in (200, 201, 204):
+            raise UpstreamError(f"database returned {res.status_code}")
 
     def save_threshold(
         self,

@@ -131,3 +131,46 @@ def test_result_writes_use_the_secret_key_only_as_apikey() -> None:
     assert seen[0].read() and b'"log_score":0.693' in seen[0].content
     assert seen[1].url.params["on_conflict"] == "machine_id,model_version_id"
     assert "merge-duplicates" in seen[1].headers["prefer"]
+
+
+def test_baseline_embeddings_are_read_with_the_users_token_and_filtered() -> None:
+    ids = [uuid.uuid4() for _ in range(3)]
+    version = uuid.uuid4()
+    seen: list[httpx.Request] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        return httpx.Response(200, json=[{"recording_id": str(ids[0]), "embedding": [0.6, 0.8]}])
+
+    found = source_for(handler).get_baseline_embeddings(USER, version, ids)
+    params = seen[0].url.params
+    assert seen[0].url.path.endswith("/baseline_embeddings")
+    assert params["model_version_id"] == f"eq.{version}" and params["owner_id"] == f"eq.{USER_A}"
+    assert params["recording_id"] == f"in.({','.join(str(i) for i in ids)})"
+    assert seen[0].headers["authorization"] == "Bearer user-a-token"
+    assert list(found) == [ids[0]] and found[ids[0]].tolist() == pytest.approx([0.6, 0.8])
+
+
+def test_baseline_embedding_writes_upsert_with_the_secret_key() -> None:
+    from dataclasses import replace
+
+    import numpy as np
+
+    from app.supabase_data import SupabasePredictionStore
+
+    seen: list[httpx.Request] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        return httpx.Response(201)
+
+    store = SupabasePredictionStore(
+        replace(SETTINGS, supabase_secret_key="test-secret"), httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    rec = Recording(id=uuid.uuid4(), owner_id=USER_A, machine_id=uuid.uuid4(), storage_path="x/y/z.wav")
+    store.save_baseline_embedding(rec, uuid.uuid4(), np.array([0.6, 0.8], dtype=np.float32))
+    req = seen[0]
+    assert req.url.path.endswith("/baseline_embeddings")
+    assert req.headers["apikey"] == "test-secret" and "authorization" not in req.headers
+    assert req.url.params["on_conflict"] == "recording_id,model_version_id"
+    assert b'"owner_id":"' + str(USER_A).encode() in req.content

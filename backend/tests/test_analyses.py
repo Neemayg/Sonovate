@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import uuid
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -286,13 +287,14 @@ def test_threshold_is_reused_until_baselines_change(source: FakeRecordingSource,
     assert len(model.calls) == 11 and len(store.threshold_writes) == 1
 
     client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
-    assert len(model.calls) == 12, "unchanged baselines: only the target is scored"
+    assert len(model.calls) == 12, "unchanged baselines: only the target is embedded"
     assert len(store.threshold_writes) == 1
 
     source.add_baselines(USER_A, 1, machine_id=machine)
     res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
-    assert len(model.calls) == 12 + 11 + 1, "a new baseline triggers a full recompute"
-    assert len(store.threshold_writes) == 2
+    assert len(model.calls) == 12 + 1 + 1, "only the new baseline and the target are embedded"
+    assert len(store.embedding_writes) == 11, "each baseline is embedded and stored once"
+    assert len(store.threshold_writes) == 2, "a changed baseline set recomputes the threshold"
     assert store.threshold_writes[-1].count == 11
     assert res.json()["prediction"]["baseline_count"] == 11
 
@@ -392,3 +394,40 @@ def test_model_for_the_machine_type_receives_type_and_context(
     assert res.json()["prediction"]["model"]["machine_type"] == "gearbox"
     assert gearbox.calls[-1] == ("gearbox", context)
     assert bearing.calls == []
+
+
+def test_identical_baselines_are_reported(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    # Two baselines at distance 0 from each other: the same file uploaded twice.
+    client, store = make_app(source, verifier, FakeModel([0.0] + BASELINE_SCORES[1:] + [1.0]))
+    machine = source.add_baselines(USER_A, 10)
+    rid = source.add(USER_A, wav_bytes(), machine_id=machine)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 422
+    assert error_code(res) == "baseline_invalid"
+    assert "identical" in res.json()["error"]["message"]
+    assert store.saved == [] and store.threshold_writes == []
+
+
+def test_recording_identical_to_a_baseline_is_reported(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    client, store = make_app(source, verifier, FakeModel(BASELINE_SCORES + [0.0]))
+    machine = source.add_baselines(USER_A, 10)
+    rid = source.add(USER_A, wav_bytes(), machine_id=machine)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 422
+    assert error_code(res) == "same_as_baseline"
+    assert store.saved == []
+
+
+def test_stored_baseline_embeddings_of_other_users_are_not_used(
+    source: FakeRecordingSource, verifier: TokenVerifier
+) -> None:
+    model = FakeModel(1.0)
+    client, store = make_app(source, verifier, model)
+    machine = source.add_baselines(USER_A, 10)
+    # Plant an embedding under another user's recording id: never read for A.
+    other = source.add(USER_B, wav_bytes(), kind="baseline")
+    source.embeddings[(other, model.info.model_version_id)] = np.array([123.0])
+    rid = source.add(USER_A, wav_bytes(), machine_id=machine)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 200
+    assert len(store.embedding_writes) == 10 and other not in store.embedding_writes

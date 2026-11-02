@@ -1,14 +1,19 @@
-"""Versioned model bundles (ADR-007).
+"""Versioned model bundles (ADR-007, ADR-008).
 
-A bundle is a directory exported by the ML side (`ml/export.py`) holding
-`bundle.json` (the spec), `model.pt`, `mel_filterbank.npy` and parity WAVs.
-This module reimplements the bundle's preprocessing and model from the spec;
-it does not import `ml/`.
+A bundle is a directory exported by the ML side holding `bundle.json` (the
+spec), the model files and parity WAVs. This service reimplements each
+bundle's preprocessing and scoring from its spec; it does not import `ml/`.
 
 Only bundles listed in ALLOWED_BUNDLES can load. Each entry pins the sha256
 of `bundle.json`, and `bundle.json` in turn pins the sha256 of every other
 file, so changing any byte of a bundle stops it loading. The environment may
 only say which directory holds the bundles.
+
+Two kinds exist:
+* ``ast``: frozen AST with nearest-neighbour scoring (app/ast_bundle.py),
+  the product model since ADR-008 and the only one allow-listed.
+* ``autoencoder``: the earlier per-type autoencoders (this module). Their
+  code is kept and tested, but they are not on the default allow-list.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import torch
@@ -37,7 +43,8 @@ logger = logging.getLogger("sonovate.inference")
 class AllowedBundle:
     name: str
     version: str
-    machine_type: MachineType
+    kind: Literal["ast", "autoencoder"]
+    machine_types: frozenset[str]
     bundle_json_sha256: str
     # Must match the row seeded in public.model_versions (supabase/seed.sql).
     model_version_id: uuid.UUID
@@ -47,22 +54,37 @@ class AllowedBundle:
         return f"{self.name}-{self.version}"
 
 
-ALLOWED_BUNDLES: tuple[AllowedBundle, ...] = (
+AST_BUNDLE = AllowedBundle(
+    name="sonovate-ast-knn",
+    version="0.2.0",
+    kind="ast",
+    machine_types=frozenset({"bearing", "gearbox"}),
+    bundle_json_sha256="ee073744c900ba035d00bac819919b990df0f197a26d8ee8077645a68b487509",
+    model_version_id=uuid.UUID("5e1d0000-0000-4000-8000-00000000b003"),
+)
+
+# Superseded by AST (ADR-008). Kept so the code and its parity tests stay
+# usable; never loaded unless passed to BundleRegistry explicitly.
+AUTOENCODER_BUNDLES: tuple[AllowedBundle, ...] = (
     AllowedBundle(
         name="sonovate-autoencoder-bearing",
         version="0.1.0",
-        machine_type="bearing",
+        kind="autoencoder",
+        machine_types=frozenset({"bearing"}),
         bundle_json_sha256="3357651c3aca0eec136e31d6626981d292870c8e1a4c1fdc2525011e2ab70a73",
         model_version_id=uuid.UUID("5e1d0000-0000-4000-8000-00000000b001"),
     ),
     AllowedBundle(
         name="sonovate-autoencoder-gearbox",
         version="0.1.0",
-        machine_type="gearbox",
+        kind="autoencoder",
+        machine_types=frozenset({"gearbox"}),
         bundle_json_sha256="ca9ad32773c4e0fd5979cb4b2132f4c9611568f9fc8a202b7674502f95ed89cd",
         model_version_id=uuid.UUID("5e1d0000-0000-4000-8000-00000000b002"),
     ),
 )
+
+ALLOWED_BUNDLES: tuple[AllowedBundle, ...] = (AST_BUNDLE,)
 
 # The only preprocessing this module implements. A bundle declaring anything
 # else is refused rather than scored with the wrong features.
@@ -155,14 +177,27 @@ class BundleModel:
         inputs = torch.from_numpy(clip_vectors(samples, self.features))
         return float(torch.mean((self.network(inputs) - inputs) ** 2))
 
-    def score(
-        self, audio: ValidatedAudio, machine_type: MachineType, context: Mapping[str, ContextValue]
-    ) -> float:
-        if machine_type != self.info.machine_type:
+    def raw_score(self, audio: ValidatedAudio, machine_type: MachineType) -> float:
+        """Mean squared reconstruction error of the clip (bundle.json "score")."""
+        if machine_type not in self.info.machine_types:
             raise ValueError("bundle used for the wrong machine type")
         if audio.sample_rate_hz != self.sample_rate or audio.channels != 1:
             raise ValueError("audio does not match the bundle's input contract")
         return self.score_samples(decode_samples(audio))
+
+    # AnomalyModel: the autoencoder scores each clip on its own, so its
+    # "embedding" is just that score, and the baseline values are the
+    # baselines' own scores (the EXP-005 rule).
+    def embed(
+        self, audio: ValidatedAudio, machine_type: MachineType, context: Mapping[str, ContextValue]
+    ) -> np.ndarray:
+        return np.array([self.raw_score(audio, machine_type)], dtype=np.float64)
+
+    def score(self, query: np.ndarray, baselines: Sequence[np.ndarray]) -> float:
+        return float(query[0])
+
+    def baseline_distances(self, baselines: Sequence[np.ndarray]) -> list[float]:
+        return [float(b[0]) for b in baselines]
 
 
 def _require(condition: bool, message: str) -> None:
@@ -170,7 +205,16 @@ def _require(condition: bool, message: str) -> None:
         raise BundleError(message)
 
 
-def load_bundle(directory: Path, allowed: AllowedBundle) -> BundleModel:
+# Experiments each kind of bundle must cite (ADR-007, ADR-008).
+REQUIRED_EVIDENCE = {
+    "autoencoder": {"EXP-002", "EXP-005"},
+    "ast": {"EXP-007", "EXP-009", "EXP-010"},
+}
+
+
+def verify_bundle(directory: Path, allowed: AllowedBundle, required_files: set[str]) -> dict:
+    """Checks the pinned bundle.json hash, identity, evidence and every listed
+    file's sha256; returns the parsed spec. Raises BundleError on any mismatch."""
     spec_path = directory / "bundle.json"
     _require(spec_path.is_file(), f"{allowed.directory_name}: bundle.json not found")
     _require(
@@ -178,21 +222,28 @@ def load_bundle(directory: Path, allowed: AllowedBundle) -> BundleModel:
         f"{allowed.directory_name}: bundle.json does not match the pinned sha256",
     )
     spec = json.loads(spec_path.read_text())
-
     _require(spec.get("name") == allowed.name and spec.get("version") == allowed.version,
              f"{allowed.directory_name}: name or version differs from the allow-list")
-    _require(spec.get("machine_type") == allowed.machine_type, f"{allowed.directory_name}: wrong machine type")
-    _require(spec.get("preprocessing_version") == SUPPORTED_PREPROCESSING,
-             f"{allowed.directory_name}: unsupported preprocessing {spec.get('preprocessing_version')!r}")
+    declared = set(spec.get("machine_types") or [spec.get("machine_type")])
+    _require(declared == set(allowed.machine_types), f"{allowed.directory_name}: wrong machine type")
     evidence = set(spec.get("evidence", []))
-    _require({"EXP-002", "EXP-005"} <= evidence, f"{allowed.directory_name}: must cite EXP-002 and EXP-005")
+    _require(REQUIRED_EVIDENCE[allowed.kind] <= evidence,
+             f"{allowed.directory_name}: must cite {', '.join(sorted(REQUIRED_EVIDENCE[allowed.kind]))}")
 
     hashes: dict[str, str] = spec.get("sha256", {})
-    _require({"model.pt", "mel_filterbank.npy"} <= hashes.keys(), f"{allowed.directory_name}: sha256 list incomplete")
+    _require(required_files <= hashes.keys(), f"{allowed.directory_name}: sha256 list incomplete")
     for name, expected in hashes.items():
         path = directory / name
         _require(path.is_file() and path.parent == directory, f"{allowed.directory_name}: {name} missing")
         _require(file_sha256(path) == expected, f"{allowed.directory_name}: {name} does not match its sha256")
+    return spec
+
+
+def load_bundle(directory: Path, allowed: AllowedBundle) -> BundleModel:
+    """Loads an autoencoder bundle."""
+    spec = verify_bundle(directory, allowed, {"model.pt", "mel_filterbank.npy"})
+    _require(spec.get("preprocessing_version") == SUPPORTED_PREPROCESSING,
+             f"{allowed.directory_name}: unsupported preprocessing {spec.get('preprocessing_version')!r}")
 
     audio, feats, model_spec, rule_spec = spec["audio"], spec["features"], spec["model"], spec["threshold"]
     _require(audio["channels"] == 1, f"{allowed.directory_name}: only mono is supported")
@@ -221,7 +272,7 @@ def load_bundle(directory: Path, allowed: AllowedBundle) -> BundleModel:
 
     info = ModelInfo(
         model_version_id=allowed.model_version_id,
-        machine_type=allowed.machine_type,
+        machine_types=allowed.machine_types,
         name=allowed.name,
         version=allowed.version,
         preprocessing_version=spec["preprocessing_version"],
@@ -241,29 +292,37 @@ def load_bundle(directory: Path, allowed: AllowedBundle) -> BundleModel:
 class BundleRegistry:
     """Loads the allow-listed bundles found in one directory.
 
-    A bundle that is absent is skipped (its machine type then has no model).
+    A bundle that is absent is skipped (its machine types then have no model).
     A bundle that is present but altered or unsupported raises BundleError,
     so the service refuses to start rather than serve a tampered model.
     """
 
     def __init__(self, bundles_dir: Path, allowed: Sequence[AllowedBundle] = ALLOWED_BUNDLES) -> None:
-        self._models: dict[str, BundleModel] = {}
+        self._models: dict[str, AnomalyModel] = {}
         for entry in allowed:
             directory = bundles_dir / entry.directory_name
             if not directory.is_dir():
-                logger.warning("model bundle %s not found; %s has no model", entry.directory_name, entry.machine_type)
+                logger.warning("model bundle %s not found; %s have no model", entry.directory_name,
+                               ", ".join(sorted(entry.machine_types)))
                 continue
-            self._models[entry.machine_type] = load_bundle(directory, entry)
+            if entry.kind == "ast":
+                from app.ast_bundle import load_ast_bundle  # imports transformers; only when needed
+
+                model: AnomalyModel = load_ast_bundle(directory, entry)
+            else:
+                model = load_bundle(directory, entry)
+            for machine_type in entry.machine_types:
+                self._models[machine_type] = model
             logger.info("loaded model bundle %s", entry.directory_name)
 
     def has_any_model(self) -> bool:
         return bool(self._models)
 
-    def model_for(self, machine_type: MachineType) -> BundleModel | None:
+    def model_for(self, machine_type: MachineType) -> AnomalyModel | None:
         return self._models.get(machine_type)
 
-    def models(self) -> list[BundleModel]:
-        return list(self._models.values())
+    def models(self) -> list[AnomalyModel]:
+        return list({id(m): m for m in self._models.values()}.values())
 
 
 def _assert_protocol(model: BundleModel) -> AnomalyModel:

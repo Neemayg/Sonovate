@@ -5,7 +5,33 @@ export type Database = {
   
   "public": {
           Tables: {
-            "context_readings": {
+            "baseline_embeddings": {
+                  Row: {
+                    "created_at": string,"embedding": (number)[],"model_version_id": string,"owner_id": string,"recording_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"embedding": (number)[],"model_version_id": string,"owner_id": string,"recording_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"embedding"?: (number)[],"model_version_id"?: string,"owner_id"?: string,"recording_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "baseline_embeddings_model_version_id_fkey"
+      columns: ["model_version_id"]
+isOneToOne: false
+      referencedRelation: "model_versions"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "baseline_embeddings_recording_id_owner_id_fkey"
+      columns: ["recording_id","owner_id"]
+isOneToOne: false
+      referencedRelation: "recordings"
+      referencedColumns: ["id","owner_id"]
+    }
+                  ]
+                },"context_readings": {
                   Row: {
                     "created_at": string,"id": string,"name": string,"owner_id": string,"recording_id": string,"source": string,"unit": string,"value": number
                   }
