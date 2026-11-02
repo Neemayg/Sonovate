@@ -9,7 +9,7 @@ not allowed to write predictions.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
 
@@ -18,6 +18,7 @@ import httpx
 from app.audio import MAX_RECORDING_BYTES
 from app.auth import AuthenticatedUser
 from app.config import Settings
+from app.registry import ContextValue, MachineType
 
 
 class RecordingNotFound(Exception):
@@ -38,6 +39,8 @@ class Recording:
     owner_id: uuid.UUID
     machine_id: uuid.UUID
     storage_path: str
+    machine_type: MachineType = "other"
+    context: dict[str, ContextValue] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -80,7 +83,10 @@ class SupabaseRecordingSource:
                 f"{self._settings.supabase_url}/rest/v1/recordings",
                 params={
                     "id": f"eq.{recording_id}",
-                    "select": "id,owner_id,machine_id,storage_path",
+                    "select": (
+                        "id,owner_id,machine_id,storage_path,"
+                        "machines(machine_type),context_readings(name,value,unit)"
+                    ),
                 },
                 headers=self._headers(user),
             )
@@ -97,6 +103,11 @@ class SupabaseRecordingSource:
             owner_id=uuid.UUID(row["owner_id"]),
             machine_id=uuid.UUID(row["machine_id"]),
             storage_path=row["storage_path"],
+            machine_type=_machine_type(row.get("machines")),
+            context={
+                str(c["name"]): ContextValue(value=float(c["value"]), unit=str(c["unit"]))
+                for c in row.get("context_readings") or []
+            },
         )
         # Defence in depth: do not rely on RLS alone.
         if recording.owner_id != user.id:
@@ -122,6 +133,13 @@ class SupabaseRecordingSource:
                 return bytes(buf)
         except httpx.HTTPError as exc:
             raise UpstreamError("storage unreachable") from exc
+
+
+def _machine_type(machine: object) -> MachineType:
+    value = machine.get("machine_type") if isinstance(machine, dict) else None
+    if value == "bearing" or value == "gearbox":
+        return value
+    return "other"
 
 
 class SupabasePredictionStore:

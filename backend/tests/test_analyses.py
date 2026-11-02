@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.auth import TokenVerifier
 from app.main import create_app
 from app.registry import EmptyModelRegistry
+from app.registry import ContextValue
 from tests.conftest import SETTINGS
 from tests.fakes import (
     OTHER_KEY,
@@ -132,7 +133,10 @@ def test_error_bodies_do_not_leak_paths(client: TestClient, source: FakeRecordin
 
 def test_unexpected_error_is_generic_500(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
     class Exploding:
-        def active_model(self):
+        def has_any_model(self):
+            raise RuntimeError("/secret/path/model.pt missing")
+
+        def model_for(self, machine_type):
             raise RuntimeError("/secret/path/model.pt missing")
 
     app = create_app(SETTINGS, verifier=verifier, recording_source=source, registry=Exploding())
@@ -148,7 +152,9 @@ def test_unexpected_error_is_generic_500(source: FakeRecordingSource, verifier: 
 
 
 def test_default_registry_is_empty() -> None:
-    assert EmptyModelRegistry().active_model() is None
+    registry = EmptyModelRegistry()
+    assert not registry.has_any_model()
+    assert registry.model_for("bearing") is None and registry.model_for("gearbox") is None
 
 
 def test_no_validated_model_response(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
@@ -205,3 +211,73 @@ def test_fake_model_does_not_bypass_ownership(source: FakeRecordingSource, verif
     res = TestClient(app).post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth(make_token(USER_A)))
     assert res.status_code == 404
     assert store.saved == []
+
+
+# --- machine types and context ---------------------------------------------
+
+
+@pytest.mark.parametrize("machine_type", ["bearing", "gearbox"])
+def test_modelled_types_get_no_validated_model_with_shipped_registry(
+    client: TestClient, source: FakeRecordingSource, machine_type: str
+) -> None:
+    rid = source.add(USER_A, wav_bytes(), machine_type=machine_type)  # type: ignore[arg-type]
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 503
+    assert error_code(res) == "no_validated_model"
+
+
+def test_other_machine_type_is_unsupported(client: TestClient, source: FakeRecordingSource) -> None:
+    rid = source.add(USER_A, wav_bytes(), machine_type="other")
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 422
+    assert error_code(res) == "unsupported_machine_type"
+
+
+def test_other_is_unsupported_even_when_models_exist(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    store = RecordingPredictionStore()
+    app = create_app(
+        SETTINGS, verifier=verifier, recording_source=source,
+        registry=FakeRegistry(FakeModel(0.1, "bearing"), FakeModel(0.1, "gearbox")), prediction_store=store,
+    )
+    rid = source.add(USER_A, wav_bytes(), machine_type="other")
+    res = TestClient(app).post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert error_code(res) == "unsupported_machine_type"
+    assert store.saved == []
+
+
+def test_type_without_a_model_is_unsupported(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    store = RecordingPredictionStore()
+    app = create_app(
+        SETTINGS, verifier=verifier, recording_source=source,
+        registry=FakeRegistry(FakeModel(0.1, "bearing")), prediction_store=store,
+    )
+    rid = source.add(USER_A, wav_bytes(), machine_type="gearbox")
+    res = TestClient(app).post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 422
+    assert error_code(res) == "unsupported_machine_type"
+    assert "gearbox" in res.json()["error"]["message"]
+    assert store.saved == []
+
+
+def test_invalid_audio_is_reported_before_machine_type(client: TestClient, source: FakeRecordingSource) -> None:
+    rid = source.add(USER_A, wav_bytes(rate=8000), machine_type="other")
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert error_code(res) == "wrong_sample_rate"
+
+
+def test_model_for_the_machine_type_receives_type_and_context(
+    source: FakeRecordingSource, verifier: TokenVerifier
+) -> None:
+    bearing, gearbox = FakeModel(0.9, "bearing"), FakeModel(0.1, "gearbox")
+    store = RecordingPredictionStore()
+    app = create_app(
+        SETTINGS, verifier=verifier, recording_source=source,
+        registry=FakeRegistry(bearing, gearbox), prediction_store=store,
+    )
+    context = {"voltage": ContextValue(1.3, "V"), "weight": ContextValue(150.0, "g")}
+    rid = source.add(USER_A, wav_bytes(), machine_type="gearbox", context=context)
+    res = TestClient(app).post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 200
+    assert res.json()["prediction"]["model"]["machine_type"] == "gearbox"
+    assert gearbox.calls == [("gearbox", context)]
+    assert bearing.calls == []

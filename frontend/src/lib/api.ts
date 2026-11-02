@@ -26,8 +26,13 @@ export type Prediction = Tables["predictions"]["Row"] & {
 };
 
 export type RecordingDetail = Recording & {
-  machines: Pick<Machine, "id" | "name"> | null;
+  machines: Pick<Machine, "id" | "name" | "machine_type"> | null;
   context_readings: ContextReading[];
+};
+
+export type HistoryEntry = Recording & {
+  context_readings: ContextReading[];
+  predictions: Prediction[];
 };
 
 let client: ReturnType<typeof createClient<Database>> | null = null;
@@ -148,7 +153,7 @@ export async function listRecordings(machineId: string): Promise<Recording[]> {
 export async function getRecording(id: string): Promise<RecordingDetail | null> {
   const { data, error } = await supabase()
     .from("recordings")
-    .select("*, machines(id, name), context_readings(*)")
+    .select("*, machines(id, name, machine_type), context_readings(*)")
     .eq("id", id)
     .maybeSingle();
   if (error) fail("Could not load this recording.", error);
@@ -212,6 +217,19 @@ export async function createRecording(input: NewRecording): Promise<Recording> {
   return row;
 }
 
+// Every recording of a machine with its context and any stored predictions,
+// newest first. Predictions exist only once a validated model is registered.
+export async function listMachineHistory(machineId: string): Promise<HistoryEntry[]> {
+  const { data, error } = await supabase()
+    .from("recordings")
+    .select("*, context_readings(*), predictions(*, model_versions(name, version, preprocessing_version))")
+    .eq("machine_id", machineId)
+    .order("created_at", { ascending: false })
+    .order("created_at", { referencedTable: "predictions", ascending: false });
+  if (error) fail("Could not load the machine history.", error);
+  return data as HistoryEntry[];
+}
+
 export async function listPredictions(recordingId: string): Promise<Prediction[]> {
   const { data, error } = await supabase()
     .from("predictions")
@@ -238,6 +256,7 @@ export type AnalysisResult =
       disclaimer: string;
     }
   | { status: "no_validated_model"; message: string }
+  | { status: "unsupported_machine_type"; message: string }
   | { status: "error"; code: string; message: string };
 
 export async function requestAnalysis(recordingId: string): Promise<AnalysisResult> {
@@ -267,5 +286,6 @@ export async function requestAnalysis(recordingId: string): Promise<AnalysisResu
   const code: string = body?.error?.code ?? "unexpected_response";
   const message: string = body?.error?.message ?? `Unexpected response from the analysis service (${res.status}).`;
   if (code === "no_validated_model") return { status: "no_validated_model", message };
+  if (code === "unsupported_machine_type") return { status: "unsupported_machine_type", message };
   return { status: "error", code, message };
 }

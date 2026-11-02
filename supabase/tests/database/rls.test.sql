@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(40);
+select plan(46);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres, bypassing RLS). Fixed ids keep failures readable.
@@ -93,6 +93,7 @@ select is((select count(*)::int from storage.objects where bucket_id = 'recordin
 
 -- writes against B's rows silently affect nothing
 update public.machines set name = 'hijacked' where id = 'b1000000-0000-0000-0000-000000000002';
+update public.machines set machine_type = 'bearing' where id = 'b1000000-0000-0000-0000-000000000002';
 delete from public.machines where id = 'b1000000-0000-0000-0000-000000000002';
 delete from public.recordings where id = 'b2000000-0000-0000-0000-000000000002';
 update public.context_readings set value = 0 where owner_id = 'bbbbbbbb-0000-0000-0000-000000000002';
@@ -169,6 +170,25 @@ select lives_ok(
 select is((select name from public.machines where id = 'a1000000-0000-0000-0000-000000000001'),
   'A pump v2', 'A edit was applied');
 
+-- machine_type
+select is((select machine_type::text from public.machines where id = 'a1000000-0000-0000-0000-000000000001'),
+  'other', 'machine_type defaults to other');
+
+select lives_ok(
+  $$update public.machines set machine_type = 'bearing' where id = 'a1000000-0000-0000-0000-000000000001'$$,
+  'A can set own machine type');
+
+select is((select machine_type::text from public.machines where id = 'a1000000-0000-0000-0000-000000000001'),
+  'bearing', 'A machine type change was applied');
+
+select throws_ok(
+  $$update public.machines set machine_type = 'pump' where id = 'a1000000-0000-0000-0000-000000000001'$$,
+  '22P02', null, 'machine_type only accepts bearing, gearbox or other');
+
+select lives_ok(
+  $$insert into public.machines (name, machine_type) values ('A gearbox', 'gearbox')$$,
+  'A can create a typed machine');
+
 select lives_ok(
   $$insert into public.recordings (id, machine_id, kind, storage_path) values (
     'a4000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000001', 'baseline',
@@ -189,6 +209,7 @@ select set_config('request.jwt.claims',
   '{"sub":"bbbbbbbb-0000-0000-0000-000000000002","role":"authenticated"}', true);
 
 select is((select name from public.machines), 'B gearbox', 'B machine name unchanged');
+select is((select machine_type::text from public.machines), 'other', 'B machine type unchanged by A');
 select is((select count(*)::int from public.machines), 1, 'B machine not deleted and A machine hidden');
 select is((select count(*)::int from public.recordings), 1, 'B recording not deleted and A recordings hidden');
 select is((select value from public.context_readings), 230::double precision, 'B context unchanged');

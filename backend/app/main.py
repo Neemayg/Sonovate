@@ -20,7 +20,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.audio import AudioValidationError, validate_wav
 from app.auth import AuthenticatedUser, AuthError, JwksKeyResolver, TokenVerifier
 from app.config import Settings, load_settings
-from app.registry import EmptyModelRegistry, ModelRegistry
+from app.registry import MODELLED_MACHINE_TYPES, EmptyModelRegistry, ModelRegistry
 from app.supabase_data import (
     PredictionStore,
     RecordingNotFound,
@@ -51,6 +51,7 @@ class AnalysisRequest(BaseModel):
 
 
 class ModelSummary(BaseModel):
+    machine_type: str
     name: str
     version: str
     preprocessing_version: str
@@ -148,16 +149,31 @@ def create_app(
         except AudioValidationError as exc:
             raise ApiError(422, exc.code, exc.message)
 
-        model = registry.active_model()
-        if model is None:
+        # Order matters: 'other' is never supported; otherwise an empty
+        # registry is reported as "no validated model" for every type.
+        if recording.machine_type not in MODELLED_MACHINE_TYPES:
+            raise ApiError(
+                422,
+                "unsupported_machine_type",
+                "Analysis is only being developed for bearings and gearboxes. "
+                "Set the machine type to bearing or gearbox if that is what it is. Nothing was stored.",
+            )
+        if not registry.has_any_model():
             raise ApiError(
                 503,
                 "no_validated_model",
                 "No validated model is available yet, so this recording cannot be analysed. "
                 "Nothing was stored.",
             )
+        model = registry.model_for(recording.machine_type)
+        if model is None:
+            raise ApiError(
+                422,
+                "unsupported_machine_type",
+                f"There is no validated model for {recording.machine_type} machines yet. Nothing was stored.",
+            )
 
-        score = float(model.score(audio))
+        score = float(model.score(audio, recording.machine_type, recording.context))
         info = model.info
         decision: Literal["below_threshold", "above_threshold"] = (
             "above_threshold" if score > info.threshold else "below_threshold"
@@ -178,6 +194,7 @@ def create_app(
                 threshold=info.threshold,
                 decision=decision,
                 model=ModelSummary(
+                    machine_type=info.machine_type,
                     name=info.name, version=info.version, preprocessing_version=info.preprocessing_version
                 ),
                 created_at=stored.created_at,

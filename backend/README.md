@@ -43,7 +43,8 @@ uv run pytest
 | 404 | `recording_not_found` | Recording does not exist or belongs to someone else |
 | 422 | `invalid_request` | Body is not `{"recording_id": uuid}` |
 | 422 | `not_wav`, `malformed_wav`, `unsupported_encoding`, `wrong_sample_rate`, `wrong_channel_count`, `wrong_duration`, `recording_too_large` | Audio fails the input contract (WAV, 16 kHz, mono, 10 s ± 0.05 s, ≤ 2 MiB) |
-| 503 | `no_validated_model` | No validated model is registered (current behaviour) |
+| 422 | `unsupported_machine_type` | Machine type is `other`, or no model is registered for its type |
+| 503 | `no_validated_model` | No validated model is registered for any type (current behaviour for bearing and gearbox) |
 | 502 | `upstream_unavailable` | Supabase could not be reached |
 
 Errors never include file paths, stack traces or internals. When a model is
@@ -58,5 +59,9 @@ decision (`below_threshold` / `above_threshold`) and model version.
   service re-checks that the row's owner is the caller.
 - `SUPABASE_SECRET_KEY` is only needed to write predictions (users cannot), which
   happens only once a validated model is registered.
+- Models are per machine type. `AnomalyModel.score(audio, machine_type, context)` receives
+  the recording's context readings keyed by name (`speed` krpm for bearing; `voltage` V and
+  `weight` g for gearbox, matching MIMII DG `vel`, `volt`, `wt`). The registry answers
+  `has_any_model()` and `model_for(machine_type)`.
 - The model registry (`app/registry.py`) can only be changed in code. The fake model
   in `tests/fakes.py` is test-only and is not importable from any setting.

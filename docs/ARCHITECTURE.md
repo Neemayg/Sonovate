@@ -22,12 +22,13 @@ Browser (Next.js, publishable key + user session)
         ├── verifies the token against Supabase JWKS
         ├── reads the recording row and file with the user's token (RLS applies)
         ├── validates the WAV (16 kHz, mono, 10 s, <= 2 MiB)
-        └── model registry: empty -> 503 no_validated_model, nothing stored
+        └── per-machine-type model registry: 'other' -> unsupported_machine_type;
+            empty -> 503 no_validated_model; nothing stored in either case
 ```
 
 ### Database (`supabase/migrations/`)
 - `profiles` — one per auth user, created by a trigger.
-- `machines` — owned by a user (`owner_id`).
+- `machines` — owned by a user (`owner_id`); `machine_type` is `bearing` | `gearbox` | `other` (default `other`), which selects the per-type model.
 - `recordings` — belongs to a machine; `kind` is `baseline` or `analysis` (baseline is reserved for future per-machine normal reference recordings; no enrollment flow exists). Holds the storage path, original filename, size and the duration/sample rate/channels read from the WAV header by the client (display only).
 - `context_readings` — name, numeric value, unit, `source = 'user_entered'` (the only source today).
 - `model_versions` — global catalog, read-only to users, empty. Each row must reference the experiment that validated it (`evidence_ref`).
@@ -42,11 +43,12 @@ Tests: `supabase/tests/database/rls.test.sql` (pgTAP, two users) and `supabase/t
 - `app/auth.py` verifies Supabase access tokens (ES256/RS256 via JWKS; issuer, audience, expiry, role).
 - `app/supabase_data.py` reads recordings with the caller's token and re-checks ownership; writes predictions with the secret key.
 - `app/audio.py` validates the WAV header against the input contract.
-- `app/registry.py` defines the model interface. The shipped registry is empty; a model can only be supplied in code. A fake model exists only in `backend/tests/`.
+- `app/registry.py` defines the model interface: one model per machine type, scored with the audio, the machine type and the recording's context readings. The shipped registry is empty; a model can only be supplied in code. A fake model exists only in `backend/tests/`.
 - Errors use one shape, `{"error": {"code", "message"}}`, with no paths or stack traces.
 
 ### Frontend (`frontend/`)
-- Client-rendered pages: email/password sign-in/sign-up, optional Google sign-in (off by default; enabled in `supabase/config.toml` with credentials in the git-ignored `supabase/.env`; PKCE flow returning to `/auth/callback`), machine list/create/edit, recording upload with optional context readings, recording list, analysis page.
+- Client-rendered pages: email/password sign-in/sign-up, optional Google sign-in (off by default; enabled in `supabase/config.toml` with credentials in the git-ignored `supabase/.env`; PKCE flow returning to `/auth/callback`), machine list/create/edit with machine type, recording upload with the per-type operating inputs (bearing: speed in krpm; gearbox: voltage in V and weight in g) plus free-form readings, recording list, analysis page, and a machine history page listing recordings, context and any predictions newest first (no charts or trend lines).
+- `src/lib/modelInputs.ts` holds the per-type inputs and their training ranges (bearing 2–26 krpm; gearbox 0.6–3.5 V, 0–250 g). Values outside a range get a notice; uploads are never blocked.
 - `src/lib/api.ts` is the single client module for Supabase and the inference service.
 - The analysis page shows the recording, its machine, timestamps and context, any stored predictions with model version, and loading, empty, error and "No validated model yet" states.
 

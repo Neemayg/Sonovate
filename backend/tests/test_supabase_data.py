@@ -57,3 +57,23 @@ def test_storage_denial_is_not_found() -> None:
     rec = Recording(id=uuid.uuid4(), owner_id=USER_A, machine_id=uuid.uuid4(), storage_path="x/y/z.wav")
     with pytest.raises(RecordingNotFound):
         source_for(lambda req: httpx.Response(400, json={"error": "not_found"})).download(USER, rec)
+
+
+def test_reads_machine_type_and_context_from_embedded_rows() -> None:
+    def handler(req: httpx.Request) -> httpx.Response:
+        assert "machines(machine_type)" in req.url.params["select"]
+        r = row(USER_A) | {
+            "machines": {"machine_type": "bearing"},
+            "context_readings": [{"name": "speed", "value": 12, "unit": "krpm"}],
+        }
+        return httpx.Response(200, json=[r])
+
+    rec = source_for(handler).get_recording(USER, uuid.uuid4())
+    assert rec.machine_type == "bearing"
+    assert rec.context["speed"].value == 12.0 and rec.context["speed"].unit == "krpm"
+
+
+def test_unknown_machine_type_is_treated_as_other() -> None:
+    r = row(USER_A) | {"machines": {"machine_type": "turbine"}, "context_readings": []}
+    rec = source_for(lambda req: httpx.Response(200, json=[r])).get_recording(USER, uuid.uuid4())
+    assert rec.machine_type == "other"

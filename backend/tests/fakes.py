@@ -10,6 +10,7 @@ from __future__ import annotations
 import struct
 import time
 import uuid
+from collections.abc import Mapping
 from datetime import datetime, timezone
 
 import jwt
@@ -17,7 +18,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 
 from app.audio import ValidatedAudio
 from app.auth import AuthenticatedUser
-from app.registry import AnomalyModel, ModelInfo
+from app.registry import AnomalyModel, ContextValue, MachineType, ModelInfo
 from app.supabase_data import Recording, RecordingNotFound, StoredPrediction
 
 ISSUER = "http://supabase.test/auth/v1"
@@ -73,10 +74,23 @@ class FakeRecordingSource:
     def __init__(self) -> None:
         self.rows: dict[uuid.UUID, tuple[Recording, bytes]] = {}
 
-    def add(self, owner: uuid.UUID, data: bytes) -> uuid.UUID:
+    def add(
+        self,
+        owner: uuid.UUID,
+        data: bytes,
+        machine_type: MachineType = "bearing",
+        context: dict[str, ContextValue] | None = None,
+    ) -> uuid.UUID:
         rid = uuid.uuid4()
         mid = uuid.uuid4()
-        rec = Recording(id=rid, owner_id=owner, machine_id=mid, storage_path=f"{owner}/{mid}/{rid}.wav")
+        rec = Recording(
+            id=rid,
+            owner_id=owner,
+            machine_id=mid,
+            storage_path=f"{owner}/{mid}/{rid}.wav",
+            machine_type=machine_type,
+            context=context or {},
+        )
         self.rows[rid] = (rec, data)
         return rid
 
@@ -91,27 +105,36 @@ class FakeRecordingSource:
 
 
 class FakeModel:
-    info = ModelInfo(
-        model_version_id=uuid.UUID("cccccccc-0000-4000-8000-000000000003"),
-        name="test-only-fake",
-        version="0",
-        preprocessing_version="test",
-        threshold=0.5,
-    )
-
-    def __init__(self, score: float) -> None:
+    def __init__(self, score: float, machine_type: MachineType = "bearing") -> None:
         self._score = score
+        self.info = ModelInfo(
+            model_version_id=uuid.UUID("cccccccc-0000-4000-8000-000000000003"),
+            machine_type=machine_type,
+            name="test-only-fake",
+            version="0",
+            preprocessing_version="test",
+            threshold=0.5,
+        )
+        self.calls: list[tuple[MachineType, dict[str, ContextValue]]] = []
 
-    def score(self, audio: ValidatedAudio) -> float:
+    def score(
+        self, audio: ValidatedAudio, machine_type: MachineType, context: Mapping[str, ContextValue]
+    ) -> float:
+        self.calls.append((machine_type, dict(context)))
         return self._score
 
 
 class FakeRegistry:
-    def __init__(self, model: AnomalyModel) -> None:
-        self._model = model
+    """Registry with models for some machine types only."""
 
-    def active_model(self) -> AnomalyModel | None:
-        return self._model
+    def __init__(self, *models: AnomalyModel) -> None:
+        self._models = {m.info.machine_type: m for m in models}
+
+    def has_any_model(self) -> bool:
+        return bool(self._models)
+
+    def model_for(self, machine_type: MachineType) -> AnomalyModel | None:
+        return self._models.get(machine_type)
 
 
 class RecordingPredictionStore:

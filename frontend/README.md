@@ -52,7 +52,10 @@ npm run build
   inference service re-validates the stored file.
 - `src/lib/database.types.ts` — generated with
   `npx supabase@2.122.0 gen types typescript --local --schema public`.
-- `src/app/` — routes: `/login`, `/auth/callback`, `/machines`, `/machines/[id]`, `/recordings/[id]`.
+- `src/lib/modelInputs.ts` — machine types and the operating inputs each model understands, with
+  training ranges used for the out-of-range notices.
+- `src/app/` — routes: `/login`, `/auth/callback`, `/machines`, `/machines/[id]`,
+  `/machines/[id]/history`, `/recordings/[id]`.
 
 Pages are client-rendered; the Supabase session lives in the browser and row-level
 security decides what each user can read or write. Only the publishable key is used

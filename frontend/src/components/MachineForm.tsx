@@ -2,6 +2,7 @@
 
 import { useId, useState, type FormEvent } from "react";
 import type { MachineInput } from "@/lib/api";
+import { MACHINE_TYPES, type MachineType } from "@/lib/modelInputs";
 import { ErrorMessage } from "./Status";
 
 type Props = {
@@ -11,7 +12,7 @@ type Props = {
   onCancel?: () => void;
 };
 
-const blank: MachineInput = { name: "", machine_type: null, location: null, notes: null };
+const blank: MachineInput = { name: "", machine_type: "other", location: null, notes: null };
 
 function orNull(value: FormDataEntryValue | null): string | null {
   const text = String(value ?? "").trim();
@@ -38,7 +39,7 @@ export function MachineForm({ initial = blank, submitLabel, onSubmit, onCancel }
     try {
       await onSubmit({
         name,
-        machine_type: orNull(form.get("machine_type")),
+        machine_type: String(form.get("machine_type")) as MachineType,
         location: orNull(form.get("location")),
         notes: orNull(form.get("notes")),
       });
@@ -59,16 +60,22 @@ export function MachineForm({ initial = blank, submitLabel, onSubmit, onCancel }
       </div>
       <div className="field-row">
         <div className="field">
-          <label htmlFor={`${uid}-type`}>
-            Type <span className="muted">(optional)</span>
-          </label>
-          <input
+          <label htmlFor={`${uid}-type`}>Machine type</label>
+          <select
             id={`${uid}-type`}
             name="machine_type"
-            maxLength={80}
-            placeholder="e.g. gearbox"
-            defaultValue={initial.machine_type ?? ""}
-          />
+            defaultValue={initial.machine_type}
+            aria-describedby={`${uid}-type-help`}
+          >
+            {MACHINE_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+          <p id={`${uid}-type-help`} className="muted small">
+            Analysis is being developed for bearings and gearboxes only.
+          </p>
         </div>
         <div className="field">
           <label htmlFor={`${uid}-location`}>
