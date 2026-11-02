@@ -120,3 +120,33 @@ Status: **Complete: much better than EXP-001, but the pre-registered bar was nar
 - **Reproduction command/config path:** `uv run python -m ml.autoencoder --config configs/baseline_ae.json --stage validation`, then `--stage test`
 - **Artifacts path:** `artifacts/EXP-002/`
 - **Conclusion / next experiment:** This is a usable but imperfect audio-only reference, roughly matching published performance, and it formally misses its own bar. For Phase 4, compare against this exact setup under the identical protocol. Run several seeds for both the audio-only and the context model, because one seed cannot separate a real difference from run-to-run noise.
+
+### EXP-003 — Audio-only vs audio + operating condition
+Status: **Pre-registered, not yet run.** This plan is committed before any EXP-003 test evaluation. Not fully blind, for the same reasons as EXP-002.
+- **Date:** 2026-11-02
+- **Research question:** Does giving the model the clip's operating condition improve anomaly detection, especially at unseen conditions?
+- **Hypothesis:** Model B beats Model A on target-domain AUC in bearing 00 (speed) and gearbox 00 (voltage). Little or no gain is expected in gearbox 01 (weight), where screening found almost no condition effect on normal sound. The EXP-001 diagnosis, a shift at the same known condition, is a stated risk to this hypothesis.
+- **Dataset/version:** As EXP-002.
+- **Split protocol:** As EXP-002. Both models train on `train` plus `adaptation`.
+- **Inputs/features:**
+  - Model A: audio only, exactly the EXP-002 features and model (`configs/baseline_ae.json`).
+  - Model B: the same audio, plus operating-condition values from the clip's metadata.
+  - Operating values are `vel` (bearing, all sections), `volt` (gearbox 00) and `wt` (gearbox 01). Each is standardized with training-clip statistics and paired with a present/absent flag; absent values are 0 with flag 0.
+  - Mic location, factory-noise type and machine ID are excluded, following ADR-004.
+  - Values are controlled set-points, not sensor readings. Normal and anomaly clips are balanced per value in the primary sections (`DATASET_REGISTER.md`).
+- **Preprocessing:** As EXP-002.
+- **Model and configuration:** Model B is the EXP-002 autoencoder with the context vector joined to the encoder input and to the decoder input after the bottleneck. Its loss and score cover reconstructed audio only. Layer sizes, optimizer, epochs and batch size match Model A. One model per machine type.
+- **Training details / random seed:** Seeds 0, 1 and 2 for each model. Model A seed 0 is the saved EXP-002 model, and the test stage checks that it reproduces the EXP-002 AUCs. CPU, two machines trained in parallel processes.
+- **Threshold selection method:** None. This comparison is threshold-free; EXP-002 already characterised thresholds.
+- **Metrics:** Per section and domain, the AUC and pAUC (FPR 0–0.1) for each seed and model, averaged over seeds. ΔAUC and ΔpAUC (B − A, seed means) get 95% paired bootstrap intervals that resample clips, with 2,000 resamples and seed 0.
+- **Decision rule:**
+  - **Context helps:** target ΔAUC is positive in both bearing 00 and gearbox 00, and both intervals exclude 0.
+  - **Context hurts:** either primary target interval lies wholly below 0.
+  - **Inconclusive:** anything else.
+  - Source-domain results, pAUC and the other sections are secondary.
+- **Results:** Pending.
+- **Error analysis:** Pending.
+- **Limitations:** Pending.
+- **Reproduction command/config path:** `uv run python -m ml.context --config configs/context_ae.json --stage train --machine bearing` (and `gearbox`), then `--stage test`
+- **Artifacts path:** `artifacts/EXP-003/`
+- **Conclusion / next experiment:** Pending.
