@@ -28,10 +28,11 @@ Decide how the project continues now that operating-condition context did not he
 - [x] Condition score normalization (EXP-004; no gain anywhere)
 - [x] Research direction decided: audio-only product model (ADR-006)
 - [x] Baseline-calibrated threshold (EXP-005; false alarms 2–9%, recall low)
+- [x] Model served in the app as a labelled research prototype (ADR-007, PR #3; local only)
 - [x] Application foundation built and merged (PR #1, PR #2; local only, no model registered)
 
 ## Current task
-Decide how the app presents the audio-only model, then package it for the backend with a per-machine baseline step.
+Choose the next track: Phase 5 data, a stronger audio model, or Phase 8 deployment preparation.
 
 ## Blockers
 - No model meets a bar for users. The best is audio-only Model A (EXP-002 setup), and its threshold misses most anomalies.
@@ -39,11 +40,11 @@ Decide how the app presents the audio-only model, then package it for the backen
 
 ## Decisions needed
 1. Research direction: decided, audio-only (ADR-006). A data-collection study remains a possible follow-up.
-2. What the app may show: keep "no validated model", or show Model A labelled as a research prototype.
+2. What the app may show: decided, a labelled research prototype (ADR-007).
 3. Phase 5 data source: own timestamped recordings, or a clearly labelled simulation.
 
 ## Next action
-Export a versioned model bundle (weights, preprocessing settings, parity fixtures), then have the backend load it and compute each machine's threshold from its baseline recordings (EXP-005 method).
+The app now loads bundles from `artifacts/bundles/` (export with `uv run python -m ml.export --config configs/export_bundles.json`). Backend parity tests run only with `SONOVATE_BUNDLES_DIR` pointing there. Next is one of: a stronger audio model (detection is the weak point), a Phase 5 data plan, or a security review plus a deployment plan.
 
 ## Latest verified results
 - **EXP-005 (baseline-calibrated threshold, 10 clips):** mean false-positive rate 0.02–0.09 in every section, but recall only 0.06–0.08 on bearing 00 (chance level) and 0.17–0.30 on gearbox 00.
