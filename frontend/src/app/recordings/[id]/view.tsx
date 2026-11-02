@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { ContextList, PredictionView, SCORE_NOTE } from "@/components/RecordingDetails";
 import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
 import {
   getRecording,
@@ -11,36 +12,7 @@ import {
   type Prediction,
   type RecordingDetail,
 } from "@/lib/api";
-
-const SCORE_NOTE =
-  "Anomaly scores are uncalibrated: they are not a failure probability, a health percentage or a diagnosis.";
-
-function decisionLabel(decision: string): string {
-  return decision === "above_threshold"
-    ? "Above the model's threshold (less typical than its reference data)"
-    : "Below the model's threshold (similar to its reference data)";
-}
-
-function PredictionView({ p }: { p: Prediction }) {
-  return (
-    <dl className="details">
-      <dt>Result</dt>
-      <dd>{decisionLabel(p.decision)}</dd>
-      <dt>Anomaly score</dt>
-      <dd>
-        {p.score.toPrecision(4)} <span className="muted">(threshold {p.threshold.toPrecision(4)})</span>
-      </dd>
-      <dt>Model</dt>
-      <dd>
-        {p.model_versions
-          ? `${p.model_versions.name} ${p.model_versions.version} (preprocessing ${p.model_versions.preprocessing_version})`
-          : "Unknown model version"}
-      </dd>
-      <dt>Analysed</dt>
-      <dd>{formatDateTime(p.created_at)}</dd>
-    </dl>
-  );
-}
+import { machineTypeLabel } from "@/lib/modelInputs";
 
 export function RecordingAnalysis({ id }: { id: string }) {
   const [recording, setRecording] = useState<RecordingDetail | null | undefined>(undefined);
@@ -107,7 +79,7 @@ export function RecordingAnalysis({ id }: { id: string }) {
         <h2 id="recording-title">Recording</h2>
         <dl className="details">
           <dt>Machine</dt>
-          <dd>{machine?.name ?? "—"}</dd>
+          <dd>{machine ? `${machine.name} (${machineTypeLabel(machine.machine_type)})` : "—"}</dd>
           <dt>File</dt>
           <dd>{recording.original_filename ?? "—"}</dd>
           <dt>Purpose</dt>
@@ -133,16 +105,7 @@ export function RecordingAnalysis({ id }: { id: string }) {
           <Empty>No operating context was entered for this recording.</Empty>
         ) : (
           <>
-            <dl className="details">
-              {recording.context_readings.map((c) => (
-                <div key={c.id} className="details-pair">
-                  <dt>{c.name}</dt>
-                  <dd>
-                    {c.value} {c.unit}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+            <ContextList readings={recording.context_readings} machineType={machine?.machine_type ?? "other"} />
             <p className="muted small">Entered by you when uploading.</p>
           </>
         )}
@@ -174,6 +137,15 @@ export function RecordingAnalysis({ id }: { id: string }) {
               cannot be analysed yet. Your recording is stored and its format is valid; nothing else was
               saved.
             </p>
+          </div>
+        )}
+
+        {result?.status === "unsupported_machine_type" && (
+          <div className="notice notice-info" role="status">
+            <p>
+              <strong>Not supported for this machine type.</strong>
+            </p>
+            <p>{result.message}</p>
           </div>
         )}
 

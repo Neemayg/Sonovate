@@ -7,6 +7,7 @@ import { MachineForm } from "@/components/MachineForm";
 import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
 import { UploadForm } from "@/components/UploadForm";
 import { getMachine, listRecordings, updateMachine, type Machine, type Recording } from "@/lib/api";
+import { machineTypeLabel } from "@/lib/modelInputs";
 
 export function MachineDetail({ id }: { id: string }) {
   const router = useRouter();
@@ -66,7 +67,7 @@ export function MachineDetail({ id }: { id: string }) {
         ) : (
           <dl className="details">
             <dt>Type</dt>
-            <dd>{machine.machine_type ?? "—"}</dd>
+            <dd>{machineTypeLabel(machine.machine_type)}</dd>
             <dt>Location</dt>
             <dd>{machine.location ?? "—"}</dd>
             <dt>Notes</dt>
@@ -79,11 +80,19 @@ export function MachineDetail({ id }: { id: string }) {
 
       <section className="card" aria-labelledby="upload-title">
         <h2 id="upload-title">Upload a recording</h2>
-        <UploadForm machineId={machine.id} onUploaded={(r) => router.push(`/recordings/${r.id}`)} />
+        <UploadForm
+          key={machine.machine_type}
+          machineId={machine.id}
+          machineType={machine.machine_type}
+          onUploaded={(r) => router.push(`/recordings/${r.id}`)}
+        />
       </section>
 
       <section className="card" aria-labelledby="recordings-title">
-        <h2 id="recordings-title">Recordings</h2>
+        <div className="card-header">
+          <h2 id="recordings-title">Recordings</h2>
+          <Link href={`/machines/${machine.id}/history`}>View history</Link>
+        </div>
         {recordings?.length === 0 && <Empty>No recordings for this machine yet.</Empty>}
         {recordings && recordings.length > 0 && (
           <ul className="list">

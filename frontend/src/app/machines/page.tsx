@@ -6,6 +6,7 @@ import { AppShell } from "@/components/AppShell";
 import { MachineForm } from "@/components/MachineForm";
 import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
 import { createMachine, listMachines, type Machine } from "@/lib/api";
+import { machineTypeLabel } from "@/lib/modelInputs";
 
 function MachinesList() {
   const [machines, setMachines] = useState<Machine[] | null>(null);
@@ -32,7 +33,7 @@ function MachinesList() {
                 <Link href={`/machines/${m.id}`} className="list-link">
                   <span className="list-title">{m.name}</span>
                   <span className="muted small">
-                    {[m.machine_type, m.location].filter(Boolean).join(" · ") || "No type or location"}
+                    {[machineTypeLabel(m.machine_type), m.location].filter(Boolean).join(" · ")}
                     {" · added "}
                     {formatDateTime(m.created_at)}
                   </span>

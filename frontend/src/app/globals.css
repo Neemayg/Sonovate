@@ -10,6 +10,8 @@
   --error-border: #c62828;
   --info-bg: #eaf1fb;
   --info-border: #1f5fbf;
+  --warning-bg: #fff6e0;
+  --warning-border: #b26a00;
   --focus: #f0b400;
   --radius: 8px;
 }
@@ -27,6 +29,8 @@
     --error-border: #ef6b6b;
     --info-bg: #1b2a40;
     --info-border: #6ea2f2;
+    --warning-bg: #3a2f14;
+    --warning-border: #e0a43a;
   }
 }
 
@@ -352,4 +356,43 @@ button:disabled {
 
 .alt-auth p {
   margin: 0;
+}
+
+.notice-warning {
+  border-left-color: var(--warning-border);
+  background: var(--warning-bg);
+  margin: 0;
+}
+
+.inline-notice {
+  display: block;
+  margin-top: 0.3rem;
+  padding: 0.4rem 0.6rem;
+}
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timeline > li {
+  border-top: 1px solid var(--border);
+  padding: 0.9rem 0;
+}
+
+.timeline > li:first-child {
+  border-top: none;
+  padding-top: 0.25rem;
+}
+
+.timeline h3 {
+  font-size: 1rem;
+  margin: 0 0 0.4rem;
+}
+
+.timeline h4 {
+  font-size: 0.9rem;
+  margin: 0.6rem 0 0.3rem;
+  color: var(--muted);
 }
