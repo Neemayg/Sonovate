@@ -3,6 +3,7 @@
 
 import type { ContextReading, Prediction } from "@/lib/api";
 import { modelInputFor, rangeNotice, type MachineType } from "@/lib/modelInputs";
+import { ScoreStrip } from "./ScoreStrip";
 import { formatDateTime } from "./Status";
 
 export const SCORE_NOTE =
@@ -33,7 +34,9 @@ export function ContextList({ readings, machineType }: { readings: ContextReadin
           <div key={c.id} className="details-pair">
             <dt>{input?.label ?? c.name}</dt>
             <dd>
-              {c.value} {c.unit}
+              <span className="num">
+                {c.value} {c.unit}
+              </span>
               {notice && <span className="notice notice-warning small inline-notice">{notice}</span>}
             </dd>
           </div>
@@ -54,14 +57,15 @@ export function PredictionView({ p }: { p: Prediction }) {
         <strong>{decisionLabel(p.decision)}</strong>
       </p>
       <p className="muted small">{decisionExplanation(p.decision)}</p>
+      {p.log_score !== null && <ScoreStrip logScore={p.log_score} threshold={p.threshold} />}
       <dl className="details">
         <dt>Log score</dt>
-        <dd>
+        <dd className="num">
           {p.log_score !== null ? p.log_score.toFixed(3) : "—"}{" "}
           <span className="muted">(threshold {p.threshold.toFixed(3)})</span>
         </dd>
         <dt>Raw score</dt>
-        <dd>{p.score.toPrecision(4)}</dd>
+        <dd className="num">{p.score.toPrecision(4)}</dd>
         <dt>Threshold from</dt>
         <dd>{p.baseline_count !== null ? `${p.baseline_count} baseline recordings` : "—"}</dd>
         <dt>Model</dt>
@@ -71,7 +75,7 @@ export function PredictionView({ p }: { p: Prediction }) {
             : "Unknown model version"}
         </dd>
         <dt>Analysed</dt>
-        <dd>{formatDateTime(p.created_at)}</dd>
+        <dd className="num">{formatDateTime(p.created_at)}</dd>
       </dl>
       {model && model.limitations.length > 0 && (
         <div className="limitations">

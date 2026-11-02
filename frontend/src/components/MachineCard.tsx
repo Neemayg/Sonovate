@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BASELINE_REQUIRED, type MachineOverview } from "@/lib/api";
 import { MODEL_INPUTS, machineTypeLabel } from "@/lib/modelInputs";
+import { BaselineMeter } from "./BaselineMeter";
 import { PROTOTYPE_NOTICE } from "./RecordingDetails";
 import { formatDateTime } from "./Status";
 
@@ -35,29 +36,20 @@ export function MachineCard({ machine: m }: { machine: MachineOverview }) {
       {m.location && <p className="muted small">{m.location}</p>}
 
       <div className="machine-card-status">
-        {status === "unsupported" && (
-          <p className="small">Analysis is not available for this machine type.</p>
-        )}
+        {status === "unsupported" && <p className="small">Analysis is not available for this machine type.</p>}
 
         {status === "needs_baseline" && (
-          <>
-            <p className="small" id={`${titleId}-baseline`}>
-              <strong>
-                Baseline {m.baselineCount}/{BASELINE_REQUIRED}
-              </strong>{" "}
-              · {BASELINE_REQUIRED - m.baselineCount} more needed before analysis
-            </p>
-            <progress
-              value={m.baselineCount}
-              max={BASELINE_REQUIRED}
-              aria-labelledby={`${titleId}-baseline`}
-            />
-          </>
+          <BaselineMeter
+            count={m.baselineCount}
+            required={BASELINE_REQUIRED}
+            label={`Baseline recordings for ${m.name}`}
+            caption="Baseline needed before analysis"
+          />
         )}
 
         {status === "ready" && (
           <p className="small">
-            <strong>Baseline ready</strong> ({m.baselineCount} recordings) · no analysis yet
+            <strong>Baseline ready</strong> <span className="num">({m.baselineCount})</span> · no analysis yet
           </p>
         )}
 
@@ -65,7 +57,7 @@ export function MachineCard({ machine: m }: { machine: MachineOverview }) {
           <>
             <p className="small">
               Latest result ({formatDateTime(m.latest.created_at)}):{" "}
-              <Link href={`/recordings/${m.latest.recording_id}`}>
+              <Link href={`/recordings/${m.latest.recording_id}`} className="card-link">
                 <strong>{decisionText(m.latest.decision)}</strong>
               </Link>
             </p>
@@ -78,7 +70,9 @@ export function MachineCard({ machine: m }: { machine: MachineOverview }) {
         {m.recordingCount} {m.recordingCount === 1 ? "recording" : "recordings"}
         {m.lastUploadAt ? ` · last upload ${formatDateTime(m.lastUploadAt)}` : " · nothing uploaded yet"}
         {" · "}
-        <Link href={`/machines/${m.id}/history`}>History</Link>
+        <Link href={`/machines/${m.id}/history`} className="card-link">
+          History
+        </Link>
       </p>
     </article>
   );

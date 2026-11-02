@@ -45,7 +45,9 @@ let client: ReturnType<typeof createClient<Database>> | null = null;
 
 function supabase() {
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-    throw new Error("Frontend is not configured: set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.");
+    throw new Error(
+      "Frontend is not configured: set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.",
+    );
   }
   // PKCE: OAuth redirects come back with a one-time ?code= that the client
   // exchanges itself (detectSessionInUrl), instead of tokens in the URL.
@@ -264,6 +266,14 @@ export async function createRecording(input: NewRecording): Promise<Recording> {
   return row;
 }
 
+// Downloads a recording's audio with the user's own session (Storage RLS
+// applies), for playback and the waveform on the analysis page.
+export async function downloadRecordingAudio(storagePath: string): Promise<Blob> {
+  const { data, error } = await supabase().storage.from(BUCKET).download(storagePath);
+  if (error) fail("Could not load the audio file.", error);
+  return data;
+}
+
 // Supabase blocks deleting storage objects from SQL, so files are removed
 // here, before the rows. If the row delete then fails, the row stays with
 // no file and the delete can simply be retried (removing a missing file is
@@ -317,7 +327,9 @@ export async function deleteMachine(machineId: string): Promise<void> {
 export async function listMachineHistory(machineId: string): Promise<HistoryEntry[]> {
   const { data, error } = await supabase()
     .from("recordings")
-    .select("*, context_readings(*), predictions(*, model_versions(name, version, preprocessing_version, machine_type, limitations))")
+    .select(
+      "*, context_readings(*), predictions(*, model_versions(name, version, preprocessing_version, machine_type, limitations))",
+    )
     .eq("machine_id", machineId)
     .order("created_at", { ascending: false })
     .order("created_at", { referencedTable: "predictions", ascending: false });
