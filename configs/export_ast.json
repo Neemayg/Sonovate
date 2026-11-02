@@ -1,0 +1,19 @@
+{
+  "model_id": "MIT/ast-finetuned-audioset-10-10-0.4593",
+  "output": "artifacts/bundles",
+  "version": "0.2.0",
+  "machine_types": ["bearing", "gearbox"],
+  "sample_rate": 16000,
+  "clip_seconds": 10,
+  "evidence": ["EXP-007", "EXP-009", "EXP-010"],
+  "baseline": {
+    "clips": 10,
+    "spread": 2.0
+  },
+  "limitations": [
+    "Validated only on MIMII DG / DCASE 2022 lab bearings and gearboxes; other machines are out of scope.",
+    "On untouched evaluation data, AST was better than the autoencoder on gearbox (AUC 0.730 vs 0.654) but not on bearing (0.626 vs 0.646) (EXP-009).",
+    "At the baseline threshold it caught only about 3-24% of anomalies with 2-7% false alarms (EXP-010).",
+    "Below threshold does not mean healthy."
+  ]
+}

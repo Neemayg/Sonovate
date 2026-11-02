@@ -481,7 +481,7 @@ Status: **Complete: AST is better overall (narrowly), driven by gearbox; bearing
   - Either would need another untouched test set (for example DCASE 2023 or 2024 data) to verify.
 
 ### EXP-010 — AST with only a machine's 10 baseline recordings as references
-Status: **Pre-registered, not yet run.** This plan is committed before the run. It checks the app setup (ADR-008); it is not a new comparison of models.
+Status: **Complete: criterion met.** The plan was committed at `5987f50`, and the run used that commit. It checks the app setup (ADR-008); it is not a new comparison of models.
 - **Date:** 2026-11-03
 - **Research question:** In the app, AST compares a recording with about 10 baseline recordings of the same machine, not thousands of training clips. Does detection hold up, and does a threshold from the baseline clips alone keep false alarms low?
 - **Hypothesis:** Mean false-positive rate of 0.10 or below in both domains of bearing 00 and gearbox 00, with AUC lower than with full references.
@@ -492,7 +492,34 @@ Status: **Pre-registered, not yet run.** This plan is committed before the run. 
   - Threshold = mean + 2 standard deviations of the baseline clips' leave-one-out log scores (each baseline clip against the other 9).
 - **Metrics:** Per section-domain, mean AUC, false-positive rate and recall over draws, against EXP-007 AST k1 (full references) and EXP-005 (autoencoder at the baseline threshold).
 - **Success criterion:** Mean false-positive rate of 0.10 or below in both domains of bearing 00 and gearbox 00. If not met, the app keeps the autoencoder until a working threshold exists.
-- **Results:** Pending.
-- **Conclusion / next experiment:** Pending.
+- **Results:** Means over 200 draws. "AUC full" is EXP-007 AST k1 with all training clips as references.
+
+  | Section / domain | AUC full | AUC, 10 baseline clips | FPR | Recall |
+  |---|---|---|---|---|
+  | bearing 00 source | 0.578 | 0.722 | 0.021 | 0.046 |
+  | bearing 00 target | 0.654 | 0.674 | 0.036 | 0.051 |
+  | bearing 01 source | 0.597 | 0.644 | 0.025 | 0.049 |
+  | bearing 01 target | 0.676 | 0.647 | 0.037 | 0.094 |
+  | bearing 02 source | 0.662 | 0.758 | 0.064 | 0.056 |
+  | bearing 02 target | 0.669 | 0.848 | 0.059 | 0.172 |
+  | gearbox 00 source | 0.811 | 0.842 | 0.073 | 0.238 |
+  | gearbox 00 target | 0.582 | 0.690 | 0.056 | 0.034 |
+  | gearbox 01 source | 0.713 | 0.691 | 0.073 | 0.148 |
+  | gearbox 01 target | 0.564 | 0.628 | 0.068 | 0.145 |
+  | gearbox 02 source | 0.849 | 0.789 | 0.042 | 0.136 |
+  | gearbox 02 target | 0.715 | 0.652 | 0.030 | 0.026 |
+
+- **Error analysis:**
+  - **False alarms are controlled everywhere** (0.021–0.073), so the criterion is met.
+  - **Ranking quality usually improves with a same-domain baseline.** AUC rose in 8 of 12 section-domains, for example bearing 00 source 0.578 → 0.722 and bearing 02 target 0.669 → 0.848. A machine's own recent recordings share its recording conditions, which fits the shift found in EXP-001 and EXP-005.
+  - These AUCs are measured within one domain's pool, where baseline and scored clips share conditions, so they are favourable to this setup.
+  - **Recall is still low** (0.026–0.238). With only 9 neighbours per leave-one-out score, the threshold is cautious.
+- **Limitations:**
+  - The development set has been used for selection before.
+  - Baseline and scored clips come from the same pool, standing in for one machine.
+  - Only one baseline size (10) and one threshold rule were tried.
+- **Conclusion / next experiment:**
+  - The app setup is supported: frozen AST, references from the machine's own 10+ baseline recordings, and the leave-one-out threshold.
+  - Detection sensitivity remains the main limitation, so the prototype labelling stays (ADR-007).
 - **Artifacts path:** `artifacts/EXP-006/`
 - **Conclusion / next experiment:** Pending.
