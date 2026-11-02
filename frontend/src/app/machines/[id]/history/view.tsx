@@ -38,6 +38,7 @@ export function MachineHistory({ id }: { id: string }) {
   }
 
   const analysed = entries.filter((e) => e.predictions.length > 0).length;
+  const baselines = entries.filter((e) => e.kind === "baseline").length;
 
   return (
     <>
@@ -48,7 +49,7 @@ export function MachineHistory({ id }: { id: string }) {
       <h1>History</h1>
       <p className="muted">
         {machine.name} · {machineTypeLabel(machine.machine_type)} · {entries.length}{" "}
-        {entries.length === 1 ? "recording" : "recordings"}, {analysed} analysed
+        {entries.length === 1 ? "recording" : "recordings"} ({baselines} baseline), {analysed} analysed
       </p>
 
       <section className="card" aria-labelledby="history-title">
@@ -76,7 +77,9 @@ export function MachineHistory({ id }: { id: string }) {
                   <ContextList readings={e.context_readings} machineType={machine.machine_type} />
                 )}
                 <h4>Analysis</h4>
-                {e.predictions.length === 0 ? (
+                {e.kind === "baseline" ? (
+                  <p className="empty small">Baseline recording: used to set this machine&apos;s threshold.</p>
+                ) : e.predictions.length === 0 ? (
                   <p className="empty small">Not analysed.</p>
                 ) : (
                   e.predictions.map((p) => <PredictionView key={p.id} p={p} />)

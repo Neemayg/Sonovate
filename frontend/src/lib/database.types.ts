@@ -25,6 +25,32 @@ isOneToOne: false
       referencedColumns: ["id","owner_id"]
     }
                   ]
+                },"machine_thresholds": {
+                  Row: {
+                    "baseline_count": number,"baseline_recording_ids": (string)[],"computed_at": string,"log_mean": number,"log_std": number,"machine_id": string,"model_version_id": string,"owner_id": string,"spread": number,"threshold": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "baseline_count": number,"baseline_recording_ids": (string)[],"computed_at"?: string,"log_mean": number,"log_std": number,"machine_id": string,"model_version_id": string,"owner_id": string,"spread": number,"threshold": number
+                  }
+                  Update: {
+                    "baseline_count"?: number,"baseline_recording_ids"?: (string)[],"computed_at"?: string,"log_mean"?: number,"log_std"?: number,"machine_id"?: string,"model_version_id"?: string,"owner_id"?: string,"spread"?: number,"threshold"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "machine_thresholds_machine_id_owner_id_fkey"
+      columns: ["machine_id","owner_id"]
+isOneToOne: false
+      referencedRelation: "machines"
+      referencedColumns: ["id","owner_id"]
+    },{
+      foreignKeyName: "machine_thresholds_model_version_id_fkey"
+      columns: ["model_version_id"]
+isOneToOne: false
+      referencedRelation: "model_versions"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"machines": {
                   Row: {
                     "created_at": string,"id": string,"location": string | null,"machine_type": Database["public"]['Enums']["machine_type"],"name": string,"notes": string | null,"owner_id": string,"updated_at": string
@@ -47,28 +73,28 @@ isOneToOne: false
                   ]
                 },"model_versions": {
                   Row: {
-                    "created_at": string,"evidence_ref": string,"id": string,"name": string,"preprocessing_version": string,"version": string
+                    "bundle_sha256": string | null,"created_at": string,"evidence_ref": string,"id": string,"limitations": (string)[],"machine_type": Database["public"]['Enums']["machine_type"] | null,"name": string,"preprocessing_version": string,"version": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"evidence_ref": string,"id"?: string,"name": string,"preprocessing_version": string,"version": string
+                    "bundle_sha256"?: string | null,"created_at"?: string,"evidence_ref": string,"id"?: string,"limitations"?: (string)[],"machine_type"?: Database["public"]['Enums']["machine_type"] | null,"name": string,"preprocessing_version": string,"version": string
                   }
                   Update: {
-                    "created_at"?: string,"evidence_ref"?: string,"id"?: string,"name"?: string,"preprocessing_version"?: string,"version"?: string
+                    "bundle_sha256"?: string | null,"created_at"?: string,"evidence_ref"?: string,"id"?: string,"limitations"?: (string)[],"machine_type"?: Database["public"]['Enums']["machine_type"] | null,"name"?: string,"preprocessing_version"?: string,"version"?: string
                   }
                   Relationships: [
                     
                   ]
                 },"predictions": {
                   Row: {
-                    "created_at": string,"decision": string,"id": string,"model_version_id": string,"owner_id": string,"recording_id": string,"score": number,"threshold": number
+                    "baseline_count": number | null,"created_at": string,"decision": string,"id": string,"log_score": number | null,"model_version_id": string,"owner_id": string,"recording_id": string,"score": number,"threshold": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"decision": string,"id"?: string,"model_version_id": string,"owner_id": string,"recording_id": string,"score": number,"threshold": number
+                    "baseline_count"?: number | null,"created_at"?: string,"decision": string,"id"?: string,"log_score"?: number | null,"model_version_id": string,"owner_id": string,"recording_id": string,"score": number,"threshold": number
                   }
                   Update: {
-                    "created_at"?: string,"decision"?: string,"id"?: string,"model_version_id"?: string,"owner_id"?: string,"recording_id"?: string,"score"?: number,"threshold"?: number
+                    "baseline_count"?: number | null,"created_at"?: string,"decision"?: string,"id"?: string,"log_score"?: number | null,"model_version_id"?: string,"owner_id"?: string,"recording_id"?: string,"score"?: number,"threshold"?: number
                   }
                   Relationships: [
                     {

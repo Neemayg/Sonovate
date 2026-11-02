@@ -111,68 +111,107 @@ export function RecordingAnalysis({ id }: { id: string }) {
         )}
       </section>
 
-      <section className="card" aria-labelledby="analysis-title" aria-busy={running}>
-        <h2 id="analysis-title">Analysis result</h2>
-
-        {predictions && predictions.length > 0 ? (
-          <>
-            {predictions.map((p) => (
-              <PredictionView key={p.id} p={p} />
-            ))}
-            <p className="muted small">{SCORE_NOTE}</p>
-          </>
-        ) : (
-          !result && <Empty>This recording has not been analysed yet.</Empty>
-        )}
-
-        {running && <Loading label="Analysing recording…" />}
-
-        {result?.status === "no_validated_model" && (
-          <div className="notice notice-info" role="status">
+      {recording.kind === "baseline" ? (
+        <section className="card" aria-labelledby="analysis-title">
+          <h2 id="analysis-title">Baseline recording</h2>
+          <p>
+            This recording is part of this machine&apos;s baseline: it is used to set the machine&apos;s
+            threshold and is not analysed itself.
+          </p>
+          {machine && (
             <p>
-              <strong>No validated model yet.</strong>
+              <Link href={`/machines/${machine.id}`}>See baseline progress for {machine.name}</Link>
             </p>
-            <p>
-              The anomaly model is still being evaluated and has not passed validation, so this recording
-              cannot be analysed yet. Your recording is stored and its format is valid; nothing else was
-              saved.
-            </p>
+          )}
+        </section>
+      ) : (
+        <section className="card" aria-labelledby="analysis-title" aria-busy={running}>
+          <h2 id="analysis-title">Analysis result</h2>
+
+          {predictions && predictions.length > 0 ? (
+            <>
+              {predictions.map((p) => (
+                <PredictionView key={p.id} p={p} />
+              ))}
+              <p className="muted small">{SCORE_NOTE}</p>
+            </>
+          ) : (
+            !result && <Empty>This recording has not been analysed yet.</Empty>
+          )}
+
+          {running && <Loading label="Analysing recording…" />}
+
+          {result?.status === "no_validated_model" && (
+            <div className="notice notice-info" role="status">
+              <p>
+                <strong>No validated model yet.</strong>
+              </p>
+              <p>{result.message}</p>
+            </div>
+          )}
+
+          {result?.status === "unsupported_machine_type" && (
+            <div className="notice notice-info" role="status">
+              <p>
+                <strong>Not supported for this machine type.</strong>
+              </p>
+              <p>{result.message}</p>
+            </div>
+          )}
+
+          {result?.status === "baseline_required" && (
+            <div className="notice notice-info" role="status">
+              <p>
+                <strong>
+                  Baseline needed: {result.count}/{result.required} baseline recordings.
+                </strong>
+              </p>
+              <p>
+                Results are compared with this machine&apos;s own normal recordings. Upload{" "}
+                {result.required - result.count} more baseline{" "}
+                {result.required - result.count === 1 ? "recording" : "recordings"}, made while it runs
+                normally. Nothing was stored.
+              </p>
+              {machine && (
+                <p>
+                  <Link href={`/machines/${machine.id}`}>Upload baseline recordings</Link>
+                </p>
+              )}
+              <progress value={result.count} max={result.required} aria-label="Baseline recordings" />
+            </div>
+          )}
+
+          {result?.status === "baseline_recording" && (
+            <div className="notice notice-info" role="status">
+              {result.message}
+            </div>
+          )}
+
+          {result?.status === "error" && (
+            <ErrorMessage>
+              {result.message}
+              {result.code === "unauthenticated" && (
+                <>
+                  {" "}
+                  <Link href="/login">Sign in</Link>
+                </>
+              )}
+            </ErrorMessage>
+          )}
+
+          {result?.status === "completed" && (
+            <div className="notice" role="status">
+              Analysis saved.
+            </div>
+          )}
+
+          <div className="actions">
+            <button type="button" onClick={runAnalysis} disabled={running}>
+              {running ? "Analysing…" : "Run analysis"}
+            </button>
           </div>
-        )}
-
-        {result?.status === "unsupported_machine_type" && (
-          <div className="notice notice-info" role="status">
-            <p>
-              <strong>Not supported for this machine type.</strong>
-            </p>
-            <p>{result.message}</p>
-          </div>
-        )}
-
-        {result?.status === "error" && (
-          <ErrorMessage>
-            {result.message}
-            {result.code === "unauthenticated" && (
-              <>
-                {" "}
-                <Link href="/login">Sign in</Link>
-              </>
-            )}
-          </ErrorMessage>
-        )}
-
-        {result?.status === "completed" && (
-          <div className="notice" role="status">
-            Analysis saved.
-          </div>
-        )}
-
-        <div className="actions">
-          <button type="button" onClick={runAnalysis} disabled={running}>
-            {running ? "Analysing…" : "Run analysis"}
-          </button>
-        </div>
-      </section>
+        </section>
+      )}
     </>
   );
 }
