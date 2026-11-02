@@ -3,48 +3,49 @@
 > Update at milestone boundaries. Keep this file short enough to scan quickly.
 
 ## Current status
-- **Phase:** 0 — Project setup and dataset feasibility
-- **Status:** Not started
-- **Last updated:** YYYY-MM-DD
+- **Phase:** 1 — Dataset feasibility (Phase 0 complete)
+- **Status:** Desk audit done; hands-on sample inspection not started
+- **Last updated:** 2026-11-02
 - **Current owner:** Team
 - **Working title:** Environment-Aware Acoustic Machine Health
+- **Repository:** Sonovate (`github.com/Neemayg/Sonovate`, public, nothing pushed yet)
 
 ## Current objective
-Establish whether a suitable industrial acoustic dataset exists and whether its labels/metadata support an honest audio-only baseline and a later context-aware experiment.
+Confirm the proposed dataset by inspecting real samples, then close Phase 1 with an accepted dataset choice and split strategy.
 
 ## Completed
-- [ ] Repository initialized
-- [ ] Project instructions reviewed
-- [ ] Dataset candidates identified
-- [ ] Dataset schema/licensing audited
+- [x] Repository initialized
+- [x] Project instructions reviewed
+- [x] Dataset candidates identified
+- [x] Dataset schema/licensing audited (desk audit; see `DATASET_REGISTER.md`)
+- [ ] Sample audio inspected and visualized
 - [ ] Audio-only baseline implemented
 - [ ] Baseline evaluated on held-out data
-- [ ] Context availability verified
+- [x] Context availability verified (operating condition: yes; measured temperature/humidity: no)
 - [ ] Context-aware comparison completed
 
 ## Current task
-Perform a dataset feasibility audit. Do not start frontend/backend implementation yet.
+Inspect sample audio from the proposed dataset, MIMII DG bearing and gearbox. Do not start frontend/backend implementation yet.
 
 ## Blockers
-- No dataset selected.
-- Availability of synchronized temperature/humidity/load/RPM is unknown.
-- Machine family and generalization target are not yet finalized.
+- Team approval of the dataset recommendation, and of the 1.72 GB download.
 
 ## Decisions needed
-1. Which machine family has the strongest data support?
-2. Which dataset and license are suitable?
-3. What does "generalize" mean for the first evaluation: unseen recording, session, machine, or site?
-4. Is aligned environmental/operating context available?
+Proposed in `DATASET_REGISTER.md`; move to `DECISIONS.md` once accepted.
+1. Dataset: MIMII DG (CC-BY-4.0).
+2. Machine family: rotating machinery, bearing and gearbox.
+3. Generalization target: unseen operating condition, official source/target split.
+4. Context: operating condition now; temperature/humidity deferred to a separate controlled data-collection study.
 
 ## Next action
-Create a dataset register entry for each serious candidate, inspect metadata and sample files, then recommend one primary dataset with evidence.
+Download `bearing.zip` and `gearbox.zip` to `data/raw/`, verify checksums and counts against the register, then listen to and visualize representative normal and anomaly clips per condition.
 
 ## Latest verified results
 None. No model has been trained. No performance claims are established.
 
 ## Session handoff
-At the end of a work session, replace this section with:
-- what changed;
-- tests/commands run and outcomes;
-- current blocker;
-- exact next task.
+- **Changed:** Installed the starter kit, initialized git with remote `origin`, extended `.gitignore` (audio, archives, local Claude settings), and completed the desk audit.
+- **Checks run:** Zenodo metadata for 10 records; zip directories for MIMII DG (5 archives), MIMII DUE (2) and DCASE 2023 (3) via range requests; `attributes_*.csv` for 4 sections. No audio downloaded.
+- **Not verified:** Audio quality; MaFaulDa primary source and license (site unreachable).
+- **Blocker:** Dataset and download approval.
+- **Next task:** The Next action above.

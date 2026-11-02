@@ -26,6 +26,15 @@ models/*.onnx
 models/*.joblib
 models/*.pkl
 
+# Audio and archives anywhere in the tree (raw data must never be committed)
+*.wav
+*.flac
+*.mp3
+*.ogg
+*.zip
+*.tar
+*.tar.gz
+
 # Frontend / build
 node_modules/
 dist/
@@ -37,3 +46,4 @@ coverage/
 .DS_Store
 .vscode/
 .idea/
+.claude/settings.local.json
