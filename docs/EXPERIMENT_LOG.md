@@ -122,7 +122,7 @@ Status: **Complete: much better than EXP-001, but the pre-registered bar was nar
 - **Conclusion / next experiment:** This is a usable but imperfect audio-only reference, roughly matching published performance, and it formally misses its own bar. For Phase 4, compare against this exact setup under the identical protocol. Run several seeds for both the audio-only and the context model, because one seed cannot separate a real difference from run-to-run noise.
 
 ### EXP-003 — Audio-only vs audio + operating condition
-Status: **Pre-registered, not yet run.** This plan is committed before any EXP-003 test evaluation. Not fully blind, for the same reasons as EXP-002.
+Status: **Complete: inconclusive under the pre-registered rule, leaning negative.** The plan was committed at `66f749b`, and training and the single test run both used that commit. Not fully blind, for the same reasons as EXP-002.
 - **Date:** 2026-11-02
 - **Research question:** Does giving the model the clip's operating condition improve anomaly detection, especially at unseen conditions?
 - **Hypothesis:** Model B beats Model A on target-domain AUC in bearing 00 (speed) and gearbox 00 (voltage). Little or no gain is expected in gearbox 01 (weight), where screening found almost no condition effect on normal sound. The EXP-001 diagnosis, a shift at the same known condition, is a stated risk to this hypothesis.
@@ -144,9 +144,42 @@ Status: **Pre-registered, not yet run.** This plan is committed before any EXP-0
   - **Context hurts:** either primary target interval lies wholly below 0.
   - **Inconclusive:** anything else.
   - Source-domain results, pAUC and the other sections are secondary.
-- **Results:** Pending.
-- **Error analysis:** Pending.
-- **Limitations:** Pending.
+- **Results:** AUC averaged over seeds 0–2. ΔAUC and ΔpAUC are B − A, with 95% paired bootstrap intervals. Model A seed 0 reproduced the EXP-002 AUCs exactly. Primary rows are in bold.
+
+  | Section / domain | AUC A | AUC B | ΔAUC | ΔAUC 95% | ΔpAUC | ΔpAUC 95% |
+  |---|---|---|---|---|---|---|
+  | bearing 00 source | 0.552 | 0.605 | +0.053 | +0.028 to +0.079 | +0.030 | −0.012 to +0.093 |
+  | **bearing 00 target** | 0.655 | 0.653 | −0.002 | −0.036 to +0.036 | −0.021 | −0.059 to +0.011 |
+  | bearing 01 source | 0.590 | 0.576 | −0.014 | −0.045 to +0.015 | +0.003 | −0.051 to +0.056 |
+  | bearing 01 target | 0.776 | 0.706 | −0.071 | −0.111 to −0.036 | −0.031 | −0.153 to +0.061 |
+  | bearing 02 source | 0.484 | 0.492 | +0.008 | −0.009 to +0.023 | −0.027 | −0.067 to +0.017 |
+  | bearing 02 target | 0.486 | 0.481 | −0.005 | −0.025 to +0.015 | +0.002 | −0.041 to +0.047 |
+  | gearbox 00 source | 0.691 | 0.656 | −0.036 | −0.098 to +0.021 | −0.116 | −0.219 to −0.011 |
+  | **gearbox 00 target** | 0.591 | 0.518 | −0.074 | −0.159 to +0.007 | −0.231 | −0.411 to −0.096 |
+  | gearbox 01 source | 0.691 | 0.704 | +0.013 | +0.000 to +0.027 | +0.003 | −0.023 to +0.031 |
+  | gearbox 01 target | 0.548 | 0.558 | +0.010 | −0.007 to +0.027 | +0.005 | −0.008 to +0.016 |
+  | gearbox 02 source | 0.760 | 0.745 | −0.016 | −0.031 to −0.003 | −0.001 | −0.031 to +0.027 |
+  | gearbox 02 target | 0.669 | 0.680 | +0.011 | −0.041 to +0.068 | −0.087 | −0.189 to −0.004 |
+
+- **Error analysis:**
+  - **Primary result: no gain at unseen conditions.**
+    - Bearing 00 target: ΔAUC −0.002, interval −0.036 to +0.036.
+    - Gearbox 00 target: ΔAUC −0.074, interval −0.159 to +0.007. That interval only just includes 0, so this one nearly met the "hurts" rule.
+  - **Context hurt the low-false-alarm region on gearbox 00.** Target ΔpAUC was −0.231 (−0.411 to −0.096), and Model B's target pAUC averaged 0.000, so it caught no anomalies at false-positive rates up to 10%. Four of gearbox 00's target voltages (0.6, 0.8, 3.3, 3.5 V) lie outside the training range of 1.0–3.0 V. That suggests the context pathway extrapolates poorly, though this is untested.
+  - **The only clear gain was at seen conditions.** Bearing 00 source improved by ΔAUC +0.053 (+0.028 to +0.079). Speed context helps where training covered those speeds, not where it did not.
+  - **Bearing 01 target got worse** (−0.071, −0.111 to −0.036). That section's shift is mic location, which Model B was not given, so adding speed did not help.
+  - **Gearbox 01 (weight) changed little** (+0.010 target), as screening predicted.
+  - **Seeds vary a lot.** Model A bearing 00 source AUC ranged 0.512–0.599 across seeds, so the single-seed EXP-002 figures were partly luck.
+  - **Validation hinted at this.** Normal-clip reconstruction was nearly identical for A and B (bearing medians about 7.85 for both; gearbox 9.23 vs 9.20).
+- **Limitations:**
+  - Only one way of using context was tried: concatenation at the encoder and decoder.
+  - Context values are controlled set-points.
+  - There are 3 seeds, and each interval rests on 100 clips.
+  - Not fully blind.
+  - Bootstrap intervals resample clips but not seeds, so they understate seed variance.
 - **Reproduction command/config path:** `uv run python -m ml.context --config configs/context_ae.json --stage train --machine bearing` (and `gearbox`), then `--stage test`
 - **Artifacts path:** `artifacts/EXP-003/`
-- **Conclusion / next experiment:** Pending.
+- **Conclusion / next experiment:** The project hypothesis is **not supported** on this data in this form. Giving the autoencoder the operating condition did not improve detection at unseen conditions, and on gearbox 00 it damaged the low-false-alarm region. It helped only at conditions seen in training.
+  - What this does not show: that context can never help. Other forms remain untested, such as normalizing scores by condition, or real environmental sensors.
+  - For the product: audio-only Model A is the better model on this evidence.
+  - Any further context experiment must be pre-registered, and should be weighed against the growing number of looks at this test set.
