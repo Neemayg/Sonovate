@@ -368,7 +368,7 @@ Status: **Complete: AST with k = 1 selected, beating the autoencoder with no tra
   - then evaluate the final choice once on the untouched DCASE 2022 evaluation data (sections 03–05), which is now downloaded with its labels.
 
 ### EXP-008 — Combining AST and Dasheng scores (development selection)
-Status: **Pre-registered, not yet run.** This plan is committed before the run. Development set only; it uses the EXP-007 embeddings, with no new model runs.
+Status: **Complete: not selected (0.672 vs 0.673); AST k1 stays.** The plan was committed at `4d2e7ff`, and the run used that commit. Development set only; it uses the EXP-007 embeddings, with no new model runs.
 - **Date:** 2026-11-02
 - **Research question:** Does averaging AST and Dasheng nearest-neighbour scores beat AST alone?
 - **Hypothesis:** Yes, because the encoders lead in different sections (EXP-007).
@@ -382,7 +382,32 @@ Status: **Pre-registered, not yet run.** This plan is committed before the run. 
 - **Selection rule:**
   - The combination replaces AST k1 only if its mean development AUC is higher than 0.673. Otherwise AST k1 stays.
   - **Licence:** Dasheng's official weights are GPL-3.0 (Zenodo 11511780). If the combination wins, using it in the app needs that licence settled; the research comparison does not.
-- **Results:** Pending.
-- **Conclusion / next experiment:** Pending.
+- **Results:** Development AUC.
+
+  | Section / domain | AST k1 | Combined |
+  |---|---|---|
+  | bearing 00 source | 0.578 | 0.580 |
+  | bearing 00 target | 0.654 | 0.710 |
+  | bearing 01 source | 0.597 | 0.598 |
+  | bearing 01 target | 0.676 | 0.800 |
+  | bearing 02 source | 0.662 | 0.491 |
+  | bearing 02 target | 0.669 | 0.512 |
+  | gearbox 00 source | 0.811 | 0.861 |
+  | gearbox 00 target | 0.582 | 0.622 |
+  | gearbox 01 source | 0.713 | 0.744 |
+  | gearbox 01 target | 0.564 | 0.578 |
+  | gearbox 02 source | 0.849 | 0.848 |
+  | gearbox 02 target | 0.715 | 0.720 |
+  | **Mean** | **0.673** | **0.672** |
+
+- **Error analysis:**
+  - The combination was higher in 9 of 12 section-domains, sometimes clearly (bearing 01 target +0.124, gearbox 00 source +0.050).
+  - But it collapsed bearing 02 to chance (0.662 → 0.491, 0.669 → 0.512), because Dasheng is at chance there and equal weighting lets it cancel AST.
+  - The means are effectively tied.
+  - Weighting encoders by section could help, but choosing weights on this development set after seeing these results would be tuning on it, so that was not done.
+- **Conclusion / next experiment:**
+  - AST k1 stays the selected system.
+  - AST is also the licence-clean option (BSD-3) for the app.
+  - Next: one pre-registered evaluation of AST k1 against the autoencoder on the untouched DCASE 2022 evaluation sections.
 - **Artifacts path:** `artifacts/EXP-006/`
 - **Conclusion / next experiment:** Pending.
