@@ -36,7 +36,7 @@ Status: **proposed, awaiting approval of downloads.** Nothing in this plan has b
      | Model | Licence | Size | Notes |
      |---|---|---|---|
      | AST | BSD-3 | 346 MB | Loads natively in `transformers` |
-     | Dasheng-base | Apache-2.0 | 342 MB | Official `dasheng` package |
+     | Dasheng-base | GPL-3.0 on the official weights record (Zenodo 11511780); its code and a Hugging Face copy say Apache-2.0 | 342 MB | Official `dasheng` package. Research comparison only unless the licence is settled |
 
    - Embedding about 9,600 clips takes minutes on the M4 Pro GPU, and there is no training loop.
 3. **Pick on the development set.** Choose the best model and the setting of nearest-neighbour count (k = 1 vs 5) on the old split, and compare with the autoencoder.
@@ -58,7 +58,7 @@ Status: **proposed, awaiting approval of downloads.** Nothing in this plan has b
   | `eval_data_gearbox_train.zip` | Zenodo 6462969 | 761 MB | See note below |
   | Ground-truth CSVs | `Kota-Dohi/dcase2022_evaluator` on GitHub | Small | MIT |
   | AST weights | Hugging Face `MIT/ast-finetuned-audioset-10-10-0.4593` | 346 MB | BSD-3 |
-  | Dasheng-base weights | Hugging Face `mispeech/dasheng-base` | 342 MB | Apache-2.0 |
+  | Dasheng-base weights | Zenodo 11511780, which the `dasheng` package downloads | 342 MB | GPL-3.0 on that record |
 
   - Python packages: `transformers` and `dasheng`.
   - **Licence note:** the DCASE 2022 evaluation records are tagged CC-BY-4.0 in Zenodo metadata, but their descriptions say CC-BY-NC-SA-4.0. Treat them as non-commercial: use them only to evaluate, never to train a product model.

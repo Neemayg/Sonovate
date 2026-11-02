@@ -1,0 +1,20 @@
+{
+  "experiment": "EXP-007",
+  "data_config": "configs/mimii_dg.json",
+  "reference_results": "artifacts/EXP-003/test.json",
+  "output": "artifacts/EXP-007",
+  "machines": ["bearing", "gearbox"],
+  "encoders": {
+    "ast": {
+      "model_id": "MIT/ast-finetuned-audioset-10-10-0.4593",
+      "device": "mps",
+      "batch_size": 8
+    },
+    "dasheng": {
+      "device": "mps",
+      "batch_size": 8
+    }
+  },
+  "k_values": [1, 5],
+  "max_fpr": 0.1
+}

@@ -316,5 +316,24 @@ Status: **Stopped by the user on 2026-11-02, 4 minutes into training seed 0.** N
 - **Error analysis:** Pending.
 - **Limitations:** Pending.
 - **Reproduction command/config path:** `uv run python -m ml.embedding --config configs/embedding_cnn.json --stage train`, then `--stage test`
+
+### EXP-007 — Frozen pretrained encoders + nearest neighbour (development selection)
+Status: **Pre-registered, not yet run.** This follows `docs/TRAINING_PLAN.md`. From here on, the MIMII DG `test` role is the **development** set, used to choose between models. The untouched final test is the DCASE 2022 evaluation data (sections 03–05), used once, in a later pre-registered experiment.
+- **Date:** 2026-11-02
+- **Research question:** Do frozen pretrained audio encoders with nearest-neighbour scoring beat the autoencoder, with no training?
+- **Hypothesis:** At least one encoder beats the autoencoder's mean development AUC, with the clearest gain on gearbox.
+- **Dataset/version:** MIMII DG bearing and gearbox, as EXP-002.
+- **Split protocol:** Reference clips are `train` and `adaptation`, split by domain. Scored clips are the `test` role (now development).
+- **Inputs/features:** Raw 16 kHz audio into each encoder, unchanged.
+  - AST (`MIT/ast-finetuned-audioset-10-10-0.4593`, BSD-3): the mean of last-layer patch tokens (class tokens excluded).
+  - Dasheng-base (official weights, Zenodo 11511780; GPL-3.0 on that record): the mean over time of the output sequence.
+  - Embeddings are L2-normalized.
+- **Model and configuration:** No training. Score = the smaller of the source and target nearest-neighbour cosine distances within the clip's section, with k = 1 or 5.
+- **Training details / random seed:** None. Inference only, on the Mac GPU (`mps`).
+- **Threshold selection method:** None.
+- **Metrics:** AUC and pAUC (FPR 0–0.1) per section and domain. Mean AUC over all 12 section-domains, against the autoencoder's 3-seed mean AUC from EXP-003 (Model A).
+- **Selection rule:** The candidate (encoder × k) with the highest mean development AUC is carried forward. If no candidate beats the autoencoder's mean, stop and record that; no fine-tuning.
+- **Results:** Pending.
+- **Conclusion / next experiment:** Pending.
 - **Artifacts path:** `artifacts/EXP-006/`
 - **Conclusion / next experiment:** Pending.
