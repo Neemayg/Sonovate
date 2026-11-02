@@ -318,7 +318,7 @@ Status: **Stopped by the user on 2026-11-02, 4 minutes into training seed 0.** N
 - **Reproduction command/config path:** `uv run python -m ml.embedding --config configs/embedding_cnn.json --stage train`, then `--stage test`
 
 ### EXP-007 — Frozen pretrained encoders + nearest neighbour (development selection)
-Status: **Pre-registered, not yet run.** This follows `docs/TRAINING_PLAN.md`. From here on, the MIMII DG `test` role is the **development** set, used to choose between models. The untouched final test is the DCASE 2022 evaluation data (sections 03–05), used once, in a later pre-registered experiment.
+Status: **Complete: AST with k = 1 selected, beating the autoencoder with no training.** The plan was committed at `7fea94b`, and the run used that commit. This follows `docs/TRAINING_PLAN.md`. From here on, the MIMII DG `test` role is the **development** set, used to choose between models. The untouched final test is the DCASE 2022 evaluation data (sections 03–05), used once, in a later pre-registered experiment.
 - **Date:** 2026-11-02
 - **Research question:** Do frozen pretrained audio encoders with nearest-neighbour scoring beat the autoencoder, with no training?
 - **Hypothesis:** At least one encoder beats the autoencoder's mean development AUC, with the clearest gain on gearbox.
@@ -333,7 +333,38 @@ Status: **Pre-registered, not yet run.** This follows `docs/TRAINING_PLAN.md`. F
 - **Threshold selection method:** None.
 - **Metrics:** AUC and pAUC (FPR 0–0.1) per section and domain. Mean AUC over all 12 section-domains, against the autoencoder's 3-seed mean AUC from EXP-003 (Model A).
 - **Selection rule:** The candidate (encoder × k) with the highest mean development AUC is carried forward. If no candidate beats the autoencoder's mean, stop and record that; no fine-tuning.
-- **Results:** Pending.
-- **Conclusion / next experiment:** Pending.
+- **Results:** Development AUC; the autoencoder column is the EXP-003 Model A 3-seed mean.
+
+  | Section / domain | Autoencoder | AST k1 | AST k5 | Dasheng k1 | Dasheng k5 |
+  |---|---|---|---|---|---|
+  | bearing 00 source | 0.552 | 0.578 | 0.542 | 0.550 | 0.556 |
+  | bearing 00 target | 0.655 | 0.654 | 0.565 | 0.712 | 0.579 |
+  | bearing 01 source | 0.590 | 0.597 | 0.608 | 0.588 | 0.583 |
+  | bearing 01 target | 0.776 | 0.676 | 0.688 | 0.807 | 0.653 |
+  | bearing 02 source | 0.484 | 0.662 | 0.707 | 0.478 | 0.483 |
+  | bearing 02 target | 0.486 | 0.669 | 0.642 | 0.450 | 0.462 |
+  | gearbox 00 source | 0.691 | 0.811 | 0.750 | 0.862 | 0.804 |
+  | gearbox 00 target | 0.591 | 0.582 | 0.488 | 0.608 | 0.565 |
+  | gearbox 01 source | 0.691 | 0.713 | 0.681 | 0.744 | 0.712 |
+  | gearbox 01 target | 0.548 | 0.564 | 0.542 | 0.590 | 0.568 |
+  | gearbox 02 source | 0.760 | 0.849 | 0.826 | 0.804 | 0.769 |
+  | gearbox 02 target | 0.669 | 0.715 | 0.650 | 0.720 | 0.668 |
+  | **Mean** | **0.625** | **0.673** | 0.641 | 0.659 | 0.617 |
+
+  - **Selected: AST with k = 1** (mean 0.673, +0.048 over the autoencoder).
+  - Dasheng with k = 1 was second (0.659).
+  - k = 1 beat k = 5 for both encoders.
+  - Embedding all 7,199 clips took about 4 minutes per encoder on the Mac GPU, with no training.
+- **Error analysis:**
+  - **Largest gains:** gearbox at training conditions (gearbox 00 source 0.691 → 0.811, 0.862 with Dasheng) and bearing 02, where the autoencoder was at chance (0.48 → 0.66–0.67 with AST).
+  - **Smaller or no gains:** new conditions (gearbox 00 target 0.591 → 0.582 with AST) and bearing 00.
+  - **The two encoders are strong in different places.** Dasheng leads on bearing 00 and 01 target and gearbox 00; AST leads on bearing 02. That suggests combining them could help, but it is untested.
+- **Limitations:**
+  - The development set is the old test split, used for the sixth time, so these figures choose between models but are not final evidence.
+  - Single run; inference is deterministic, apart from possible GPU numerical noise.
+  - Dasheng's official weights carry a GPL-3.0 licence (see `docs/TRAINING_PLAN.md`).
+- **Conclusion / next experiment:** The plan's gate is passed: a frozen pretrained encoder beats the autoencoder on development. Next, developed on this same set:
+  - combine the encoders, or fine-tune one;
+  - then evaluate the final choice once on the untouched DCASE 2022 evaluation data (sections 03–05), which is now downloaded with its labels.
 - **Artifacts path:** `artifacts/EXP-006/`
 - **Conclusion / next experiment:** Pending.
