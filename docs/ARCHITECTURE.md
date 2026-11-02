@@ -3,7 +3,7 @@
 This document describes only the architecture that has actually been agreed or implemented. Keep proposed designs clearly labelled.
 
 ## Current state
-The application stack is accepted (ADR-005). Everything below runs locally only; there is no cloud project or deployment. No model is validated, so no analysis results are produced.
+The application stack is accepted (ADR-005). Everything below runs locally only; there is no cloud project or deployment. The audio-only autoencoder can be loaded from versioned bundles and shown as a labelled research prototype (ADR-006, ADR-007): results appear only for bearing and gearbox machines with at least 10 baseline recordings, always with the notice "Research prototype, low sensitivity. Not a diagnosis or failure prediction." Without the bundles configured, no results are produced.
 
 Implemented so far:
 - **Data layer (research):** Python (`ml/`), with `ml/prepare.py` as the entry point. It verifies archives, builds the manifest (`ml/manifest.py`), checks audio format (`ml/audio.py`) and assigns split roles (`ml/splits.py`).
@@ -22,17 +22,24 @@ Browser (Next.js, publishable key + user session)
         ├── verifies the token against Supabase JWKS
         ├── reads the recording row and file with the user's token (RLS applies)
         ├── validates the WAV (16 kHz, mono, 10 s, <= 2 MiB)
-        └── per-machine-type model registry: 'other' -> unsupported_machine_type;
-            empty -> 503 no_validated_model; nothing stored in either case
+        ├── machine type 'other' -> unsupported_machine_type
+        ├── no bundles configured -> 503 no_validated_model
+        ├── baseline recording itself -> baseline_recording
+        ├── fewer than 10 baselines -> 409 baseline_required (count/10)
+        ├── this machine's threshold: reused if the baseline set is unchanged,
+        │   else every baseline is scored and the EXP-005 threshold recomputed
+        └── score -> log score -> decision; prediction stored (secret key)
+Model bundles (git-ignored, SONOVATE_BUNDLES_DIR) -> allow-list + sha256 checks -> BundleModel
 ```
 
 ### Database (`supabase/migrations/`)
 - `profiles` — one per auth user, created by a trigger.
 - `machines` — owned by a user (`owner_id`); `machine_type` is `bearing` | `gearbox` | `other` (default `other`), which selects the per-type model.
-- `recordings` — belongs to a machine; `kind` is `baseline` or `analysis` (baseline is reserved for future per-machine normal reference recordings; no enrollment flow exists). Holds the storage path, original filename, size and the duration/sample rate/channels read from the WAV header by the client (display only).
+- `recordings` — belongs to a machine; `kind` is `baseline` (the machine running normally; sets its threshold, never analysed) or `analysis`. Holds the storage path, original filename, size and the duration/sample rate/channels read from the WAV header by the client (display only).
 - `context_readings` — name, numeric value, unit, `source = 'user_entered'` (the only source today).
-- `model_versions` — global catalog, read-only to users, empty. Each row must reference the experiment that validated it (`evidence_ref`).
-- `predictions` — recording, model version, uncalibrated score, threshold, decision (`below_threshold` | `above_threshold`), `created_at`. Readable by the owner, writable only by the inference service (secret key).
+- `model_versions` — global catalog, read-only to users. Each row cites its evidence (`evidence_ref`) and carries the machine type, the bundle's limitations and the `bundle.json` sha256. The local seed adds the two research-prototype bundles (bearing, gearbox 0.1.0), citing EXP-002 and EXP-005.
+- `predictions` — recording, model version, raw uncalibrated score, log score, the machine's threshold (log space), decision (`below_threshold` | `above_threshold`, checked to agree with `log_score > threshold`), baseline count, `created_at`. Readable by the owner, writable only by the inference service (secret key).
+- `machine_thresholds` — one row per machine and model version: threshold = mean(log s) + 2·std(log s) (population std) over the machine's baseline recordings, with the mean, std, spread, count and the exact baseline recording ids used. Readable by the owner, writable only by the inference service.
 
 Access model: every row carries `owner_id`; child rows are tied to their parent by composite foreign keys `(parent_id, owner_id)`, so a child can never point at another user's parent. RLS is enabled on every table with `(select auth.uid()) = owner_id` policies, `anon` has no table privileges, and `authenticated` only has the columns it needs (for example, a recording's storage path cannot be changed). Storage objects live at `<owner_id>/<machine_id>/<recording_id>.wav`; a file can only be uploaded for an existing recording row with that exact path, and there is no update policy (recordings are immutable).
 
@@ -41,20 +48,25 @@ Tests: `supabase/tests/database/rls.test.sql` (pgTAP, two users) and `supabase/t
 ### Inference service (`backend/`)
 - Own `pyproject.toml`; does not import `ml/`.
 - `app/auth.py` verifies Supabase access tokens (ES256/RS256 via JWKS; issuer, audience, expiry, role).
-- `app/supabase_data.py` reads recordings with the caller's token and re-checks ownership; writes predictions with the secret key.
-- `app/audio.py` validates the WAV header against the input contract.
-- `app/registry.py` defines the model interface: one model per machine type, scored with the audio, the machine type and the recording's context readings. The shipped registry is empty; a model can only be supplied in code. A fake model exists only in `backend/tests/`.
-- Errors use one shape, `{"error": {"code", "message"}}`, with no paths or stack traces.
+- `app/supabase_data.py` reads recordings, baselines and thresholds with the caller's token and re-checks ownership; writes predictions and thresholds with the secret key (sent only as `apikey`).
+- `app/audio.py` validates the WAV header against the input contract and decodes samples to float32 as soundfile does.
+- `app/bundle.py` loads model bundles. `ALLOWED_BUNDLES` pins each bundle's name, version, machine type, model-version id and `bundle.json` sha256 in code; `bundle.json` pins the sha256 of every other file. Any mismatch refuses to load (the service does not start); unlisted directories are ignored; weights load with `weights_only=True`. `BundleModel` reimplements the bundle's log-mel preprocessing and dense autoencoder from `bundle.json` (score = mean squared reconstruction error). It is audio-only: context is passed in but not used (ADR-006). Parity tests match each bundle's parity WAVs within 1e-5 relative.
+- `app/thresholds.py` implements the EXP-005 baseline threshold and the decision rule.
+- `app/registry.py` defines the model interface: one model per machine type, with its threshold rule and limitations, scored with the audio, the machine type and the context readings. With `SONOVATE_BUNDLES_DIR` unset the registry is empty; otherwise it is the `BundleRegistry`. Test fakes exist only in `backend/tests/`.
+- Errors use one shape, `{"error": {"code", "message", "details"?}}`, with no paths or stack traces.
 
 ### Frontend (`frontend/`)
 - Client-rendered pages: email/password sign-in/sign-up, optional Google sign-in (off by default; enabled in `supabase/config.toml` with credentials in the git-ignored `supabase/.env`; PKCE flow returning to `/auth/callback`), machine list/create/edit with machine type, recording upload with the per-type operating inputs (bearing: speed in krpm; gearbox: voltage in V and weight in g) plus free-form readings, recording list, analysis page, and a machine history page listing recordings, context and any predictions newest first (no charts or trend lines).
 - `src/lib/modelInputs.ts` holds the per-type inputs and their training ranges (bearing 2–26 krpm; gearbox 0.6–3.5 V, 0–250 g). Values outside a range get a notice; uploads are never blocked.
 - `src/lib/api.ts` is the single client module for Supabase and the inference service.
-- The analysis page shows the recording, its machine, timestamps and context, any stored predictions with model version, and loading, empty, error and "No validated model yet" states.
+- The machine page shows baseline progress toward 10 for bearing and gearbox machines; uploads default to Baseline until then and stay on the page.
+- The analysis page shows the recording, its machine, timestamps and context, and each stored result with the research-prototype notice, "above / below this machine's baseline threshold", log score, threshold, raw score, baseline count, model version and the model's limitations (bearing says detection was at chance level). It has loading, empty, error, "No validated model yet", "not supported for this machine type" and "baseline needed (n/10)" states. Baseline recordings show their role instead of a Run button. No "healthy" wording or percentages.
 
 ### Known limits
 - Deleting a machine (not exposed in the UI) cascades database rows but leaves its files in Storage.
 - The client-side upload is three steps (row, file, context) with best-effort rollback, not a transaction.
+- Thresholds are recomputed lazily, on the next analysis after the baseline set changes; deleting a baseline does not touch stored thresholds until then.
+- Ten baseline recordings give an unstable threshold (EXP-005: false-alarm rate up to 0.20–0.33 at the 95th percentile).
 
 ## Intended logical components
 1. **Data layer:** raw audio, metadata manifests, context measurements, processed features/splits.
