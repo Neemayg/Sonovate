@@ -292,7 +292,7 @@ Status: **Complete: criterion met (false alarms controlled), detection weak.** T
   - Improving detection needs a stronger audio model, which is a separate experiment.
 
 ### EXP-006 — Condition-classifier embeddings vs the autoencoder
-Status: **Pre-registered, not yet run.** This plan is committed before EXP-006 is trained or tested. **Sixth use of this test set**, so a positive result is weaker evidence than a first look. Not fully blind, as for EXP-002.
+Status: **Stopped by the user on 2026-11-02, 4 minutes into training seed 0.** No model was saved and the test stage never ran, so the test set was not used. The plan below still stands as committed (`ebf4e82`) and can be resumed unchanged. **When run, this is the sixth use of this test set**, so a positive result is weaker evidence than a first look. Not fully blind, as for EXP-002.
 - **Date:** 2026-11-02
 - **Research question:** Does a CNN trained to classify normal clips by machine, section and operating condition give better anomaly scores than the autoencoder (Model A)?
 - **Hypothesis:** Model C beats Model A on target-domain AUC in bearing 00 and gearbox 00, and catches more anomalies at the EXP-005 baseline threshold. This design follows strong DCASE 2022–2024 systems; this project has not tested it before.
