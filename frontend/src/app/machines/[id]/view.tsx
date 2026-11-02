@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { MachineForm } from "@/components/MachineForm";
 import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
 import { UploadForm } from "@/components/UploadForm";
 import {
   BASELINE_REQUIRED,
+  deleteMachine,
   getMachine,
   listRecordings,
   updateMachine,
@@ -160,6 +162,24 @@ export function MachineDetail({ id }: { id: string }) {
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="card danger-zone" aria-labelledby="delete-machine-title">
+        <h2 id="delete-machine-title">Danger zone</h2>
+        <ConfirmDelete
+          label="Delete machine"
+          confirmText={machine.name}
+          onConfirm={async () => {
+            await deleteMachine(machine.id);
+            router.replace("/machines");
+          }}
+        >
+          <p>
+            This deletes {machine.name} and everything under it: {recordings?.length ?? 0}{" "}
+            {recordings?.length === 1 ? "recording" : "recordings"} with their audio files, operating context,
+            analysis results and baseline threshold.
+          </p>
+        </ConfirmDelete>
       </section>
     </>
   );

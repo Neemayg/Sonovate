@@ -59,13 +59,14 @@ Tests: `supabase/tests/database/rls.test.sql` (pgTAP, two users) and `supabase/t
 - Client-rendered pages: email/password sign-in/sign-up, optional Google sign-in (off by default; enabled in `supabase/config.toml` with credentials in the git-ignored `supabase/.env`; PKCE flow returning to `/auth/callback`), machine list/create/edit with machine type, recording upload with the per-type operating inputs (bearing: speed in krpm; gearbox: voltage in V and weight in g) plus free-form readings, recording list, analysis page, and a machine history page listing recordings, context and any predictions newest first (no charts or trend lines).
 - `src/lib/modelInputs.ts` holds the per-type inputs and their training ranges (bearing 2–26 krpm; gearbox 0.6–3.5 V, 0–250 g). Values outside a range get a notice; uploads are never blocked.
 - `src/lib/api.ts` is the single client module for Supabase and the inference service.
+- Deleting: a recording (analysis or baseline) can be deleted from its page, and a machine from its page after typing its name. Both use a two-step confirmation. Supabase blocks deleting storage objects from SQL, so `api.ts` removes the audio files first (for a machine, every file in its `<owner>/<machine>/` folder, including any left by an interrupted upload) and then the row; foreign keys cascade to context, results and thresholds. If the row delete fails after the files are gone, the delete can be retried. Deleting a baseline changes the baseline set, so the threshold is recomputed at the next analysis (or `baseline_required` below 10).
 - The machine page shows baseline progress toward 10 for bearing and gearbox machines; uploads default to Baseline until then and stay on the page.
 - The analysis page shows the recording, its machine, timestamps and context, and each stored result with the research-prototype notice, "above / below this machine's baseline threshold", log score, threshold, raw score, baseline count, model version and the model's limitations (bearing says detection was at chance level). It has loading, empty, error, "No validated model yet", "not supported for this machine type" and "baseline needed (n/10)" states. Baseline recordings show their role instead of a Run button. No "healthy" wording or percentages.
 
 ### Known limits
-- Deleting a machine (not exposed in the UI) cascades database rows but leaves its files in Storage.
 - The client-side upload is three steps (row, file, context) with best-effort rollback, not a transaction.
-- Thresholds are recomputed lazily, on the next analysis after the baseline set changes; deleting a baseline does not touch stored thresholds until then.
+- Thresholds are recomputed lazily, on the next analysis after the baseline set changes; a stored threshold row stays until then (it is never shown, and it is removed with its machine).
+- Deletes run in the browser as two steps (files, then row), not one transaction.
 - Ten baseline recordings give an unstable threshold (EXP-005: false-alarm rate up to 0.20–0.33 at the 95th percentile).
 
 ## Intended logical components
