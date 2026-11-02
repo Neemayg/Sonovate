@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { ErrorMessage } from "@/components/Status";
-import { signIn, signUp } from "@/lib/api";
+import { isGoogleSignInEnabled, signIn, signInWithGoogle, signUp } from "@/lib/api";
 
 export default function LoginPage() {
   const { session } = useAuth();
@@ -13,10 +13,26 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
 
   useEffect(() => {
     if (session) router.replace("/machines");
   }, [session, router]);
+
+  useEffect(() => {
+    isGoogleSignInEnabled().then(setGoogleEnabled);
+  }, []);
+
+  async function handleGoogle() {
+    setBusy(true);
+    setError(null);
+    try {
+      await signInWithGoogle(); // navigates away on success
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start Google sign-in.");
+      setBusy(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -91,6 +107,14 @@ export default function LoginPage() {
             </button>
           </div>
         </form>
+        {googleEnabled && (
+          <div className="alt-auth">
+            <p className="muted small">or</p>
+            <button type="button" className="button-secondary" onClick={handleGoogle} disabled={busy}>
+              Continue with Google
+            </button>
+          </div>
+        )}
       </section>
     </main>
   );

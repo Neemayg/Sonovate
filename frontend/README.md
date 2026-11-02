@@ -21,6 +21,22 @@ Local test user (created by `supabase/seed.sql`, local only): `tech@sonovate.tes
 `local-test-password-1`. You can also create an account on the sign-in page; email
 confirmation is off in the local stack.
 
+## Google sign-in (optional, local)
+
+Off by default; the "Continue with Google" button only appears once it is switched on.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an
+   **OAuth client ID** of type **Web application** (set up the OAuth consent screen first if asked).
+   - Authorized JavaScript origin: `http://localhost:3000`
+   - Authorized redirect URI: `http://127.0.0.1:54321/auth/v1/callback`
+2. Copy `supabase/.env.example` to `supabase/.env` (git-ignored) and paste the client ID and secret.
+3. In `supabase/config.toml`, under `[auth.external.google]`, set `enabled = true`.
+4. Restart the stack from the repository root:
+   `npx supabase@2.122.0 stop && npx supabase@2.122.0 start`
+
+Use `http://localhost:3000` (not `127.0.0.1:3000`) for the app. After Google, Supabase
+returns the browser to `/auth/callback`, which finishes sign-in and opens `/machines`.
+
 ## Checks
 
 ```bash
@@ -36,7 +52,7 @@ npm run build
   inference service re-validates the stored file.
 - `src/lib/database.types.ts` — generated with
   `npx supabase@2.122.0 gen types typescript --local --schema public`.
-- `src/app/` — routes: `/login`, `/machines`, `/machines/[id]`, `/recordings/[id]`.
+- `src/app/` — routes: `/login`, `/auth/callback`, `/machines`, `/machines/[id]`, `/recordings/[id]`.
 
 Pages are client-rendered; the Supabase session lives in the browser and row-level
 security decides what each user can read or write. Only the publishable key is used

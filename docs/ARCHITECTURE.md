@@ -15,7 +15,7 @@ Implemented so far:
 
 ```
 Browser (Next.js, publishable key + user session)
-  ├── Supabase Auth      email/password sign-in
+  ├── Supabase Auth      email/password sign-in; Google OAuth when enabled
   ├── Supabase REST      machines, recordings, context readings (RLS)
   ├── Supabase Storage   private "recordings" bucket (RLS on objects)
   └── Inference service  POST /v1/analyses with the user's access token
@@ -46,7 +46,7 @@ Tests: `supabase/tests/database/rls.test.sql` (pgTAP, two users) and `supabase/t
 - Errors use one shape, `{"error": {"code", "message"}}`, with no paths or stack traces.
 
 ### Frontend (`frontend/`)
-- Client-rendered pages: sign-in/sign-up, machine list/create/edit, recording upload with optional context readings, recording list, analysis page.
+- Client-rendered pages: email/password sign-in/sign-up, optional Google sign-in (off by default; enabled in `supabase/config.toml` with credentials in the git-ignored `supabase/.env`; PKCE flow returning to `/auth/callback`), machine list/create/edit, recording upload with optional context readings, recording list, analysis page.
 - `src/lib/api.ts` is the single client module for Supabase and the inference service.
 - The analysis page shows the recording, its machine, timestamps and context, any stored predictions with model version, and loading, empty, error and "No validated model yet" states.
 

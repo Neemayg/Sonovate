@@ -36,7 +36,11 @@ function supabase() {
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
     throw new Error("Frontend is not configured: set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.");
   }
-  client ??= createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+  // PKCE: OAuth redirects come back with a one-time ?code= that the client
+  // exchanges itself (detectSessionInUrl), instead of tokens in the URL.
+  client ??= createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: { flowType: "pkce" },
+  });
   return client;
 }
 
@@ -57,6 +61,30 @@ export async function signUp(email: string, password: string): Promise<{ needsCo
   const { data, error } = await supabase().auth.signUp({ email, password });
   if (error) throw new Error(error.message);
   return { needsConfirmation: data.session === null };
+}
+
+// Asks Supabase Auth which sign-in providers are switched on, so the UI only
+// offers Google when the local stack has been configured for it.
+export async function isGoogleSignInEnabled(): Promise<boolean> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/settings`, {
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY },
+    });
+    if (!res.ok) return false;
+    const body = await res.json();
+    return body?.external?.google === true;
+  } catch {
+    return false;
+  }
+}
+
+// Redirects the browser to Google; Supabase sends it back to /auth/callback.
+export async function signInWithGoogle(): Promise<void> {
+  const { error } = await supabase().auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: `${window.location.origin}/auth/callback` },
+  });
+  if (error) throw new Error(error.message);
 }
 
 export async function signOut(): Promise<void> {

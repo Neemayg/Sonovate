@@ -340,3 +340,16 @@ button:disabled {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+.alt-auth {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.alt-auth p {
+  margin: 0;
+}
