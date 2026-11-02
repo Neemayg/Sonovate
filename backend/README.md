@@ -3,8 +3,10 @@
 FastAPI service with its own environment (separate from the root ML project).
 With `SONOVATE_BUNDLES_DIR` unset it has **no model**: `POST /v1/analyses` validates
 the request and the audio, then answers `503 no_validated_model` and stores nothing.
-With the bundles configured it serves the audio-only autoencoder as a labelled research
-prototype (ADR-007), against each machine's own baseline threshold.
+With the bundles configured it serves frozen AST (`sonovate-ast-knn` 0.2.0, ADR-008) as a
+labelled research prototype (ADR-007): a recording's score is its cosine distance to the
+nearest of the machine's own baseline embeddings, judged against a threshold from the
+baselines' leave-one-out distances.
 
 ## Local stack (from the repository root)
 
@@ -53,7 +55,8 @@ say why.
 | 422 | `unsupported_machine_type` | Machine type is `other`, or no model is registered for its type |
 | 422 | `baseline_recording` | The recording is a baseline; baselines set the threshold and are not analysed |
 | 409 | `baseline_required` | Fewer than 10 baseline recordings; `details` has `baseline_count` and `baseline_required` |
-| 422 | `baseline_invalid` | A baseline recording's file is missing or fails the input contract |
+| 422 | `baseline_invalid` | A baseline recording's file is missing or fails the input contract, or two baselines are identical |
+| 422 | `same_as_baseline` | The recording is identical to one of the machine's baseline recordings |
 | 503 | `no_validated_model` | No validated model is registered for any type (current behaviour for bearing and gearbox) |
 | 502 | `upstream_unavailable` | Supabase could not be reached |
 
@@ -70,9 +73,9 @@ research-prototype `notice`.
   service re-checks that the row's owner is the caller.
 - `SUPABASE_SECRET_KEY` is only needed to write predictions (users cannot), which
   happens only once a validated model is registered.
-- Models are per machine type. `AnomalyModel.score(audio, machine_type, context)` receives
-  the recording's context readings keyed by name (`speed` krpm for bearing; `voltage` V and
-  `weight` g for gearbox, matching MIMII DG `vel`, `volt`, `wt`). The registry answers
-  `has_any_model()` and `model_for(machine_type)`.
+- Models implement `embed(audio, machine_type, context)`, `score(query, baselines)` and
+  `baseline_distances(baselines)` (`app/registry.py`); baseline embeddings are stored in
+  `baseline_embeddings`. Models are audio-only (ADR-006): context is passed but unused.
+  The registry answers `has_any_model()` and `model_for(machine_type)`.
 - The model registry (`app/registry.py`) can only be changed in code. The fake model
   in `tests/fakes.py` is test-only and is not importable from any setting.

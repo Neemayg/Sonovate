@@ -3,7 +3,7 @@
 This document describes only the architecture that has actually been agreed or implemented. Keep proposed designs clearly labelled.
 
 ## Current state
-The application stack is accepted (ADR-005). Everything below runs locally only; there is no cloud project or deployment. The audio-only autoencoder can be loaded from versioned bundles and shown as a labelled research prototype (ADR-006, ADR-007): results appear only for bearing and gearbox machines with at least 10 baseline recordings, always with the notice "Research prototype, low sensitivity. Not a diagnosis or failure prediction." Without the bundles configured, no results are produced.
+The application stack is accepted (ADR-005). Everything below runs locally only; there is no cloud project or deployment. The model is frozen AST with nearest-neighbour scoring against each machine's own baseline recordings (ADR-008), loaded from a versioned bundle and shown as a labelled research prototype (ADR-006, ADR-007): results appear only for bearing and gearbox machines with at least 10 baseline recordings, always with the notice "Research prototype, low sensitivity. Not a diagnosis or failure prediction." Without the bundles configured, no results are produced.
 
 Implemented so far:
 - **Data layer (research):** Python (`ml/`), with `ml/prepare.py` as the entry point. It verifies archives, builds the manifest (`ml/manifest.py`), checks audio format (`ml/audio.py`) and assigns split roles (`ml/splits.py`).
@@ -26,10 +26,13 @@ Browser (Next.js, publishable key + user session)
         ├── no bundles configured -> 503 no_validated_model
         ├── baseline recording itself -> baseline_recording
         ├── fewer than 10 baselines -> 409 baseline_required (count/10)
+        ├── baseline embeddings: read from baseline_embeddings; any missing
+        │   are embedded once from the audio and stored (secret key)
         ├── this machine's threshold: reused if the baseline set is unchanged,
-        │   else every baseline is scored and the EXP-005 threshold recomputed
-        └── score -> log score -> decision; prediction stored (secret key)
-Model bundles (git-ignored, SONOVATE_BUNDLES_DIR) -> allow-list + sha256 checks -> BundleModel
+        │   else recomputed from the baselines' leave-one-out distances (EXP-010)
+        └── embed recording -> cosine distance to nearest baseline -> log
+            -> decision; prediction stored (secret key)
+Model bundle (git-ignored, SONOVATE_BUNDLES_DIR) -> allow-list + sha256 checks -> AstBundleModel
 ```
 
 ### Database (`supabase/migrations/`)
@@ -37,9 +40,10 @@ Model bundles (git-ignored, SONOVATE_BUNDLES_DIR) -> allow-list + sha256 checks 
 - `machines` — owned by a user (`owner_id`); `machine_type` is `bearing` | `gearbox` | `other` (default `other`), which selects the per-type model.
 - `recordings` — belongs to a machine; `kind` is `baseline` (the machine running normally; sets its threshold, never analysed) or `analysis`. Holds the storage path, original filename, size and the duration/sample rate/channels read from the WAV header by the client (display only).
 - `context_readings` — name, numeric value, unit, `source = 'user_entered'` (the only source today).
-- `model_versions` — global catalog, read-only to users. Each row cites its evidence (`evidence_ref`) and carries the machine type, the bundle's limitations and the `bundle.json` sha256. The local seed adds the two research-prototype bundles (bearing, gearbox 0.1.0), citing EXP-002 and EXP-005.
+- `model_versions` — global catalog, read-only to users. Each row cites its evidence (`evidence_ref`) and carries the machine type, the bundle's limitations and the `bundle.json` sha256. The local seed adds `sonovate-ast-knn` 0.2.0 (serves bearing and gearbox, so `machine_type` is null), citing EXP-007, EXP-009 and EXP-010 with its limitations verbatim, and keeps the superseded autoencoder rows (bearing, gearbox 0.1.0) so older predictions still resolve.
 - `predictions` — recording, model version, raw uncalibrated score, log score, the machine's threshold (log space), decision (`below_threshold` | `above_threshold`, checked to agree with `log_score > threshold`), baseline count, `created_at`. Readable by the owner, writable only by the inference service (secret key).
-- `machine_thresholds` — one row per machine and model version: threshold = mean(log s) + 2·std(log s) (population std) over the machine's baseline recordings, with the mean, std, spread, count and the exact baseline recording ids used. Readable by the owner, writable only by the inference service.
+- `baseline_embeddings` — one L2-normalized embedding (`real[]`, 768 values for AST) per baseline recording and model version, so baselines are embedded once. Readable by the owner, writable only by the inference service; deleted with the recording.
+- `machine_thresholds` — one row per machine and model version: threshold = mean(log d) + 2·std(log d) (population std) over one value per baseline recording (AST: its cosine distance to the nearest other baseline), with the mean, std, spread, count and the exact baseline recording ids used. Readable by the owner, writable only by the inference service.
 
 Access model: every row carries `owner_id`; child rows are tied to their parent by composite foreign keys `(parent_id, owner_id)`, so a child can never point at another user's parent. RLS is enabled on every table with `(select auth.uid()) = owner_id` policies, `anon` has no table privileges, and `authenticated` only has the columns it needs (for example, a recording's storage path cannot be changed). Storage objects live at `<owner_id>/<machine_id>/<recording_id>.wav`; a file can only be uploaded for an existing recording row with that exact path, and there is no update policy (recordings are immutable).
 
@@ -50,9 +54,11 @@ Tests: `supabase/tests/database/rls.test.sql` (pgTAP, two users) and `supabase/t
 - `app/auth.py` verifies Supabase access tokens (ES256/RS256 via JWKS; issuer, audience, expiry, role).
 - `app/supabase_data.py` reads recordings, baselines and thresholds with the caller's token and re-checks ownership; writes predictions and thresholds with the secret key (sent only as `apikey`).
 - `app/audio.py` validates the WAV header against the input contract and decodes samples to float32 as soundfile does.
-- `app/bundle.py` loads model bundles. `ALLOWED_BUNDLES` pins each bundle's name, version, machine type, model-version id and `bundle.json` sha256 in code; `bundle.json` pins the sha256 of every other file. Any mismatch refuses to load (the service does not start); unlisted directories are ignored; weights load with `weights_only=True`. `BundleModel` reimplements the bundle's log-mel preprocessing and dense autoencoder from `bundle.json` (score = mean squared reconstruction error). It is audio-only: context is passed in but not used (ADR-006). Parity tests match each bundle's parity WAVs within 1e-5 relative.
-- `app/thresholds.py` implements the EXP-005 baseline threshold and the decision rule.
-- `app/registry.py` defines the model interface: one model per machine type, with its threshold rule and limitations, scored with the audio, the machine type and the context readings. With `SONOVATE_BUNDLES_DIR` unset the registry is empty; otherwise it is the `BundleRegistry`. Test fakes exist only in `backend/tests/`.
+- `app/bundle.py` verifies and loads bundles. `ALLOWED_BUNDLES` pins each bundle's name, version, kind, machine types, model-version id and `bundle.json` sha256 in code; `bundle.json` pins the sha256 of every other file and must cite the bundle kind's experiments. Any mismatch refuses to load (the service does not start); unlisted directories are ignored. The default allow-list is the AST bundle only.
+- `app/ast_bundle.py` implements `sonovate-ast-knn`: `transformers` `ASTFeatureExtractor` and `ASTModel` loaded only from the verified bundle directory (`local_files_only`), CPU, eval; embedding = mean of `last_hidden_state[:, 2:]`, L2-normalized; score = cosine distance to the nearest baseline embedding; leave-one-out distances for the threshold, in float64. Audio-only: context is passed in but not used (ADR-006). Parity tests through WAV decoding match the bundle's embedding head (atol 1e-4) and pairwise and leave-one-out distances (atol 1e-5).
+- The superseded autoencoder (`BundleModel` in `app/bundle.py`) is kept, with a small adapter to the same interface (its "embedding" is its reconstruction score), and stays tested through `AUTOENCODER_BUNDLES`, but is not on the default allow-list.
+- `app/thresholds.py` implements the baseline threshold (mean + 2 population std of log values) and the decision rule.
+- `app/registry.py` defines the model interface: `embed(audio)` (stored for baselines), `score(query, baseline vectors)` and `baseline_distances(baseline vectors)` for the threshold, plus the threshold rule and limitations. One model may serve several machine types. With `SONOVATE_BUNDLES_DIR` unset the registry is empty; otherwise it is the `BundleRegistry`. Test fakes exist only in `backend/tests/`.
 - Errors use one shape, `{"error": {"code", "message", "details"?}}`, with no paths or stack traces.
 
 ### Frontend (`frontend/`)
@@ -65,8 +71,10 @@ Tests: `supabase/tests/database/rls.test.sql` (pgTAP, two users) and `supabase/t
 ### Known limits
 - Deleting a machine (not exposed in the UI) cascades database rows but leaves its files in Storage.
 - The client-side upload is three steps (row, file, context) with best-effort rollback, not a transaction.
-- Thresholds are recomputed lazily, on the next analysis after the baseline set changes; deleting a baseline does not touch stored thresholds until then.
-- Ten baseline recordings give an unstable threshold (EXP-005: false-alarm rate up to 0.20–0.33 at the 95th percentile).
+- Thresholds are recomputed lazily, on the next analysis after the baseline set changes; deleting a baseline does not touch stored thresholds until then. Baseline embeddings are computed lazily too, so the first analysis after adding baselines runs one transformer pass per new baseline.
+- A baseline identical to another (distance ≈ 0) or a recording identical to a baseline cannot be logged; the service reports `baseline_invalid` or `same_as_baseline` instead.
+- AST weights are about 346 MB and stay in the git-ignored bundle; the service holds them in memory once loaded.
+- Ten baseline recordings give a cautious threshold with low recall (EXP-010: about 3–24% of anomalies caught at 2–7% false alarms).
 
 ## Intended logical components
 1. **Data layer:** raw audio, metadata manifests, context measurements, processed features/splits.
