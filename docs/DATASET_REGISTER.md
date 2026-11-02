@@ -31,7 +31,9 @@ Choose a dataset based on fit to the research question, label quality, metadata,
 ---
 
 ## Audit status (2026-11-02)
-Desk audit only. **No audio has been downloaded or listened to.** Sources were Zenodo record metadata, the original papers, and each archive's zip directory and `attributes_*.csv`, read through HTTP range requests. Anything not checked that way is marked Unknown. Clip-level audio quality is still unverified.
+The candidates below come from a desk audit: Zenodo record metadata, the original papers, and each archive's zip directory and `attributes_*.csv`, read through HTTP range requests. Anything not checked that way is marked Unknown.
+
+MIMII DG bearing and gearbox were then downloaded and inspected (see "Hands-on inspection"). The other three MIMII DG machines were not. **No one has listened to the audio yet**: inspection so far is numeric and visual.
 
 | Candidate | Size | License | Context on *test* clips | Measured temp/humidity | Verdict |
 |---|---|---|---|---|---|
@@ -66,11 +68,34 @@ Desk audit only. **No audio has been downloaded or listened to.** Sources were Z
   - Test sets are small (100 per domain per section), so results need confidence intervals.
   - Bearing has 3,599 clips rather than 3,600: section 01 target train has 9, not 10.
   - Paper Table 1 lists gearbox voltage 2.3 twice; the data has 2.3 and 2.8. Trust the data.
-  - CSV value formatting differs from filenames (`3` vs `3.0`). Parse numerically.
+  - **`attributes_*.csv` is unreliable for values: use filenames.** The CSV rounds values (`volt_1.3` is listed as `1`) and lists only the domain-shift parameter, while filenames can hold more (`vel_4_loc_C` is listed as `loc,C`). `ml/manifest.py` reads filenames and uses the CSVs only as a coverage check.
 - **Suitability for audio-only baseline:** High.
 - **Suitability for context-aware experiment:** High for operating condition. None for temperature/humidity.
 - **Unresolved questions:** Audio quality after listening; whether anomaly type or severity varies with condition; per-clip fault labels; whether sections in the same machine type share a physical machine.
 - **Evidence / source links:** Zenodo record above; `bearing.zip`, `gearbox.zip`, `slider.zip`, `fan.zip` and `valve.zip` directories; `attributes_00.csv` and `attributes_01.csv`; paper sections 2–3 and Table 1.
+
+### Hands-on inspection: MIMII DG bearing and gearbox (2026-11-02)
+Reproduce with `python -m ml.manifest` then `python -m ml.inspect_audio`; arguments are in each module's docstring. Output goes to `artifacts/phase1/` (not committed).
+- **Integrity:** Both archives match Zenodo MD5 checksums (bearing `6381a00f9efc0ced779c8ad847e4ff59`, gearbox `c165dfef8c404256bd719c6fe1f7036f`).
+- **Clips:** 7,199, matching the expected per-section counts, including the 9-clip bearing section 01 target train set.
+- **Format:** Every clip is 16 kHz, mono, PCM_16, 160,000 frames (10 s). Measured, so this confirms the paper.
+- **Quality:** 0 unreadable, 0 silent, 0 with clipped samples, 0 exact duplicates across train and test.
+- **Manifest:** `data/manifests/mimii_dg.csv` rebuilds byte-identically.
+
+Condition effect on **source training clips only** (all normal): between-condition variance over within-condition variance of the log spectrum, averaged across frequency. Higher means the known condition changes normal sound more.
+
+| Section | Grouped by | Effect |
+|---|---|---|
+| bearing 00 | speed | 2.459 |
+| bearing 01 | speed + mic location | 8.102 |
+| bearing 02 | speed + factory noise | 1.849 |
+| gearbox 00 | voltage | 5.124 |
+| gearbox 01 | weight | 0.057 |
+| gearbox 02 | machine ID | 0.439 |
+
+**Reading this:** It is a screening statistic, not a model result, and it does not show that context improves detection. It supports the premise that normal sound shifts with condition in bearing 00 and gearbox 00, which are the cleanest operating-condition tests. Gearbox 01 shows almost no shift at the spectrum level at its −12 dB SNR, so context may add little there; that is a prediction to test, not a finding. Bearing 01 and 02 mix in mic location or factory noise, so they are not pure operating-condition tests.
+
+Test clips were used only for format and integrity checks and for a few example spectrograms in `artifacts/phase1/`. No anomaly statistics were computed.
 
 ### Dataset: MIMII DUE
 - **Official source:** https://zenodo.org/records/4740355. Paper: https://arxiv.org/abs/2105.02702
@@ -102,7 +127,7 @@ Desk audit only. **No audio has been downloaded or listened to.** Sources were Z
 
 ## Recommendation (proposed, not yet an accepted decision)
 1. **Dataset:** MIMII DG.
-2. **Machine family:** rotating machinery, using **bearing** and **gearbox** (1.72 GB in total). Bearing section 00 (speed) and gearbox sections 00–01 (voltage, weight) are the context experiments.
+2. **Machine family:** rotating machinery, using **bearing** and **gearbox** (1.72 GB in total). Bearing section 00 (speed) and gearbox section 00 (voltage) are the primary context experiments; gearbox section 01 (weight) is secondary.
 3. **Generalization target:** unseen operating condition, on the official source/target split.
 4. **Context:** Model B uses operating condition only. Temperature/humidity moves to a separate small controlled data-collection study, decided after the Phase 4 result.
 5. **Known gap:** temporal alert logic (Phase 5) has no valid public evidence yet. It needs repeated timestamped recordings or a clearly labelled simulation.

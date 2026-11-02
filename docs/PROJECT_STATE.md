@@ -4,31 +4,32 @@
 
 ## Current status
 - **Phase:** 1 — Dataset feasibility (Phase 0 complete)
-- **Status:** Desk audit done; hands-on sample inspection not started
+- **Status:** Numeric and visual inspection done; awaiting a listening check and decision acceptance
 - **Last updated:** 2026-11-02
 - **Current owner:** Team
 - **Working title:** Environment-Aware Acoustic Machine Health
 - **Repository:** Sonovate (`github.com/Neemayg/Sonovate`, public, nothing pushed yet)
 
 ## Current objective
-Confirm the proposed dataset by inspecting real samples, then close Phase 1 with an accepted dataset choice and split strategy.
+Close Phase 1 with an accepted dataset choice and split strategy.
 
 ## Completed
 - [x] Repository initialized
 - [x] Project instructions reviewed
 - [x] Dataset candidates identified
 - [x] Dataset schema/licensing audited (desk audit; see `DATASET_REGISTER.md`)
-- [ ] Sample audio inspected and visualized
+- [x] Sample audio inspected and visualized (bearing and gearbox; numeric and visual only)
+- [ ] Representative clips listened to by a person
 - [ ] Audio-only baseline implemented
 - [ ] Baseline evaluated on held-out data
 - [x] Context availability verified (operating condition: yes; measured temperature/humidity: no)
 - [ ] Context-aware comparison completed
 
 ## Current task
-Inspect sample audio from the proposed dataset, MIMII DG bearing and gearbox. Do not start frontend/backend implementation yet.
+Accept or change the proposed decisions below. Do not start frontend/backend implementation yet.
 
 ## Blockers
-- Team approval of the dataset recommendation, and of the 1.72 GB download.
+- Team acceptance of the proposed decisions, which closes Phase 1.
 
 ## Decisions needed
 Proposed in `DATASET_REGISTER.md`; move to `DECISIONS.md` once accepted.
@@ -38,14 +39,15 @@ Proposed in `DATASET_REGISTER.md`; move to `DECISIONS.md` once accepted.
 4. Context: operating condition now; temperature/humidity deferred to a separate controlled data-collection study.
 
 ## Next action
-Download `bearing.zip` and `gearbox.zip` to `data/raw/`, verify checksums and counts against the register, then listen to and visualize representative normal and anomaly clips per condition.
+Listen to a few normal and anomaly clips, then record the accepted decisions in `DECISIONS.md`. Phase 2 then adds the fixed split definition on top of `ml/manifest.py`.
 
 ## Latest verified results
-None. No model has been trained. No performance claims are established.
+No model has been trained. No performance claims are established. Data checks only: 7,199 clips validated, uniform format, no duplicates (see `DATASET_REGISTER.md`).
 
 ## Session handoff
-- **Changed:** Installed the starter kit, initialized git with remote `origin`, extended `.gitignore` (audio, archives, local Claude settings), and completed the desk audit.
-- **Checks run:** Zenodo metadata for 10 records; zip directories for MIMII DG (5 archives), MIMII DUE (2) and DCASE 2023 (3) via range requests; `attributes_*.csv` for 4 sections. No audio downloaded.
-- **Not verified:** Audio quality; MaFaulDa primary source and license (site unreachable).
-- **Blocker:** Dataset and download approval.
+- **Changed:** Added the Python project (`pyproject.toml`, `uv.lock`), `ml/manifest.py`, `ml/inspect_audio.py`, tests, and `data/manifests/mimii_dg.csv`. Downloaded MIMII DG bearing and gearbox to `data/raw/mimii_dg/` (ignored by git).
+- **Found:** `attributes_*.csv` rounds values and omits parameters, so the manifest reads filenames instead.
+- **Checks run:** `uv run pytest`; MD5 against Zenodo; manifest rebuild compared byte for byte; `ml.inspect_audio` over all 7,199 clips.
+- **Not verified:** How the audio sounds; the other three MIMII DG machines; MaFaulDa primary source and license (site unreachable).
+- **Blocker:** Acceptance of the proposed decisions.
 - **Next task:** The Next action above.
