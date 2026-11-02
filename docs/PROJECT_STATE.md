@@ -24,6 +24,8 @@ Decide whether the app switches from the autoencoder to frozen AST, and how far 
 - [x] Research-based training plan (`docs/TRAINING_PLAN.md`)
 - [x] Frozen pretrained encoders on development (EXP-007: AST k1 selected); encoder combination not selected (EXP-008)
 - [x] **Clean final test on untouched DCASE 2022 evaluation data (EXP-009)**
+- [x] Product model switched to frozen AST (ADR-008; app setup checked in EXP-010; PR #7)
+- [x] App additions merged: delete recordings and machines (PR #4), machines overview (PR #5), UI redesign (PR #6); local only
 
 ## Current task
 Choose the product model and the next research step.
@@ -34,15 +36,15 @@ Choose the product model and the next research step.
 - Phase 5 (alerts over time) has no timestamped data.
 
 ## Decisions needed
-1. **Product model:** switch the app to frozen AST (better overall and on gearbox, BSD-3 licence), or keep the autoencoder. Picking a different model per machine from EXP-009 results would be tuning on the test set.
+1. **Product model:** decided, frozen AST (ADR-008), merged in PR #7.
 2. **Next research step:** fine-tune AST on condition labels, or try stronger pretrained models. Either needs another untouched test set, such as DCASE 2023 or 2024.
 3. Phase 5 data source: own timestamped recordings, or a clearly labelled simulation.
 
 ## Next action
-If AST is chosen:
-- add an AST bundle exporter (embedding settings plus reference embeddings per section, kNN scoring);
-- have the backend score with it, with parity tests as for the autoencoder bundle;
-- keep the EXP-005 baseline threshold.
+The app runs frozen AST from `artifacts/bundles/sonovate-ast-knn-0.2.0/` (export with `uv run python -m ml.export_ast --config configs/export_ast.json`). Next is one of:
+- Phase 5 data;
+- a security review and deployment plan;
+- fine-tuning AST, verified on a new untouched test set.
 
 ## Latest verified results
 - **EXP-009 (untouched DCASE 2022 evaluation sections 03–05, official AUC):**
