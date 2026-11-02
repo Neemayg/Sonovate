@@ -411,7 +411,7 @@ Status: **Complete: not selected (0.672 vs 0.673); AST k1 stays.** The plan was 
   - Next: one pre-registered evaluation of AST k1 against the autoencoder on the untouched DCASE 2022 evaluation sections.
 
 ### EXP-009 — Final test on untouched data: AST k1 vs autoencoder
-Status: **Pre-registered, not yet run.** This plan is committed before any clip of this test set is scored. **First and only planned use of this test set.**
+Status: **Complete: AST is better overall (narrowly), driven by gearbox; bearing is not better.** The plan was committed at `bd9192c`, and training and the single evaluation both used that commit. **This was the first and only planned use of this test set.**
 - **Date:** 2026-11-02
 - **Research question:** On data neither system has seen, does frozen AST with nearest-neighbour scoring (selected in EXP-007/008) detect anomalies better than the autoencoder?
 - **Hypothesis:** AST k1 has a higher mean AUC over the 12 section-domains.
@@ -435,7 +435,49 @@ Status: **Pre-registered, not yet run.** This plan is committed before any clip 
   - **AST is better:** mean ΔAUC > 0 and its interval excludes 0.
   - **AST is worse:** the interval lies wholly below 0.
   - **Inconclusive:** anything else.
-- **Results:** Pending.
-- **Conclusion / next experiment:** Pending.
+- **Results:** AUC per section and domain. "Official" is the DCASE 2022 definition; "within" is the within-domain definition. FPR and recall are AST at the baseline threshold.
+
+  | Section / domain | AST official | Autoencoder official | AST within | Autoencoder within | AST FPR | AST recall |
+  |---|---|---|---|---|---|---|
+  | bearing 03 source | 0.753 | 0.689 | 0.736 | 0.708 | 0.045 | 0.218 |
+  | bearing 03 target | 0.641 | 0.514 | 0.664 | 0.514 | 0.022 | 0.079 |
+  | bearing 04 source | 0.687 | 0.780 | 0.674 | 0.747 | 0.072 | 0.141 |
+  | bearing 04 target | 0.557 | 0.665 | 0.559 | 0.697 | 0.074 | 0.043 |
+  | bearing 05 source | 0.786 | 0.757 | 0.618 | 0.610 | 0.047 | 0.095 |
+  | bearing 05 target | 0.332 | 0.475 | 0.552 | 0.678 | 0.087 | 0.073 |
+  | gearbox 03 source | 0.738 | 0.624 | 0.747 | 0.645 | 0.085 | 0.118 |
+  | gearbox 03 target | 0.644 | 0.580 | 0.630 | 0.560 | 0.086 | 0.063 |
+  | gearbox 04 source | 0.736 | 0.703 | 0.730 | 0.720 | 0.079 | 0.122 |
+  | gearbox 04 target | 0.734 | 0.727 | 0.750 | 0.713 | 0.058 | 0.150 |
+  | gearbox 05 source | 0.826 | 0.785 | 0.757 | 0.746 | 0.055 | 0.234 |
+  | gearbox 05 target | 0.702 | 0.503 | 0.780 | 0.576 | 0.023 | 0.074 |
+  | **Mean** | **0.678** | **0.650** | **0.683** | **0.659** | | |
+
+  - Mean ΔAUC (official): **+0.028**, 95% interval **+0.001 to +0.055**, so the decision is **AST is better**.
+  - Per machine (official AUC, mean / harmonic mean):
+    - AST gearbox 0.730 / 0.726 vs autoencoder 0.654 / 0.639.
+    - AST bearing 0.626 / 0.575 vs autoencoder 0.646 / 0.624.
+  - Mean pAUC: AST gearbox 0.165 vs 0.147; AST bearing 0.168 vs 0.253.
+- **Error analysis:**
+  - **Gearbox: a clear gain** in all 6 section-domains, largest on new conditions (gearbox 05 target 0.503 → 0.702).
+  - **Bearing: no gain, and worse in places.**
+    - Bearing 04 is worse in both domains.
+    - Bearing 05 target is 0.332 under the official definition (0.552 within-domain), so AST ranks that section's anomalies below its target normal clips once source anomalies are included.
+    - Bearing pAUC is clearly worse (0.168 vs 0.253).
+  - **The overall win is narrow.** The interval's lower end is +0.001, and gearbox carries it.
+  - **Comparison with published results** (DCASE 2022 evaluation, official definition, approximate because the published figures also fold in pAUC):
+    - Our autoencoder (gearbox 0.639, bearing 0.624 harmonic mean) is close to the official autoencoder baseline (about 0.62 and 0.60), which supports the pipeline.
+    - AST gearbox (0.726) is above the baselines but below the top teams (about 0.82–0.87).
+    - AST bearing (0.575) is below the baselines.
+  - **At the baseline threshold, false alarms stay controlled** (FPR 0.02–0.09 in every section-domain), **but AST catches only 4–23% of anomalies.**
+- **Limitations:**
+  - One autoencoder seed (seed variance was large in EXP-003).
+  - AST was chosen on development data where bearing 02 had favoured it. On fresh bearing data that advantage did not hold.
+  - Choosing a different system per machine *because of these results* would be tuning on this test set. Any per-machine choice needs fresh evidence.
+- **Conclusion / next experiment:**
+  - This is the project's first fully clean result. Frozen AST with nearest-neighbour scoring is better overall than the autoencoder on unseen data, but narrowly, and only because of gearbox. On bearing it is not better.
+  - Neither system is a strong detector at a low-false-alarm operating point.
+  - Clear next steps for detection quality are fine-tuning on condition labels, or stronger pretrained models.
+  - Either would need another untouched test set (for example DCASE 2023 or 2024 data) to verify.
 - **Artifacts path:** `artifacts/EXP-006/`
 - **Conclusion / next experiment:** Pending.
