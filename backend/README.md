@@ -36,6 +36,18 @@ uv run --env-file .env uvicorn app.main:create_app --factory --port 8000
 SONOVATE_BUNDLES_DIR=/path/to/artifacts/bundles uv run pytest   # parity tests need the bundles
 ```
 
+### Running in production
+
+- Run a fixed number of workers, e.g. `uvicorn app.main:create_app --factory --workers 2
+  --host 0.0.0.0 --port 8000 --timeout-keep-alive 5`, behind a reverse proxy that terminates
+  TLS, enforces a request timeout (e.g. 120 s) and a body-size limit. Uvicorn has no request
+  timeout of its own.
+- The abuse limits (`app/limits.py`) live in process memory: one analysis in flight per user,
+  `SONOVATE_ANALYSES_PER_WINDOW` analyses per `SONOVATE_RATE_WINDOW_SECONDS` (default 20 per
+  600 s), and `SONOVATE_EMBED_CONCURRENCY` transformer passes at once (default 1). With N
+  workers they apply per worker. Each worker loads the AST model (about 350 MB of memory).
+- `SUPABASE_URL` must be https unless it points at loopback. See `docs/DEPLOYMENT.md`.
+
 To serve results, set `SONOVATE_BUNDLES_DIR` (the git-ignored bundle export, for example
 `<main checkout>/artifacts/bundles`) and `SUPABASE_SECRET_KEY` in `.env`; the service refuses
 to start with bundles but no secret key. Without the bundles the parity tests are skipped and
@@ -58,7 +70,15 @@ say why.
 | 422 | `baseline_invalid` | A baseline recording's file is missing or fails the input contract, or two baselines are identical |
 | 422 | `same_as_baseline` | The recording is identical to one of the machine's baseline recordings |
 | 503 | `no_validated_model` | No validated model is registered for any type (current behaviour for bearing and gearbox) |
+| 429 | `analysis_in_progress` | Another analysis of this user is still running |
+| 429 | `rate_limited` | Too many analyses in the window; `Retry-After` header and `details.retry_after_seconds` |
+| 503 | `model_busy` | All transformer slots busy for 30 s; retry after `Retry-After` |
 | 502 | `upstream_unavailable` | Supabase could not be reached |
+
+`DELETE /v1/account` with the user's token and body `{"confirm": "delete my account"}` deletes
+every audio file under the user's prefix, then the auth user (the database cascades). It
+returns 204; `422 invalid_request` without the exact phrase; `503 account_deletion_unavailable`
+without `SUPABASE_SECRET_KEY`.
 
 Errors never include file paths, stack traces or internals. A 200 response carries the raw
 score, `log_score`, this machine's `threshold` (log space; `above_threshold` when
@@ -71,8 +91,8 @@ research-prototype `notice`.
   expiry and role checked). HS256 and `none` are rejected.
 - Recordings are read with the caller's own token, so Supabase RLS applies, and the
   service re-checks that the row's owner is the caller.
-- `SUPABASE_SECRET_KEY` is only needed to write predictions (users cannot), which
-  happens only once a validated model is registered.
+- `SUPABASE_SECRET_KEY` is needed to write predictions, thresholds and baseline embeddings
+  (users cannot) and to delete accounts.
 - Models implement `embed(audio, machine_type, context)`, `score(query, baselines)` and
   `baseline_distances(baselines)` (`app/registry.py`); baseline embeddings are stored in
   `baseline_embeddings`. Models are audio-only (ADR-006): context is passed but unused.
