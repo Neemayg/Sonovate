@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BASELINE_REQUIRED, type MachineOverview } from "@/lib/api";
 import { MODEL_INPUTS, machineTypeLabel } from "@/lib/modelInputs";
 import { BaselineMeter } from "./BaselineMeter";
+import { MachineAlertNotice } from "./MachineAlertNotice";
 import { PROTOTYPE_NOTICE } from "./RecordingDetails";
 import { formatDateTime } from "./Status";
 
@@ -62,6 +63,7 @@ export function MachineCard({ machine: m }: { machine: MachineOverview }) {
               </Link>
             </p>
             <p className="muted small">{PROTOTYPE_NOTICE}</p>
+            <MachineAlertNotice alert={m.alert} compact />
           </>
         )}
       </div>

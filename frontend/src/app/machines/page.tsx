@@ -19,6 +19,10 @@ function summary(machines: MachineOverview[]): { value: number; label: string }[
     },
     { value: counts.ready, label: "ready for analysis" },
     { value: counts.has_result, label: "with results" },
+    {
+      value: machines.filter((m) => m.alert?.alert).length,
+      label: machines.filter((m) => m.alert?.alert).length === 1 ? "machine alert" : "machine alerts",
+    },
     { value: counts.unsupported, label: "without analysis support" },
   ].filter((item, i) => i === 0 || item.value > 0);
 }

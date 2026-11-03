@@ -1396,3 +1396,13 @@ button:disabled {
 .card div:has(> .meter) + p {
   margin-top: 0.75rem;
 }
+
+/* --- machine alert (ADR-009) ---------------------------------------------- */
+
+.machine-alert {
+  margin: 0.4rem 0 0;
+}
+
+.machine-alert-none p {
+  margin: 0.15rem 0 0;
+}
