@@ -57,6 +57,17 @@ function supabase() {
   return client;
 }
 
+// Server-side caps (supabase migration deploy_hardening) raise these codes.
+function capMessage(error: { message?: string } | null): string | null {
+  if (error?.message === "baseline_limit_reached") {
+    return "This machine already has 50 baseline recordings, the maximum. Delete one before adding another.";
+  }
+  if (error?.message === "recording_limit_reached") {
+    return "Your account has reached 500 recordings, the maximum. Delete some before uploading more.";
+  }
+  return null;
+}
+
 function fail(message: string, error: unknown): never {
   // Supabase errors can be technical; keep the user-facing text plain.
   console.error(message, error);
@@ -128,7 +139,42 @@ export type MachineOverview = Machine & {
   lastUploadAt: string | null;
   // The most recent stored result across the machine's recordings, if any.
   latest: { decision: string; created_at: string; recording_id: string } | null;
+  alert: MachineAlert | null;
 };
+
+// ADR-009: machine alert when at least 2 of the last 3 analysed recordings
+// are above the machine's baseline threshold. Computed by the
+// public.machine_alerts view (RLS applies through security_invoker).
+export type MachineAlert = {
+  analyses_considered: number;
+  above_threshold_count: number;
+  alert: boolean;
+  last_analysed_at: string;
+};
+
+async function machineAlerts(machineId?: string): Promise<Map<string, MachineAlert>> {
+  let query = supabase()
+    .from("machine_alerts")
+    .select("machine_id, analyses_considered, above_threshold_count, alert, last_analysed_at");
+  if (machineId) query = query.eq("machine_id", machineId);
+  const { data, error } = await query;
+  if (error) fail("Could not load machine alerts.", error);
+  return new Map(
+    data.map((row) => [
+      row.machine_id as string,
+      {
+        analyses_considered: row.analyses_considered ?? 0,
+        above_threshold_count: row.above_threshold_count ?? 0,
+        alert: row.alert === true,
+        last_analysed_at: row.last_analysed_at ?? "",
+      },
+    ]),
+  );
+}
+
+export async function getMachineAlert(machineId: string): Promise<MachineAlert | null> {
+  return (await machineAlerts(machineId)).get(machineId) ?? null;
+}
 
 type OverviewRow = Machine & {
   recordings: {
@@ -147,7 +193,8 @@ export async function listMachineOverviews(): Promise<MachineOverview[]> {
     .select("*, recordings(id, kind, created_at, predictions(decision, created_at))")
     .order("created_at", { ascending: false });
   if (error) fail("Could not load machines.", error);
-  return (data as OverviewRow[]).map(summarise);
+  const alerts = await machineAlerts();
+  return (data as OverviewRow[]).map((row) => ({ ...summarise(row), alert: alerts.get(row.id) ?? null }));
 }
 
 export function summarise(row: Machine & Partial<Pick<OverviewRow, "recordings">>): MachineOverview {
@@ -166,6 +213,7 @@ export function summarise(row: Machine & Partial<Pick<OverviewRow, "recordings">
     baselineCount: recordings.filter((r) => r.kind === "baseline").length,
     lastUploadAt,
     latest,
+    alert: null,
   };
 }
 
@@ -243,7 +291,7 @@ export async function createRecording(input: NewRecording): Promise<Recording> {
     })
     .select()
     .single();
-  if (rowError) fail("Could not save the recording.", rowError);
+  if (rowError) fail(capMessage(rowError) ?? "Could not save the recording.", rowError);
 
   const { error: uploadError } = await db.storage
     .from(BUCKET)
@@ -310,11 +358,15 @@ export async function deleteMachine(machineId: string): Promise<void> {
     .select("storage_path")
     .eq("machine_id", machineId);
   if (rowsError) fail("Could not list the machine's recordings.", rowsError);
-  const { data: objects, error: listError } = await db.storage.from(BUCKET).list(folder, { limit: 1000 });
-  if (listError) fail("Could not list the machine's audio files.", listError);
-
   const paths = new Set(rows.map((r) => r.storage_path));
-  for (const object of objects) paths.add(`${folder}/${object.name}`);
+  // Paginated: a machine can hold more files than one listing page returns.
+  const page = 1000;
+  for (let offset = 0; ; offset += page) {
+    const { data: objects, error: listError } = await db.storage.from(BUCKET).list(folder, { limit: page, offset });
+    if (listError) fail("Could not list the machine's audio files.", listError);
+    for (const object of objects) paths.add(`${folder}/${object.name}`);
+    if (objects.length < page) break;
+  }
   await removeFiles([...paths]);
 
   const { data, error } = await db.from("machines").delete().eq("id", machineId).select("id");
@@ -398,4 +450,29 @@ export async function requestAnalysis(recordingId: string): Promise<AnalysisResu
     };
   }
   return { status: "error", code, message };
+}
+
+// Deletes the signed-in user's account through the inference service, which
+// holds the secret key: all audio files, all data and the login itself.
+export const ACCOUNT_DELETION_PHRASE = "delete my account";
+
+export async function deleteAccount(): Promise<void> {
+  if (!INFERENCE_API_URL) throw new Error("The service URL is not configured.");
+  const session = await getSession();
+  if (!session) throw new Error("You are signed out. Sign in again.");
+  let res: Response;
+  try {
+    res = await fetch(`${INFERENCE_API_URL}/v1/account`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ confirm: ACCOUNT_DELETION_PHRASE }),
+    });
+  } catch {
+    throw new Error("The service could not be reached. Nothing was deleted.");
+  }
+  if (res.status !== 204) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error?.message ?? `Account deletion failed (${res.status}).`);
+  }
+  await supabase().auth.signOut();
 }

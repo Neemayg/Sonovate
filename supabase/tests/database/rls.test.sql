@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(63);
+select plan(74);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres, bypassing RLS). Fixed ids keep failures readable.
@@ -308,6 +308,126 @@ select is((select count(*)::int from public.machine_thresholds where owner_id = 
   0, 'deleting a machine cascades to its thresholds');
 select is((select count(*)::int from public.baseline_embeddings where owner_id = 'bbbbbbbb-0000-0000-0000-000000000002'),
   0, 'deleting a machine cascades through recordings to their embeddings');
+
+
+-- ---------------------------------------------------------------------------
+-- Caps, machine alerts and account deletion (user C, own fixtures)
+-- ---------------------------------------------------------------------------
+reset role;
+insert into auth.users (id, email, aud, role)
+values ('cccccccc-0000-0000-0000-000000000003', 'rls-c@example.test', 'authenticated', 'authenticated');
+insert into public.machines (id, owner_id, name, machine_type)
+values ('c1000000-0000-0000-0000-000000000003', 'cccccccc-0000-0000-0000-000000000003', 'C gearbox', 'gearbox');
+
+-- 50 baselines (the maximum) and 450 analysis recordings: 500 in total.
+insert into public.recordings (id, machine_id, owner_id, kind, storage_path)
+select id, 'c1000000-0000-0000-0000-000000000003', 'cccccccc-0000-0000-0000-000000000003', kind::public.recording_kind,
+  'cccccccc-0000-0000-0000-000000000003/c1000000-0000-0000-0000-000000000003/' || id || '.wav'
+from (
+  select gen_random_uuid() as id, case when n <= 50 then 'baseline' else 'analysis' end as kind
+  from generate_series(1, 500) as n
+) as s;
+
+select is((select count(*)::int from public.recordings where owner_id = 'cccccccc-0000-0000-0000-000000000003'),
+  500, 'caps allow exactly 500 recordings and 50 baselines');
+
+set local role authenticated;
+select set_config('request.jwt.claims',
+  '{"sub":"cccccccc-0000-0000-0000-000000000003","role":"authenticated"}', true);
+
+select throws_ok(
+  $$insert into public.recordings (id, machine_id, kind, storage_path) values (
+    'c2000000-0000-0000-0000-000000000501', 'c1000000-0000-0000-0000-000000000003', 'analysis',
+    'cccccccc-0000-0000-0000-000000000003/c1000000-0000-0000-0000-000000000003/c2000000-0000-0000-0000-000000000501.wav')$$,
+  'P0001', 'recording_limit_reached', 'a 501st recording is refused');
+
+select throws_ok(
+  $$update public.recordings set kind = 'baseline'
+    where id = (select id from public.recordings where kind = 'analysis' limit 1)$$,
+  'P0001', 'baseline_limit_reached', 'a 51st baseline (by changing kind) is refused');
+
+reset role;
+delete from public.recordings
+where id in (select id from public.recordings
+             where owner_id = 'cccccccc-0000-0000-0000-000000000003' and kind = 'analysis' limit 10);
+set local role authenticated;
+select set_config('request.jwt.claims',
+  '{"sub":"cccccccc-0000-0000-0000-000000000003","role":"authenticated"}', true);
+
+select throws_ok(
+  $$insert into public.recordings (id, machine_id, kind, storage_path) values (
+    'c2000000-0000-0000-0000-000000000502', 'c1000000-0000-0000-0000-000000000003', 'baseline',
+    'cccccccc-0000-0000-0000-000000000003/c1000000-0000-0000-0000-000000000003/c2000000-0000-0000-0000-000000000502.wav')$$,
+  'P0001', 'baseline_limit_reached', 'a 51st baseline insert is refused even below the recording cap');
+
+select lives_ok(
+  $$insert into public.recordings (id, machine_id, kind, storage_path) values (
+    'c2000000-0000-0000-0000-000000000503', 'c1000000-0000-0000-0000-000000000003', 'analysis',
+    'cccccccc-0000-0000-0000-000000000003/c1000000-0000-0000-0000-000000000003/c2000000-0000-0000-0000-000000000503.wav')$$,
+  'an analysis recording below both caps is accepted');
+
+-- machine alert: decisions on three analysis recordings, oldest first
+reset role;
+insert into public.recordings (id, machine_id, owner_id, kind, storage_path)
+select id, 'c1000000-0000-0000-0000-000000000003', 'cccccccc-0000-0000-0000-000000000003', 'analysis',
+  'cccccccc-0000-0000-0000-000000000003/c1000000-0000-0000-0000-000000000003/' || id || '.wav'
+from (values ('c3000000-0000-0000-0000-000000000001'::uuid), ('c3000000-0000-0000-0000-000000000002'::uuid),
+             ('c3000000-0000-0000-0000-000000000003'::uuid), ('c3000000-0000-0000-0000-000000000004'::uuid)) as v(id);
+insert into public.predictions (recording_id, owner_id, model_version_id, score, threshold, decision, created_at)
+values
+  ('c3000000-0000-0000-0000-000000000001', 'cccccccc-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000001', 1, 0, 'above_threshold', now() - interval '4 hours'),
+  ('c3000000-0000-0000-0000-000000000002', 'cccccccc-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000001', 1, 0, 'below_threshold', now() - interval '3 hours'),
+  ('c3000000-0000-0000-0000-000000000003', 'cccccccc-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000001', 1, 0, 'above_threshold', now() - interval '2 hours');
+
+set local role authenticated;
+select set_config('request.jwt.claims',
+  '{"sub":"cccccccc-0000-0000-0000-000000000003","role":"authenticated"}', true);
+select results_eq(
+  $$select analyses_considered, above_threshold_count, alert from public.machine_alerts
+    where machine_id = 'c1000000-0000-0000-0000-000000000003'$$,
+  $$values (3, 2, true)$$,
+  '2 of the last 3 above threshold raises the machine alert');
+
+reset role;
+insert into public.predictions (recording_id, owner_id, model_version_id, score, threshold, decision, created_at)
+values ('c3000000-0000-0000-0000-000000000004', 'cccccccc-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000001', 1, 0, 'below_threshold', now() - interval '1 hour');
+set local role authenticated;
+select set_config('request.jwt.claims',
+  '{"sub":"cccccccc-0000-0000-0000-000000000003","role":"authenticated"}', true);
+select results_eq(
+  $$select above_threshold_count, alert from public.machine_alerts where machine_id = 'c1000000-0000-0000-0000-000000000003'$$,
+  $$values (1, false)$$,
+  'only the last 3 count: one above threshold among them is no alert');
+
+reset role;
+insert into public.predictions (recording_id, owner_id, model_version_id, score, threshold, decision, created_at)
+values ('c3000000-0000-0000-0000-000000000004', 'cccccccc-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000001', 1, 0, 'above_threshold', now());
+set local role authenticated;
+select set_config('request.jwt.claims',
+  '{"sub":"cccccccc-0000-0000-0000-000000000003","role":"authenticated"}', true);
+select results_eq(
+  $$select analyses_considered, above_threshold_count, alert from public.machine_alerts
+    where machine_id = 'c1000000-0000-0000-0000-000000000003'$$,
+  $$values (3, 2, true)$$,
+  're-analysing a recording replaces its decision instead of counting twice');
+
+select set_config('request.jwt.claims',
+  '{"sub":"bbbbbbbb-0000-0000-0000-000000000002","role":"authenticated"}', true);
+select is((select count(*)::int from public.machine_alerts where machine_id = 'c1000000-0000-0000-0000-000000000003'),
+  0, 'another user cannot see the machine alert');
+
+set local role anon;
+select throws_ok('select * from public.machine_alerts', '42501', null, 'anon cannot read machine alerts');
+
+-- account deletion: removing the auth user removes every row of theirs
+reset role;
+delete from auth.users where id = 'cccccccc-0000-0000-0000-000000000003';
+select is(
+  (select count(*)::int from public.profiles where id = 'cccccccc-0000-0000-0000-000000000003')
+  + (select count(*)::int from public.machines where owner_id = 'cccccccc-0000-0000-0000-000000000003')
+  + (select count(*)::int from public.recordings where owner_id = 'cccccccc-0000-0000-0000-000000000003')
+  + (select count(*)::int from public.predictions where owner_id = 'cccccccc-0000-0000-0000-000000000003'),
+  0, 'deleting the auth user cascades through profile, machines, recordings and predictions');
 
 select * from finish();
 rollback;

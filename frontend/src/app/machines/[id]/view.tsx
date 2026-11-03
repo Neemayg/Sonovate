@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BaselineMeter } from "@/components/BaselineMeter";
 import { ConfirmDelete } from "@/components/ConfirmDelete";
+import { MachineAlertNotice } from "@/components/MachineAlertNotice";
 import { MachineForm } from "@/components/MachineForm";
 import { PageHead } from "@/components/PageHead";
 import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
@@ -13,9 +14,11 @@ import {
   BASELINE_REQUIRED,
   deleteMachine,
   getMachine,
+  getMachineAlert,
   listRecordings,
   updateMachine,
   type Machine,
+  type MachineAlert,
   type Recording,
 } from "@/lib/api";
 import { MODEL_INPUTS, machineTypeLabel } from "@/lib/modelInputs";
@@ -27,12 +30,14 @@ export function MachineDetail({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [lastBaseline, setLastBaseline] = useState<string | null>(null);
+  const [alert, setAlert] = useState<MachineAlert | null>(null);
 
   useEffect(() => {
-    Promise.all([getMachine(id), listRecordings(id)])
-      .then(([m, r]) => {
+    Promise.all([getMachine(id), listRecordings(id), getMachineAlert(id)])
+      .then(([m, r, a]) => {
         setMachine(m);
         setRecordings(r);
+        setAlert(a);
       })
       .catch((err: Error) => setError(err.message));
   }, [id]);
@@ -67,6 +72,13 @@ export function MachineDetail({ id }: { id: string }) {
           </Link>
         }
       />
+
+      {alert && (
+        <section className="card" aria-labelledby="machine-alert-title">
+          <h2 id="machine-alert-title">Machine alert</h2>
+          <MachineAlertNotice alert={alert} />
+        </section>
+      )}
 
       <div className="columns">
         <div>

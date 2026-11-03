@@ -174,7 +174,21 @@ isOneToOne: false
                 }
           }
           Views: {
-            [_ in never]: never
+            "machine_alerts": {
+                  Row: {
+                    "above_threshold_count": number | null,"alert": boolean | null,"analyses_considered": number | null,"last_analysed_at": string | null,"machine_id": string,"owner_id": string
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    {
+      foreignKeyName: "recordings_machine_id_owner_id_fkey"
+      columns: ["machine_id","owner_id"]
+isOneToOne: false
+      referencedRelation: "machines"
+      referencedColumns: ["id","owner_id"]
+    }
+                  ]
+                }
           }
           Functions: {
             [_ in never]: never

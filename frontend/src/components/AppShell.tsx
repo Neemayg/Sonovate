@@ -14,6 +14,9 @@ function MainNav({ current }: { current?: string }) {
       <Link href="/machines" aria-current={current === "/machines" ? "page" : undefined}>
         Machines
       </Link>
+      <Link href="/account" aria-current={current === "/account" ? "page" : undefined}>
+        Account
+      </Link>
     </nav>
   );
 }

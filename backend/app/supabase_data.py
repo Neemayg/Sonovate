@@ -341,3 +341,84 @@ class SupabasePredictionStore:
         )
         if res.status_code not in (200, 201, 204):
             raise UpstreamError(f"database returned {res.status_code}")
+
+
+class AccountAdmin(Protocol):
+    def delete_user_files(self, user_id: uuid.UUID) -> int: ...
+
+    def delete_auth_user(self, user_id: uuid.UUID) -> None: ...
+
+
+class SupabaseAccountAdmin:
+    """Account deletion with the secret key (sent only as `apikey`).
+
+    Files first, then the auth user: if the second step fails the call can be
+    retried, and no orphaned audio is left behind either way. Storage listing
+    is paginated and recursive over the user's `<uid>/` prefix.
+    """
+
+    PAGE = 1000
+
+    def __init__(self, settings: Settings, client: httpx.Client) -> None:
+        if not settings.supabase_secret_key:
+            raise UpstreamError("SUPABASE_SECRET_KEY is required to delete accounts")
+        self._settings = settings
+        self._client = client
+        self._headers = {"apikey": settings.supabase_secret_key}
+
+    def _list(self, prefix: str) -> list[dict]:
+        entries: list[dict] = []
+        offset = 0
+        while True:
+            try:
+                res = self._client.post(
+                    f"{self._settings.supabase_url}/storage/v1/object/list/recordings",
+                    json={"prefix": prefix, "limit": self.PAGE, "offset": offset, "sortBy": {"column": "name", "order": "asc"}},
+                    headers=self._headers,
+                )
+            except httpx.HTTPError as exc:
+                raise UpstreamError("storage unreachable") from exc
+            if res.status_code != 200:
+                raise UpstreamError(f"storage returned {res.status_code}")
+            page = res.json()
+            entries.extend(page)
+            if len(page) < self.PAGE:
+                return entries
+            offset += self.PAGE
+
+    def _file_paths(self, prefix: str, depth: int = 0) -> list[str]:
+        paths: list[str] = []
+        for entry in self._list(prefix):
+            path = f"{prefix}/{entry['name']}"
+            if entry.get("id") is None:  # a folder
+                if depth < 4:
+                    paths.extend(self._file_paths(path, depth + 1))
+            else:
+                paths.append(path)
+        return paths
+
+    def delete_user_files(self, user_id: uuid.UUID) -> int:
+        paths = self._file_paths(str(user_id))
+        for i in range(0, len(paths), self.PAGE):
+            try:
+                res = self._client.request(
+                    "DELETE",
+                    f"{self._settings.supabase_url}/storage/v1/object/recordings",
+                    json={"prefixes": paths[i : i + self.PAGE]},
+                    headers=self._headers,
+                )
+            except httpx.HTTPError as exc:
+                raise UpstreamError("storage unreachable") from exc
+            if res.status_code != 200:
+                raise UpstreamError(f"storage returned {res.status_code}")
+        return len(paths)
+
+    def delete_auth_user(self, user_id: uuid.UUID) -> None:
+        try:
+            res = self._client.delete(
+                f"{self._settings.supabase_url}/auth/v1/admin/users/{user_id}", headers=self._headers
+            )
+        except httpx.HTTPError as exc:
+            raise UpstreamError("auth unreachable") from exc
+        if res.status_code not in (200, 204, 404):
+            raise UpstreamError(f"auth returned {res.status_code}")
