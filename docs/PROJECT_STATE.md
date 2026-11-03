@@ -3,15 +3,15 @@
 > Update at milestone boundaries. Keep this file short enough to scan quickly.
 
 ## Current status
-- **Phase:** 5 done on simulation (EXP-011, ADR-009); 8 in progress (security review done, fixes and deployment next)
-- **Status:** App runs frozen AST; over-time alert rule chosen; security review found no critical issues and 2 high-priority items
+- **Phase:** 5 done on simulation (EXP-011, ADR-009); 8 in progress (hardening merged in PR #8; cloud deployment next)
+- **Status:** App runs frozen AST with the ADR-009 machine alert; security review findings fixed; nothing deployed
 - **Last updated:** 2026-11-03
 - **Current owner:** Team
 - **Working title:** Environment-Aware Acoustic Machine Health
 - **Repository:** Sonovate (`github.com/Neemayg/Sonovate`, public)
 
 ## Current objective
-Decide whether the app switches from the autoencoder to frozen AST, and how far to push detection quality.
+Deploy the hardened app to the cloud once accounts and hosting are approved.
 
 ## Completed
 - [x] Repository, instructions, dataset audit and accepted decisions (ADR-001 to ADR-007)
@@ -28,9 +28,10 @@ Decide whether the app switches from the autoencoder to frozen AST, and how far 
 - [x] App additions merged: delete recordings and machines (PR #4), machines overview (PR #5), UI redesign (PR #6); local only
 - [x] Phase 5 on simulated timelines: alert rule "2 of the last 3" (EXP-011, ADR-009); real timestamped data still needed
 - [x] Security and privacy review (2026-11-03): no critical issues; high: no rate limiting on inference, `model_versions` only in seed data
+- [x] Hardening and ADR-009 alert in the app (PR #8): rate limits and caps, model versions in a migration, account deletion removes audio, https-only Supabase in production, security headers. Checked: 131 backend tests, frontend build, 74 database tests
 
 ## Current task
-Fix the security review's high and medium findings and add the ADR-009 alert to the app; then deploy once accounts are approved.
+Phase 8 deployment: cloud Supabase project, frontend hosting, backend hosting with enough memory for AST, production settings from the PR #8 checklist, then an end-to-end check. Needs the user's approval and accounts.
 
 ## Blockers
 - Neither system is a strong detector at a low false-alarm rate: AST catches 4–23% of anomalies at the baseline threshold.
