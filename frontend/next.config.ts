@@ -23,16 +23,20 @@ const backends = [origin(process.env.NEXT_PUBLIC_SUPABASE_URL), origin(process.e
   (o): o is string => o !== null,
 );
 
+// Cloudflare Turnstile (sign-in CAPTCHA) loads a script and an iframe from
+// this origin; allowed only when a site key is configured.
+const turnstile = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ? " https://challenges.cloudflare.com" : "";
+
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${turnstile}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' blob:",
   "font-src 'self'",
-  `connect-src 'self' ${backends.join(" ")}${isDev ? " ws: wss:" : ""}`,
+  `connect-src 'self' ${backends.join(" ")}${isDev ? " ws: wss:" : ""}${turnstile}`,
   "frame-ancestors 'none'",
-  "frame-src 'none'",
+  turnstile ? `frame-src${turnstile}` : "frame-src 'none'",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",

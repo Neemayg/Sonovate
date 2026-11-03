@@ -1,11 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { Brand } from "@/components/Brand";
 import { ErrorMessage } from "@/components/Status";
-import { isGoogleSignInEnabled, signIn, signInWithGoogle, signUp } from "@/lib/api";
+import { Turnstile } from "@/components/Turnstile";
+import { isGoogleSignInEnabled, signIn, signInWithGoogle, signUp, TURNSTILE_SITE_KEY } from "@/lib/api";
 
 // Decorative trace for the brand panel: a fixed, deterministic signal
 // (a few sines under a slow envelope). It is not data and is hidden from
@@ -32,6 +33,9 @@ export default function LoginPage() {
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaReset, setCaptchaReset] = useState(0);
+  const handleCaptchaError = useCallback((message: string) => setError(message), []);
 
   useEffect(() => {
     if (session) router.replace("/machines");
@@ -61,20 +65,26 @@ export default function LoginPage() {
       setError("Enter your email and password.");
       return;
     }
+    if (TURNSTILE_SITE_KEY && !captchaToken) {
+      setError("Complete the security check first.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setInfo(null);
     try {
       if (mode === "sign-in") {
-        await signIn(email, password);
+        await signIn(email, password, captchaToken ?? undefined);
       } else {
-        const { needsConfirmation } = await signUp(email, password);
+        const { needsConfirmation } = await signUp(email, password, captchaToken ?? undefined);
         if (needsConfirmation) setInfo("Check your email to confirm your account, then sign in.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setBusy(false);
+      // Tokens are single use; a failed or repeated attempt needs a new one.
+      if (TURNSTILE_SITE_KEY) setCaptchaReset((n) => n + 1);
     }
   }
 
@@ -127,6 +137,14 @@ export default function LoginPage() {
               />
               {mode === "sign-up" && <p className="muted small">At least 10 characters.</p>}
             </div>
+            {TURNSTILE_SITE_KEY && (
+              <Turnstile
+                siteKey={TURNSTILE_SITE_KEY}
+                resetKey={captchaReset}
+                onToken={setCaptchaToken}
+                onError={handleCaptchaError}
+              />
+            )}
             <div className="actions">
               <button type="submit" disabled={busy}>
                 {busy ? "Please wait…" : title}

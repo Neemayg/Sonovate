@@ -47,6 +47,11 @@ SONOVATE_BUNDLES_DIR=/path/to/artifacts/bundles uv run pytest   # parity tests n
   600 s), and `SONOVATE_EMBED_CONCURRENCY` transformer passes at once (default 1). With N
   workers they apply per worker. Each worker loads the AST model (about 350 MB of memory).
 - `SUPABASE_URL` must be https unless it points at loopback. See `docs/DEPLOYMENT.md`.
+- `Dockerfile` builds the production image (CPU-only torch, one worker, port 7860, uid 1000)
+  for a Hugging Face Docker Space. Bundles are not in git, so build from the context staged by
+  `deploy/stage_space.sh <bundles-dir> <out-dir>`. To run the tests in Linux:
+  `docker build --target test -t sonovate-inference:test backend` and run it with the bundles
+  mounted at `SONOVATE_BUNDLES_DIR`.
 
 To serve results, set `SONOVATE_BUNDLES_DIR` (the git-ignored bundle export, for example
 `<main checkout>/artifacts/bundles`) and `SUPABASE_SECRET_KEY` in `.env`; the service refuses
