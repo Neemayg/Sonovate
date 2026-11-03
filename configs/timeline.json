@@ -1,0 +1,23 @@
+{
+  "experiment": "EXP-011",
+  "data_config": "configs/mimii_dg.json",
+  "embeddings": "artifacts/EXP-007/embeddings_ast.npz",
+  "output": "artifacts/EXP-011",
+  "machines": ["bearing", "gearbox"],
+  "timeline": {
+    "baseline_clips": 10,
+    "normal_before_fault": 20,
+    "fault_recordings": 10,
+    "no_fault_recordings": 30,
+    "spread": 2.0,
+    "repeats": 200,
+    "seed": 0
+  },
+  "rules": {
+    "R1": [1, 1],
+    "R2": [2, 2],
+    "R3": [2, 3],
+    "R4": [3, 5]
+  },
+  "max_false_alert_rate": 0.2
+}

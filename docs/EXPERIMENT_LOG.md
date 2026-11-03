@@ -316,6 +316,8 @@ Status: **Stopped by the user on 2026-11-02, 4 minutes into training seed 0.** N
 - **Error analysis:** Pending.
 - **Limitations:** Pending.
 - **Reproduction command/config path:** `uv run python -m ml.embedding --config configs/embedding_cnn.json --stage train`, then `--stage test`
+- **Artifacts path:** `artifacts/EXP-006/`
+- **Conclusion / next experiment:** Not run (stopped before any test evaluation). Superseded by the pretrained-encoder route (EXP-007 onwards).
 
 ### EXP-007 — Frozen pretrained encoders + nearest neighbour (development selection)
 Status: **Complete: AST with k = 1 selected, beating the autoencoder with no training.** The plan was committed at `7fea94b`, and the run used that commit. This follows `docs/TRAINING_PLAN.md`. From here on, the MIMII DG `test` role is the **development** set, used to choose between models. The untouched final test is the DCASE 2022 evaluation data (sections 03–05), used once, in a later pre-registered experiment.
@@ -521,5 +523,27 @@ Status: **Complete: criterion met.** The plan was committed at `5987f50`, and th
 - **Conclusion / next experiment:**
   - The app setup is supported: frozen AST, references from the machine's own 10+ baseline recordings, and the leave-one-out threshold.
   - Detection sensitivity remains the main limitation, so the prototype labelling stays (ADR-007).
-- **Artifacts path:** `artifacts/EXP-006/`
+
+### EXP-011 — Alert rules over time, on simulated recording timelines (Phase 5)
+Status: **Pre-registered, not yet run.** This plan is committed before the run. **This is a simulation:** real timestamped recordings of one machine do not exist in our data. Timelines are assembled from independent clips, so this tests alert *logic*, not real-world fault progression.
+- **Date:** 2026-11-03
+- **Research question:** For the app setup (AST, 10 baseline recordings, leave-one-out threshold; ADR-008), which rule for turning repeated per-recording decisions into an alert gives the best detection while keeping false alerts over time acceptable?
+- **Hypothesis:** A single above-threshold recording raises too many false alerts over a monitoring period. Requiring persistence (repeated above-threshold recordings) cuts false alerts a lot, at some cost in detection and delay.
+- **Dataset/version:** MIMII DG development set (`test` role), EXP-007 AST embeddings. Not the DCASE 2022 evaluation data.
+- **Simulated timelines:** For each section and domain, 200 timelines of each kind (seed 0), drawn without replacement from that section-domain's clips. Each draws 10 normal clips as the baseline and fixes the threshold from them (EXP-010 rule), then:
+  - **No-fault timeline:** 30 further normal recordings.
+  - **Fault timeline:** 20 normal recordings, then 10 anomaly recordings (the fault persists once it starts).
+  - Recordings are scored by k = 1 cosine distance to the baseline.
+- **Alert rules (fixed in advance):**
+  - R1: alert on any single recording above threshold (the app's current behaviour).
+  - R2: 2 consecutive recordings above threshold.
+  - R3: at least 2 of the last 3 above threshold.
+  - R4: at least 3 of the last 5 above threshold.
+- **Metrics per rule (means over section-domains and timelines):**
+  - *False-alert rate*: share of no-fault timelines with at least one alert in the 30 monitoring recordings.
+  - *Early false alerts*: share of fault timelines alerting during their 20 normal recordings.
+  - *Detection*: share of fault timelines alerting during the 10 fault recordings, counting only timelines with no earlier false alert.
+  - *Median delay*: recordings from fault onset to first alert, among detected timelines.
+- **Selection rule:** Among rules with a false-alert rate of 0.20 or below, pick the one with the highest detection. If none qualifies, report that, and the app keeps showing per-recording results without an over-time alert.
+- **Results:** Pending.
 - **Conclusion / next experiment:** Pending.
