@@ -76,13 +76,21 @@ function fail(message: string, error: unknown): never {
 
 // --- auth -------------------------------------------------------------------
 
-export async function signIn(email: string, password: string): Promise<void> {
-  const { error } = await supabase().auth.signInWithPassword({ email, password });
+// Set when Supabase Auth requires CAPTCHA (production). The token comes from
+// the Turnstile widget on the login page and is checked by Supabase.
+export const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+
+export async function signIn(email: string, password: string, captchaToken?: string): Promise<void> {
+  const { error } = await supabase().auth.signInWithPassword({ email, password, options: { captchaToken } });
   if (error) throw new Error(error.message);
 }
 
-export async function signUp(email: string, password: string): Promise<{ needsConfirmation: boolean }> {
-  const { data, error } = await supabase().auth.signUp({ email, password });
+export async function signUp(
+  email: string,
+  password: string,
+  captchaToken?: string,
+): Promise<{ needsConfirmation: boolean }> {
+  const { data, error } = await supabase().auth.signUp({ email, password, options: { captchaToken } });
   if (error) throw new Error(error.message);
   return { needsConfirmation: data.session === null };
 }

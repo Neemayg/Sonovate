@@ -1,7 +1,27 @@
 # Deployment checklist
 
 Nothing is deployed yet and no cloud project exists. This lists what a public deployment
-must change from the local defaults. Local values live in `supabase/config.toml`,
+must change from the local defaults.
+
+## Chosen hosts (proposal, 2026-11-03)
+
+| Part | Host | Notes |
+|---|---|---|
+| Database, Auth, Storage | Supabase cloud, free tier | Migrations only (see below). |
+| Frontend | Vercel, free tier | Built with the production `NEXT_PUBLIC_*` values. |
+| Inference service | Hugging Face Docker Space, free CPU Basic (2 vCPU, 16 GB) | Must be **public** so browsers can call it; the image then holds only our code, the AST weights (BSD-3, credited in the Space README) and synthetic parity tones. Secrets go in the Space's secret settings. A free Space sleeps after 48 h without traffic; the first request after that waits for a restart. |
+
+Space deployment:
+
+```bash
+backend/deploy/stage_space.sh artifacts/bundles <empty-dir>
+hf upload <user>/<space> <empty-dir> . --repo-type space
+```
+
+Set `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` (secret) and
+`CORS_ORIGINS` in the Space settings. The image sets `SONOVATE_BUNDLES_DIR` itself and runs one
+worker. Hugging Face's proxy terminates TLS; its request timeout and body limit are not ours
+to set, and the service only receives a JSON body with a recording id. Local values live in `supabase/config.toml`,
 `backend/.env.example` and `frontend/.env.example`; none of them are production-safe as is.
 
 ## Supabase project
@@ -45,6 +65,7 @@ a shared store would be needed to make them global. See `backend/README.md`.
 | `NEXT_PUBLIC_SUPABASE_URL` | The project URL (https). Also used for the CSP `connect-src`. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | The publishable key. Never a secret key. |
 | `NEXT_PUBLIC_INFERENCE_API_URL` | The inference service URL (https). Also used for the CSP `connect-src`. |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | The Cloudflare Turnstile site key, matching the secret key set in Supabase Auth → CAPTCHA. Turns on the sign-in widget and adds `challenges.cloudflare.com` to the CSP. |
 
 Build with `NODE_ENV=production` (`npm run build`) so the CSP drops `unsafe-eval` and
 websockets and HSTS is sent. Serve over https only. A production build also sends

@@ -1406,3 +1406,8 @@ button:disabled {
 .machine-alert-none p {
   margin: 0.15rem 0 0;
 }
+
+/* Turnstile renders a 300x65 iframe; reserve the space so the form does not jump. */
+.captcha {
+  min-height: 65px;
+}
