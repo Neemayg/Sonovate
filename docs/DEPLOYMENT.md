@@ -47,7 +47,8 @@ a shared store would be needed to make them global. See `backend/README.md`.
 | `NEXT_PUBLIC_INFERENCE_API_URL` | The inference service URL (https). Also used for the CSP `connect-src`. |
 
 Build with `NODE_ENV=production` (`npm run build`) so the CSP drops `unsafe-eval` and
-websockets and HSTS is sent. Serve over https only.
+websockets and HSTS is sent. Serve over https only. A production build also sends
+`upgrade-insecure-requests`, so it only works against https backends; use `npm run dev` locally.
 
 ## Before going live
 

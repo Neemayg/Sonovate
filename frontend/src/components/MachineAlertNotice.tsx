@@ -17,7 +17,7 @@ export function MachineAlertNotice({ alert, compact = false }: Props) {
   if (alert.alert) {
     return (
       <div className="notice notice-warning machine-alert" role="status">
-        <p>
+        <p className={compact ? "small" : undefined}>
           <strong>Machine alert:</strong> {counts} were above this machine&apos;s baseline threshold.
         </p>
         {compact ? (
