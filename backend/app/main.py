@@ -12,7 +12,7 @@ from typing import Annotated, Any, Literal
 
 import httpx
 import numpy as np
-from fastapi import Depends, FastAPI, Header, Request
+from fastapi import Depends, FastAPI, Header, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -22,13 +22,16 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.audio import AudioValidationError, ValidatedAudio, validate_wav
 from app.auth import AuthenticatedUser, AuthError, JwksKeyResolver, TokenVerifier
 from app.config import ConfigError, Settings, load_settings
+from app.limits import AnalysisInProgress, EmbedGate, ModelBusy, RateLimited, UserLimiter
 from app.registry import MODELLED_MACHINE_TYPES, AnomalyModel, EmptyModelRegistry, ModelRegistry
 from app.supabase_data import (
+    AccountAdmin,
     PredictionStore,
     Recording,
     RecordingNotFound,
     RecordingSource,
     RecordingTooLarge,
+    SupabaseAccountAdmin,
     SupabasePredictionStore,
     SupabaseRecordingSource,
     UpstreamError,
@@ -50,11 +53,19 @@ PROTOTYPE_NOTICE = "Research prototype, low sensitivity. Not a diagnosis or fail
 
 
 class ApiError(Exception):
-    def __init__(self, status: int, code: str, message: str, details: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        status: int,
+        code: str,
+        message: str,
+        details: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self.status = status
         self.code = code
         self.message = message
         self.details = details
+        self.headers = headers
 
 
 class AnalysisRequest(BaseModel):
@@ -90,11 +101,25 @@ class AnalysisResponse(BaseModel):
     disclaimer: str
 
 
-def _error(status: int, code: str, message: str, details: dict[str, Any] | None = None) -> JSONResponse:
+def _error(
+    status: int,
+    code: str,
+    message: str,
+    details: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
     error: dict[str, Any] = {"code": code, "message": message}
     if details is not None:
         error["details"] = details
-    return JSONResponse(status_code=status, content={"error": error})
+    return JSONResponse(status_code=status, content={"error": error}, headers=headers)
+
+
+ACCOUNT_DELETION_PHRASE = "delete my account"
+
+
+class AccountDeletionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirm: Literal["delete my account"]
 
 
 def default_registry(settings: Settings) -> ModelRegistry:
@@ -112,6 +137,9 @@ def create_app(
     verifier: TokenVerifier | None = None,
     recording_source: RecordingSource | None = None,
     prediction_store: PredictionStore | None = None,
+    limiter: UserLimiter | None = None,
+    embed_gate: EmbedGate | None = None,
+    account_admin: AccountAdmin | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     registry = registry or default_registry(settings)
@@ -120,21 +148,25 @@ def create_app(
     http = httpx.Client(timeout=10.0)
     verifier = verifier or TokenVerifier(JwksKeyResolver(settings.jwks_url), settings.jwt_issuer)
     recording_source = recording_source or SupabaseRecordingSource(settings, http)
+    limiter = limiter or UserLimiter(settings.analyses_per_window, settings.rate_window_seconds)
+    embed_gate = embed_gate or EmbedGate(settings.embed_concurrency, settings.embed_wait_seconds)
 
     app = FastAPI(title="Sonovate inference", version="0.1.0", docs_url=None, redoc_url=None)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
 
     @app.exception_handler(ApiError)
     async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
-        return _error(exc.status, exc.code, exc.message, exc.details)
+        return _error(exc.status, exc.code, exc.message, exc.details, exc.headers)
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_error(_: Request, __: RequestValidationError) -> JSONResponse:
+    async def _validation_error(request: Request, __: RequestValidationError) -> JSONResponse:
+        if request.url.path == "/v1/account":
+            return _error(422, "invalid_request", f'Request body must be {{"confirm": "{ACCOUNT_DELETION_PHRASE}"}}.')
         return _error(422, "invalid_request", "Request body must be {\"recording_id\": \"<uuid>\"}.")
 
     @app.exception_handler(StarletteHTTPException)
@@ -163,6 +195,53 @@ def create_app(
         body: AnalysisRequest,
         user: Annotated[AuthenticatedUser, Depends(current_user)],
     ) -> AnalysisResponse:
+        try:
+            with limiter.analysis(user.id):
+                return run_analysis(body, user)
+        except AnalysisInProgress:
+            raise ApiError(
+                429, "analysis_in_progress", "An analysis of yours is already running. Wait for it to finish."
+            )
+        except RateLimited as exc:
+            raise ApiError(
+                429,
+                "rate_limited",
+                f"Too many analyses in a short time. Try again in {exc.retry_after} seconds.",
+                {"retry_after_seconds": exc.retry_after},
+                {"Retry-After": str(exc.retry_after)},
+            )
+        except ModelBusy:
+            raise ApiError(
+                503,
+                "model_busy",
+                "The analysis service is busy. Try again in a moment.",
+                headers={"Retry-After": "10"},
+            )
+
+    @app.delete("/v1/account", status_code=204)
+    def delete_account(
+        body: AccountDeletionRequest,
+        user: Annotated[AuthenticatedUser, Depends(current_user)],
+    ) -> Response:
+        """Deletes the caller's audio files (their whole <uid>/ storage prefix)
+        and then their auth user; the database cascades from the auth user to
+        the profile, machines, recordings, context, results and thresholds."""
+        admin = account_admin
+        if admin is None:
+            if not settings.supabase_secret_key:
+                raise ApiError(503, "account_deletion_unavailable", "Account deletion is not configured on this server.")
+            admin = SupabaseAccountAdmin(settings, http)
+        try:
+            admin.delete_user_files(user.id)
+            admin.delete_auth_user(user.id)
+        except UpstreamError as exc:
+            logger.warning("account deletion failed: %s", exc)
+            raise ApiError(
+                502, "upstream_unavailable", "The account could not be fully deleted. Please try again."
+            )
+        return Response(status_code=204)
+
+    def run_analysis(body: AnalysisRequest, user: AuthenticatedUser) -> AnalysisResponse:
         try:
             recording = recording_source.get_recording(user, body.recording_id)
             data = recording_source.download(user, recording)
@@ -226,7 +305,8 @@ def create_app(
             vectors = baseline_vectors(user, model, baselines, store)
             threshold = machine_threshold(user, model, recording, baselines, vectors, store)
 
-            query = model.embed(audio, recording.machine_type, recording.context)
+            with embed_gate.slot():
+                query = model.embed(audio, recording.machine_type, recording.context)
             score = float(model.score(query, vectors))
             if not math.isfinite(score):
                 raise RuntimeError("model returned a non-finite score")
@@ -281,7 +361,9 @@ def create_app(
         for b in baselines:
             vector = stored.get(b.id)
             if vector is None:
-                vector = model.embed(_baseline_audio(user, b), b.machine_type, b.context)
+                baseline_audio = _baseline_audio(user, b)
+                with embed_gate.slot():
+                    vector = model.embed(baseline_audio, b.machine_type, b.context)
                 store.save_baseline_embedding(b, version, vector)
             vectors.append(vector)
         return vectors
