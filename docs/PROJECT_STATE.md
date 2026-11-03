@@ -3,8 +3,8 @@
 > Update at milestone boundaries. Keep this file short enough to scan quickly.
 
 ## Current status
-- **Phase:** 3/4 research complete with a clean final test (EXP-009); product model choice pending
-- **Status:** Frozen AST + nearest neighbour beats the autoencoder on unseen data, narrowly, because of gearbox
+- **Phase:** 5 done on simulation (EXP-011, ADR-009); 8 in progress (security review done, fixes and deployment next)
+- **Status:** App runs frozen AST; over-time alert rule chosen; security review found no critical issues and 2 high-priority items
 - **Last updated:** 2026-11-03
 - **Current owner:** Team
 - **Working title:** Environment-Aware Acoustic Machine Health
@@ -26,9 +26,11 @@ Decide whether the app switches from the autoencoder to frozen AST, and how far 
 - [x] **Clean final test on untouched DCASE 2022 evaluation data (EXP-009)**
 - [x] Product model switched to frozen AST (ADR-008; app setup checked in EXP-010; PR #7)
 - [x] App additions merged: delete recordings and machines (PR #4), machines overview (PR #5), UI redesign (PR #6); local only
+- [x] Phase 5 on simulated timelines: alert rule "2 of the last 3" (EXP-011, ADR-009); real timestamped data still needed
+- [x] Security and privacy review (2026-11-03): no critical issues; high: no rate limiting on inference, `model_versions` only in seed data
 
 ## Current task
-Choose the product model and the next research step.
+Fix the security review's high and medium findings and add the ADR-009 alert to the app; then deploy once accounts are approved.
 
 ## Blockers
 - Neither system is a strong detector at a low false-alarm rate: AST catches 4–23% of anomalies at the baseline threshold.

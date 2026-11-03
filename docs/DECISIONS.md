@@ -99,6 +99,23 @@ Only record accepted decisions here. Proposed options belong in an issue or task
   - Scoring cost rises from a small dense network to a transformer pass per recording.
 - **Evidence:** EXP-007, EXP-009 and EXP-010 in `docs/EXPERIMENT_LOG.md`.
 
+## ADR-009 — Over-time machine alert: 2 of the last 3 analyses above threshold
+- **Status:** Accepted
+- **Date:** 2026-11-03
+- **Context:** On simulated timelines, alerting on any single above-threshold recording gave false alerts on 49% of healthy-machine timelines within 30 recordings. Requiring 2 of the last 3 gave 15%, with 9% of faults caught (EXP-011). This was chosen by EXP-011's pre-registered rule, as part of completing Phase 5.
+- **Decision:**
+  - The app's machine-level alert fires only when at least 2 of the machine's last 3 analyses are above its baseline threshold.
+  - Single above-threshold results are still shown, but they do not raise a machine alert.
+  - The alert UI says the rule was chosen on simulated timelines and that it misses most faults with the current detector.
+- **Alternatives considered:**
+  - R1 (single recording), rejected for too many false alerts.
+  - R2 (2 in a row), with fewer false alerts but lower detection.
+  - R4 (3 of 5), the quietest option but with the lowest detection.
+- **Consequences/trade-offs:**
+  - Alerts are mostly trustworthy when they appear, but most faults go unflagged.
+  - Real timestamped recordings are needed to validate the rule.
+- **Evidence:** EXP-011 in `docs/EXPERIMENT_LOG.md`.
+
 ## Pending decisions
 - Feature representation beyond the EXP-002 setup.
 - Recording hardware and context-sensor strategy.

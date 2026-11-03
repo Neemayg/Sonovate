@@ -525,7 +525,7 @@ Status: **Complete: criterion met.** The plan was committed at `5987f50`, and th
   - Detection sensitivity remains the main limitation, so the prototype labelling stays (ADR-007).
 
 ### EXP-011 — Alert rules over time, on simulated recording timelines (Phase 5)
-Status: **Pre-registered, not yet run.** This plan is committed before the run. **This is a simulation:** real timestamped recordings of one machine do not exist in our data. Timelines are assembled from independent clips, so this tests alert *logic*, not real-world fault progression.
+Status: **Complete: R3 (2 of the last 3) selected; false alerts controllable, detection very low.** The plan was committed at `e2d300e`, and the run used that commit. **This is a simulation:** real timestamped recordings of one machine do not exist in our data. Timelines are assembled from independent clips, so this tests alert *logic*, not real-world fault progression.
 - **Date:** 2026-11-03
 - **Research question:** For the app setup (AST, 10 baseline recordings, leave-one-out threshold; ADR-008), which rule for turning repeated per-recording decisions into an alert gives the best detection while keeping false alerts over time acceptable?
 - **Hypothesis:** A single above-threshold recording raises too many false alerts over a monitoring period. Requiring persistence (repeated above-threshold recordings) cuts false alerts a lot, at some cost in detection and delay.
@@ -545,5 +545,31 @@ Status: **Pre-registered, not yet run.** This plan is committed before the run. 
   - *Detection*: share of fault timelines alerting during the 10 fault recordings, counting only timelines with no earlier false alert.
   - *Median delay*: recordings from fault onset to first alert, among detected timelines.
 - **Selection rule:** Among rules with a false-alert rate of 0.20 or below, pick the one with the highest detection. If none qualifies, report that, and the app keeps showing per-recording results without an over-time alert.
-- **Results:** Pending.
-- **Conclusion / next experiment:** Pending.
+- **Results:** Means over 12 section-domains × 200 timelines of each kind.
+
+  | Rule | Needed / window | False-alert rate | Early false alerts | Detection | Median delay (recordings) |
+  |---|---|---|---|---|---|
+  | R1 | 1 / 1 | 0.494 | 0.412 | 0.120 | 4 |
+  | R2 | 2 / 2 | 0.106 | 0.078 | 0.078 | 3 |
+  | **R3** | **2 / 3** | **0.147** | **0.115** | **0.090** | **4** |
+  | R4 | 3 / 5 | 0.062 | 0.050 | 0.069 | 4 |
+
+  Primary sections (false-alert rate, detection):
+  - bearing 00 source: R1 0.29, 0.14; R3 0.07, 0.05.
+  - bearing 00 target: R1 0.44, 0.07; R3 0.13, 0.02.
+  - gearbox 00 source: R1 0.68, 0.23; R3 0.24, 0.25.
+  - gearbox 00 target: R1 0.52, 0.01; R3 0.18, 0.03.
+- **Error analysis:**
+  - **The app's current behaviour (R1) is not usable over time.** Half of healthy-machine timelines (0.494) raise at least one false alert within 30 recordings. In fault timelines, 41% alert before the fault starts.
+  - **Persistence fixes false alerts but not detection.** R3 cuts false alerts to 0.147 but catches only 9% of faults within 10 fault recordings. R4 is quieter still (0.062), but catches 7%.
+  - **The detector limits this, not the rule.** Per-recording recall is about 3–24% (EXP-010), and a persistence rule cannot catch faults the detector rarely flags.
+  - **Gearbox 00 source is the one section where alerts work moderately** (R3: 0.25 detection with 0.24 false alerts). On new conditions and on bearing, detection is near zero.
+- **Limitations:**
+  - Simulated timelines made of independent clips, not a real degrading machine.
+  - Faults appear abruptly and stay anomalous.
+  - Development data, used before for selection.
+  - One baseline size and one timeline length were tried.
+- **Conclusion / next experiment:**
+  - Use R3 for any over-time machine alert in the app; never R1. Label it as based on simulation.
+  - With the current detector, over-time alerts will miss most faults, and the app must say so.
+  - Real value here depends on a stronger detector (Phase 9 fine-tuning) and on real timestamped recordings to validate the rule.
