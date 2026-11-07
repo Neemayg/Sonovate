@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BaselineMeter } from "@/components/BaselineMeter";
 import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { MachineAlertNotice } from "@/components/MachineAlertNotice";
 import { MachineForm } from "@/components/MachineForm";
+import { ConditionCoverage, ExportHistoryButton, ResultTimeline } from "@/components/MachineInsights";
 import { PageHead } from "@/components/PageHead";
 import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
 import { UploadForm } from "@/components/UploadForm";
@@ -15,25 +16,35 @@ import {
   deleteMachine,
   getMachine,
   getMachineAlert,
-  listRecordings,
+  listMachineHistory,
   updateMachine,
+  type HistoryEntry,
   type Machine,
   type MachineAlert,
-  type Recording,
 } from "@/lib/api";
 import { MODEL_INPUTS, machineTypeLabel } from "@/lib/modelInputs";
 
 export function MachineDetail({ id }: { id: string }) {
   const router = useRouter();
   const [machine, setMachine] = useState<Machine | null | undefined>(undefined);
-  const [recordings, setRecordings] = useState<Recording[] | null>(null);
+  const [recordings, setRecordings] = useState<HistoryEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [lastBaseline, setLastBaseline] = useState<string | null>(null);
   const [alert, setAlert] = useState<MachineAlert | null>(null);
 
+  // Recordings with their context and stored results, which the timeline and
+  // coverage panels read; reloaded after an upload so they stay current.
+  const reloadHistory = useCallback(
+    () =>
+      listMachineHistory(id)
+        .then(setRecordings)
+        .catch((err: Error) => setError(err.message)),
+    [id],
+  );
+
   useEffect(() => {
-    Promise.all([getMachine(id), listRecordings(id), getMachineAlert(id)])
+    Promise.all([getMachine(id), listMachineHistory(id), getMachineAlert(id)])
       .then(([m, r, a]) => {
         setMachine(m);
         setRecordings(r);
@@ -67,9 +78,12 @@ export function MachineDetail({ id }: { id: string }) {
         title={machine.name}
         meta={`${recordings?.length ?? 0} ${recordings?.length === 1 ? "recording" : "recordings"}`}
         actions={
-          <Link href={`/machines/${machine.id}/history`} className="button-like">
-            History
-          </Link>
+          <>
+            <ExportHistoryButton machine={machine} entries={recordings ?? []} />
+            <Link href={`/machines/${machine.id}/history`} className="button-like">
+              History
+            </Link>
+          </>
         }
       />
 
@@ -78,6 +92,24 @@ export function MachineDetail({ id }: { id: string }) {
           <h2 id="machine-alert-title">Machine alert</h2>
           <MachineAlertNotice alert={alert} />
         </section>
+      )}
+
+      {modelled && recordings && (
+        <div className="insights">
+          <section className="card" aria-labelledby="timeline-title">
+            <div className="card-header">
+              <h2 id="timeline-title">Result timeline</h2>
+              <span className="muted small">Oldest → newest</span>
+            </div>
+            <ResultTimeline entries={recordings} />
+          </section>
+          <section className="card" aria-labelledby="coverage-title">
+            <div className="card-header">
+              <h2 id="coverage-title">Operating-condition coverage</h2>
+            </div>
+            <ConditionCoverage machine={machine} entries={recordings} />
+          </section>
+        </div>
       )}
 
       <div className="columns">
@@ -152,8 +184,9 @@ export function MachineDetail({ id }: { id: string }) {
             onUploaded={(r) => {
               if (r.kind === "baseline") {
                 // Stay here so several baseline recordings can be added in a row.
-                setRecordings((current) => [r, ...(current ?? [])]);
+                setRecordings((current) => [{ ...r, context_readings: [], predictions: [] }, ...(current ?? [])]);
                 setLastBaseline(r.original_filename ?? "the recording");
+                void reloadHistory();
               } else {
                 router.push(`/recordings/${r.id}`);
               }

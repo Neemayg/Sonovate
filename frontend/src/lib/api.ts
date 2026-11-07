@@ -147,8 +147,12 @@ export type MachineOverview = Machine & {
   lastUploadAt: string | null;
   // The most recent stored result across the machine's recordings, if any.
   latest: { decision: string; created_at: string; recording_id: string } | null;
+  // Latest stored decision of each analysis recording, newest last, at most RECENT_RESULTS.
+  recent: { above: boolean; created_at: string; recording_id: string }[];
   alert: MachineAlert | null;
 };
+
+export const RECENT_RESULTS = 6;
 
 // ADR-009: machine alert when at least 2 of the last 3 analysed recordings
 // are above the machine's baseline threshold. Computed by the
@@ -209,7 +213,12 @@ export function summarise(row: Machine & Partial<Pick<OverviewRow, "recordings">
   const { recordings = [], ...machine } = row;
   let latest: MachineOverview["latest"] = null;
   let lastUploadAt: string | null = null;
+  const recent: MachineOverview["recent"] = [];
   for (const r of recordings) {
+    if (r.kind === "analysis" && r.predictions.length > 0) {
+      const p = r.predictions.reduce((a, b) => (b.created_at > a.created_at ? b : a));
+      recent.push({ above: p.decision === "above_threshold", created_at: p.created_at, recording_id: r.id });
+    }
     if (!lastUploadAt || r.created_at > lastUploadAt) lastUploadAt = r.created_at;
     for (const p of r.predictions) {
       if (!latest || p.created_at > latest.created_at) latest = { ...p, recording_id: r.id };
@@ -221,6 +230,7 @@ export function summarise(row: Machine & Partial<Pick<OverviewRow, "recordings">
     baselineCount: recordings.filter((r) => r.kind === "baseline").length,
     lastUploadAt,
     latest,
+    recent: recent.sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-RECENT_RESULTS),
     alert: null,
   };
 }

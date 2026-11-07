@@ -334,6 +334,28 @@ function GuideView() {
               The score is a distance in the model&apos;s embedding space, shown on a log scale. It is not a percentage
               or a chance of failure. Each result records the model version that produced it.
             </p>
+            <h3>Listen &amp; compare</h3>
+            <p>
+              Below every analysed recording, <Ui>Listen &amp; compare</Ui> plays it in sync with one of the
+              machine&apos;s baseline recordings, so you can hear what changed instead of trusting a number.
+            </p>
+            <ol className="guide-steps">
+              <li>
+                Choose a baseline under <Ui>Compare with</Ui>. Baselines recorded at the same setting are listed first
+                and marked <Ui>same setting</Ui>.
+              </li>
+              <li>
+                Press play, then switch between <Ui>A · This recording</Ui> and <Ui>B · Baseline</Ui>. The switch is
+                instant and keeps your place, so a short difference is easy to catch. Click a waveform to jump.
+              </li>
+              <li>
+                Keep <Ui>Match loudness</Ui> on so a louder clip does not simply sound &ldquo;worse&rdquo;.
+              </li>
+              <li>
+                The <Ui>Average frequency profile</Ui> shows where the energy differs, for example a hum around
+                500 Hz. It is measured from the two files, not used by the model, and not a diagnosis.
+              </li>
+            </ol>
           </Section>
 
           <Section id="alerts" title="5. Alerts and history">
@@ -349,7 +371,10 @@ function GuideView() {
               </li>
               <li>
                 <strong>History</strong>: open a machine and choose <Ui>View history</Ui> to see every recording, its
-                conditions and its result over time.
+                conditions and its result over time. The machine page also shows a <Ui>Result timeline</Ui> (one dot
+                per analysis; the latest 3 decide the alert), <Ui>Operating-condition coverage</Ui> (whether your
+                baselines were recorded at the same settings as your analyses), and <Ui>Export CSV</Ui> for your own
+                records.
               </li>
             </ul>
           </Section>

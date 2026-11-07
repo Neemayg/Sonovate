@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { BaselineMeter } from "@/components/BaselineMeter";
 import { ConfirmDelete } from "@/components/ConfirmDelete";
+import { ListenCompare } from "@/components/ListenCompare";
 import { PageHead } from "@/components/PageHead";
 import { ContextList, PredictionView, SCORE_NOTE } from "@/components/RecordingDetails";
 import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
@@ -222,6 +223,16 @@ export function RecordingAnalysis({ id }: { id: string }) {
           </section>
         )}
       </div>
+
+      {recording.kind === "analysis" && machine && (
+        <section className="card" aria-labelledby="listen-title">
+          <div className="card-header">
+            <h2 id="listen-title">Listen &amp; compare</h2>
+            <span className="muted small">Hear it next to this machine&apos;s normal sound</span>
+          </div>
+          <ListenCompare machineId={machine.id} machineType={machine.machine_type} recording={recording} />
+        </section>
+      )}
 
       <section className="card danger-zone" aria-labelledby="delete-recording-title">
         <h2 id="delete-recording-title">Danger zone</h2>

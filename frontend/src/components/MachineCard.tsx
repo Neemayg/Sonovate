@@ -6,7 +6,8 @@ import { MachineAlertNotice } from "./MachineAlertNotice";
 import { PROTOTYPE_NOTICE } from "./RecordingDetails";
 import { formatDateTime } from "./Status";
 
-export type MachineStatus = "unsupported" | "needs_baseline" | "ready" | "has_result";
+export type MachineStatus =
+  "unsupported" | "needs_baseline" | "ready" | "has_result";
 
 export function machineStatus(m: MachineOverview): MachineStatus {
   if (MODEL_INPUTS[m.machine_type].length === 0) return "unsupported";
@@ -34,9 +35,14 @@ export function MachineCard({ machine: m }: { machine: MachineOverview }) {
   const titleId = `machine-${m.id}-title`;
 
   return (
-    <article className={`machine-card is-${status}${m.alert?.alert ? " has-alert" : ""}`} aria-labelledby={titleId}>
+    <article
+      className={`machine-card is-${status}${m.alert?.alert ? " has-alert" : ""}`}
+      aria-labelledby={titleId}
+    >
       <div className="machine-card-badges">
-        <span className={`status-badge is-${m.alert?.alert ? "alert" : status}`}>
+        <span
+          className={`status-badge is-${m.alert?.alert ? "alert" : status}`}
+        >
           <span aria-hidden="true" />
           {m.alert?.alert ? "Machine alert" : STATUS_LABEL[status]}
         </span>
@@ -50,7 +56,11 @@ export function MachineCard({ machine: m }: { machine: MachineOverview }) {
       {m.location && <p className="muted small">{m.location}</p>}
 
       <div className="machine-card-status">
-        {status === "unsupported" && <p className="small">Analysis is not available for this machine type.</p>}
+        {status === "unsupported" && (
+          <p className="small">
+            Analysis is not available for this machine type.
+          </p>
+        )}
 
         {status === "needs_baseline" && (
           <BaselineMeter
@@ -63,7 +73,8 @@ export function MachineCard({ machine: m }: { machine: MachineOverview }) {
 
         {status === "ready" && (
           <p className="small">
-            <strong>Baseline ready</strong> <span className="num">({m.baselineCount})</span> · no analysis yet
+            <strong>Baseline ready</strong>{" "}
+            <span className="num">({m.baselineCount})</span> · no analysis yet
           </p>
         )}
 
@@ -71,10 +82,31 @@ export function MachineCard({ machine: m }: { machine: MachineOverview }) {
           <>
             <p className="small">
               Latest result ({formatDateTime(m.latest.created_at)}):{" "}
-              <Link href={`/recordings/${m.latest.recording_id}`} className="card-link">
+              <Link
+                href={`/recordings/${m.latest.recording_id}`}
+                className="card-link"
+              >
                 <strong>{decisionText(m.latest.decision)}</strong>
               </Link>
             </p>
+            {m.recent.length > 0 && (
+              <div
+                className="mc-dots"
+                aria-label={`Latest ${m.recent.length} results, oldest first: ${m.recent.map((r) => (r.above ? "above" : "below")).join(", ")}`}
+              >
+                {m.recent.map((r) => (
+                  <Link
+                    key={r.recording_id}
+                    href={`/recordings/${r.recording_id}`}
+                    className={`mc-dot ${r.above ? "is-above" : "is-below"}`}
+                    title={`${r.above ? "Above" : "Below"} threshold · ${formatDateTime(r.created_at)}`}
+                    aria-hidden="true"
+                    tabIndex={-1}
+                  />
+                ))}
+                <span className="muted small">latest {m.recent.length}</span>
+              </div>
+            )}
             <p className="muted small">{PROTOTYPE_NOTICE}</p>
             <MachineAlertNotice alert={m.alert} compact />
           </>
@@ -83,7 +115,9 @@ export function MachineCard({ machine: m }: { machine: MachineOverview }) {
 
       <p className="muted small machine-card-meta">
         {m.recordingCount} {m.recordingCount === 1 ? "recording" : "recordings"}
-        {m.lastUploadAt ? ` · last upload ${formatDateTime(m.lastUploadAt)}` : " · nothing uploaded yet"}
+        {m.lastUploadAt
+          ? ` · last upload ${formatDateTime(m.lastUploadAt)}`
+          : " · nothing uploaded yet"}
         {" · "}
         <Link href={`/machines/${m.id}/history`} className="card-link">
           History
