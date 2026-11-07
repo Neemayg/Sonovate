@@ -9,16 +9,28 @@ import { Brand } from "./Brand";
 import { Loading } from "./Status";
 
 function MainNav({ current }: { current?: string }) {
+  // Machine, recording and history pages all sit under "Machines".
+  const inMachines = current?.startsWith("/machines") || current?.startsWith("/recordings");
   return (
-    <nav aria-label="Main">
-      <Link href="/machines" aria-current={current === "/machines" ? "page" : undefined}>
+    <nav aria-label="Main" className="app-nav">
+      <Link href="/machines" aria-current={inMachines ? "page" : undefined}>
         Machines
+      </Link>
+      <Link href="/guide" aria-current={current === "/guide" ? "page" : undefined}>
+        Guide
       </Link>
       <Link href="/account" aria-current={current === "/account" ? "page" : undefined}>
         Account
       </Link>
     </nav>
   );
+}
+
+function initials(email: string): string {
+  const name = email.split("@")[0] ?? "";
+  const parts = name.split(/[._-]+/).filter(Boolean);
+  const letters = parts.length > 1 ? parts[0][0] + parts[1][0] : name.slice(0, 2);
+  return letters.toUpperCase() || "?";
 }
 
 // The pathname is request-time data, so it is read behind a Suspense
@@ -38,7 +50,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   if (loading || !session) {
     return (
-      <main className="container">
+      <main className="container session-check">
         <Loading label="Checking your session…" />
       </main>
     );
@@ -53,10 +65,15 @@ export function AppShell({ children }: { children: ReactNode }) {
             <ActiveMainNav />
           </Suspense>
           <div className="topbar-user">
-            <span className="muted small">{session.user.email}</span>
+            <Link href="/account" className="user-chip" title={session.user.email ?? undefined}>
+              <span className="avatar" aria-hidden="true">
+                {initials(session.user.email ?? "")}
+              </span>
+              <span className="user-email">{session.user.email}</span>
+            </Link>
             <button
               type="button"
-              className="button-secondary"
+              className="button-secondary btn-sm"
               onClick={async () => {
                 await signOut();
                 router.replace("/login");

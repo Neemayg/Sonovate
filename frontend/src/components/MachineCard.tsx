@@ -20,6 +20,13 @@ function decisionText(decision: string): string {
     : "Below this machine's baseline threshold";
 }
 
+const STATUS_LABEL: Record<MachineStatus, string> = {
+  unsupported: "Not analysable",
+  needs_baseline: "Needs baseline",
+  ready: "Ready to analyse",
+  has_result: "Has results",
+};
+
 // One machine in the overview. Shows facts only: no health score, no
 // colour-coded verdict, and the prototype notice next to any result.
 export function MachineCard({ machine: m }: { machine: MachineOverview }) {
@@ -27,7 +34,13 @@ export function MachineCard({ machine: m }: { machine: MachineOverview }) {
   const titleId = `machine-${m.id}-title`;
 
   return (
-    <article className="machine-card" aria-labelledby={titleId}>
+    <article className={`machine-card is-${status}${m.alert?.alert ? " has-alert" : ""}`} aria-labelledby={titleId}>
+      <div className="machine-card-badges">
+        <span className={`status-badge is-${m.alert?.alert ? "alert" : status}`}>
+          <span aria-hidden="true" />
+          {m.alert?.alert ? "Machine alert" : STATUS_LABEL[status]}
+        </span>
+      </div>
       <div className="machine-card-head">
         <h3 id={titleId}>
           <Link href={`/machines/${m.id}`}>{m.name}</Link>

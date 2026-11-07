@@ -21,6 +21,30 @@ Local test user (created by `supabase/seed.sql`, local only): `tech@sonovate.tes
 `local-test-password-1`. You can also create an account on the sign-in page; email
 confirmation is off in the local stack.
 
+## Demo account for presentations (local)
+
+`npm run seed:demo` fills a local demo account with real recordings from the public MIMII DG
+dataset (CC BY 4.0) and runs the real model on them, so you can present the whole flow without
+recording anything. It needs the local Supabase stack, the inference service with model bundles,
+and the MIMII DG data (`data/raw/mimii_dg`, or set `SONOVATE_DEMO_DATA_DIR`). It refuses to run
+against anything but localhost.
+
+```bash
+npm run seed:demo             # creates demo@sonovate.test and three demo machines
+npm run seed:demo -- --reset  # replaces the demo account's machines
+```
+
+Demo account (local only): `demo@sonovate.test` / `local-demo-password-1`
+(override with `SONOVATE_DEMO_EMAIL` / `SONOVATE_DEMO_PASSWORD`).
+
+- **Gearbox, line 2**: 10 baselines, then 2 normal and 3 anomaly clips analysed.
+- **Pump bearing**: 10 baselines, then normal and anomaly clips analysed.
+- **Conveyor bearing (new)**: 4 of 10 baselines, to show the "needs baseline" state.
+
+Every stored result is the real model output. Clip file names carry the dataset label (normal or
+anomaly), so a presenter can show hits and misses. Demo results are not an evaluation. The
+in-app **Guide** tab (`/guide`) is the step-by-step user manual.
+
 ## Google sign-in (optional, local)
 
 Off by default; the "Continue with Google" button only appears once it is switched on.
@@ -54,7 +78,7 @@ npm run build
   `npx supabase@2.122.0 gen types typescript --local --schema public`.
 - `src/lib/modelInputs.ts` — machine types and the operating inputs each model understands, with
   training ranges used for the out-of-range notices.
-- `src/app/` — routes: `/login`, `/auth/callback`, `/machines`, `/machines/[id]`,
+- `src/app/` — routes: `/` (public landing page), `/login`, `/guide` (user manual), `/auth/callback`, `/machines`, `/machines/[id]`,
   `/machines/[id]/history`, `/recordings/[id]`.
 
 Pages are client-rendered; the Supabase session lives in the browser and row-level

@@ -407,6 +407,89 @@ export async function listPredictions(recordingId: string): Promise<Prediction[]
   return data as Prediction[];
 }
 
+// --- dashboard ----------------------------------------------------------------
+
+export type RecentAnalysis = {
+  id: string;
+  created_at: string;
+  decision: string;
+  score: number;
+  log_score: number | null;
+  threshold: number;
+  baseline_count: number | null;
+  recording_id: string;
+  machine: Pick<Machine, "id" | "name" | "machine_type"> | null;
+  model: { name: string; version: string } | null;
+};
+
+type RecentAnalysisRow = Omit<RecentAnalysis, "machine" | "model"> & {
+  recordings: { machines: Pick<Machine, "id" | "name" | "machine_type"> | null } | null;
+  model_versions: { name: string; version: string } | null;
+};
+
+// The most recent stored results across all of the user's machines, and how
+// many results there are in total. Read-only; RLS limits rows to the owner.
+export async function listRecentAnalyses(limit = 5): Promise<{ items: RecentAnalysis[]; total: number }> {
+  const { data, error, count } = await supabase()
+    .from("predictions")
+    .select(
+      "id, created_at, decision, score, log_score, threshold, baseline_count, recording_id, recordings(machines(id, name, machine_type)), model_versions(name, version)",
+      { count: "exact" },
+    )
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) fail("Could not load recent analyses.", error);
+  const rows = data as unknown as RecentAnalysisRow[];
+  return {
+    total: count ?? rows.length,
+    items: rows.map(({ recordings, model_versions, ...p }) => ({
+      ...p,
+      machine: recordings?.machines ?? null,
+      model: model_versions,
+    })),
+  };
+}
+
+export type ModelVersionInfo = Pick<
+  Tables["model_versions"]["Row"],
+  "name" | "version" | "preprocessing_version" | "evidence_ref" | "limitations" | "machine_type"
+>;
+
+// The product model (ADR-008: frozen AST with nearest-neighbour scoring), as
+// registered in public.model_versions. Its limitations are copied verbatim
+// from the model bundle.
+export const PRODUCT_MODEL_NAME = "sonovate-ast-knn";
+
+export async function getProductModel(): Promise<ModelVersionInfo | null> {
+  const { data, error } = await supabase()
+    .from("model_versions")
+    .select("name, version, preprocessing_version, evidence_ref, limitations, machine_type")
+    .eq("name", PRODUCT_MODEL_NAME)
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) fail("Could not load the model details.", error);
+  return data;
+}
+
+export type ServiceStatus = "online" | "unreachable" | "not_configured";
+
+// Pings the inference service's public health endpoint. It says only whether
+// analysis requests can currently reach the service.
+export async function checkAnalysisService(timeoutMs = 4000): Promise<ServiceStatus> {
+  if (!INFERENCE_API_URL) return "not_configured";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${INFERENCE_API_URL}/v1/health`, { signal: controller.signal });
+    return res.ok ? "online" : "unreachable";
+  } catch {
+    return "unreachable";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // --- inference service ------------------------------------------------------
 
 export type AnalysisResult =
