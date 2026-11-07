@@ -9,7 +9,7 @@ must change from the local defaults.
 |---|---|---|
 | Database, Auth, Storage | Supabase cloud, free tier | Migrations only (see below). |
 | Frontend | Vercel, free tier | Built with the production `NEXT_PUBLIC_*` values. |
-| Inference service | Hugging Face Docker Space, free CPU Basic (2 vCPU, 16 GB) | Must be **public** so browsers can call it; the image then holds only our code, the AST weights (BSD-3, credited in the Space README) and synthetic parity tones. Secrets go in the Space's secret settings. A free Space sleeps after 48 h without traffic; the first request after that waits for a restart. |
+| Inference service | Hugging Face Docker Space, free CPU Basic (2 vCPU, 16 GB) | Must be **public** so browsers can call it; the image then holds only our code, the first 4 layers of the AST weights (BSD-3, credited in the Space README), our head weights (trained on CC-BY-4.0 MIMII DG) and synthetic parity tones. Secrets go in the Space's secret settings. A free Space sleeps after 48 h without traffic; the first request after that waits for a restart. |
 
 Space deployment:
 
@@ -46,7 +46,7 @@ to set, and the service only receives a JSON body with a recording id. Local val
 | `SUPABASE_URL` | The project URL. **Must be https**; the service refuses to start with plain http unless the host is loopback. |
 | `SUPABASE_PUBLISHABLE_KEY` | The project's publishable key. |
 | `SUPABASE_SECRET_KEY` | The project's secret key, from a secret store. Needed for results, thresholds, embeddings and account deletion. Never expose it to browsers. |
-| `SONOVATE_BUNDLES_DIR` | Path to the allow-listed AST bundle on the server (about 350 MB, not in git). |
+| `SONOVATE_BUNDLES_DIR` | Path to the allow-listed `sonovate-ast-head-0.3.0` bundle on the server (about 140 MB, not in git). |
 | `CORS_ORIGINS` | Only the production frontend origin. |
 | `SONOVATE_ANALYSES_PER_WINDOW`, `SONOVATE_RATE_WINDOW_SECONDS` | Per-user analysis rate limit (default 20 per 600 s), per process. |
 | `SONOVATE_EMBED_CONCURRENCY` | Transformer passes run at once per process (default 1). |

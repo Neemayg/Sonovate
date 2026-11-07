@@ -3,9 +3,9 @@
 > Update at milestone boundaries. Keep this file short enough to scan quickly.
 
 ## Current status
-- **Phase:** 5 done on simulation (EXP-011, ADR-009); 8 in progress (hardening PR #8 and deploy prep PR #9 merged; cloud deployment not done); ML Phase 9 (EXP-012 to EXP-016) done on development data and a held-out check; ADR-010 proposed
+- **Phase:** 5 done on simulation (EXP-011, ADR-009); 8 in progress (hardening PR #8 and deploy prep PR #9 merged; cloud deployment not done); ML Phase 9 (EXP-012 to EXP-016) done; ADR-010 accepted and integrated in the backend (bundle `sonovate-ast-head` 0.3.0); not deployed
 - **Status:** App runs frozen AST with the ADR-009 machine alert; security review findings fixed; nothing deployed
-- **Last updated:** 2026-11-07
+- **Last updated:** 2026-11-07 (ADR-010 integration)
 - **Current owner:** Team
 - **Working title:** Environment-Aware Acoustic Machine Health
 - **Repository:** Sonovate (`github.com/Neemayg/Sonovate`, public)
@@ -29,12 +29,12 @@ Deploy the hardened app to the cloud once accounts and hosting are approved.
 - [x] Phase 5 on simulated timelines: alert rule "2 of the last 3" (EXP-011, ADR-009); real timestamped data still needed
 - [x] Security and privacy review (2026-11-03): no critical issues; high: no rate limiting on inference, `model_versions` only in seed data
 - [x] Deploy prep merged (PR #9): Hugging Face Space image and Turnstile CAPTCHA; not deployed
-- [x] **Phase 9 model improvement (EXP-013 to EXP-016):** AST layer 4 with frequency-preserving pooling, plus a condition-classifier head trained on MIMII DG. Held-out DCASE 2022 sections 03–05: app-setup AUC 0.670 → 0.791, recall at the app threshold 0.065 → 0.266, official AUC 0.681 → 0.771 (95% gain +0.071 to +0.121). Not yet in the app.
+- [x] **Phase 9 model improvement (EXP-013 to EXP-016):** AST layer 4 with frequency-preserving pooling, plus a condition-classifier head trained on MIMII DG. Held-out DCASE 2022 sections 03–05: app-setup AUC 0.670 → 0.791, recall at the app threshold 0.065 → 0.266, official AUC 0.681 → 0.771 (95% gain +0.071 to +0.121). Integrated (ADR-010): bundle exported, backend loads it, migration adds the model version; local end-to-end walkthrough passed.
 - [x] Baseline count and sensitivity curve (EXP-012, development): 20–30 baselines rank better (mean AUC 0.716 → 0.770), but recall at the app threshold does not rise
 - [x] Hardening and ADR-009 alert in the app (PR #8): rate limits and caps, model versions in a migration, account deletion removes audio, https-only Supabase in production, security headers. Checked: 131 backend tests, frontend build, 74 database tests
 
 ## Current task
-Phase 8 deployment: cloud Supabase project, frontend hosting, backend hosting with enough memory for AST, production settings from the PR #8 checklist, then an end-to-end check. Needs the user's approval and accounts.
+Phase 8 deployment: cloud Supabase project, frontend hosting, backend hosting for the ADR-010 bundle (about 140 MB), production settings from the PR #8 checklist, then an end-to-end check. Needs the user's approval and accounts.
 
 ## Blockers
 - Neither system is a strong detector at a low false-alarm rate: AST catches 4–23% of anomalies at the baseline threshold.
@@ -45,14 +45,15 @@ Phase 8 deployment: cloud Supabase project, frontend hosting, backend hosting wi
 1. **Product model:** decided, frozen AST (ADR-008), merged in PR #7.
 2. **Next research step:** fine-tune AST on condition labels, or try stronger pretrained models. Either needs another untouched test set, such as DCASE 2023 or 2024.
 3. Phase 5 data source: own timestamped recordings, or a clearly labelled simulation.
-5. **Proposed (EXP-016): ADR-010** — switch the app model to AST layer 4 with frequency pooling plus the condition head. Awaiting approval; then export a new bundle and update the backend.
+5. **ADR-010:** decided (2026-11-07) and integrated — AST layer 4 with frequency pooling plus the condition head.
 4. **Proposed (EXP-012):** the app recommends 20–30 baseline recordings and keeps the minimum of 10. Awaiting approval.
 
 ## Next action
-The app runs frozen AST from `artifacts/bundles/sonovate-ast-knn-0.2.0/` (export with `uv run python -m ml.export_ast --config configs/export_ast.json`). Next is one of:
-- Phase 5 data;
-- a security review and deployment plan;
-- fine-tuning AST, verified on a new untouched test set.
+The app runs `sonovate-ast-head` 0.3.0 from `artifacts/bundles/sonovate-ast-head-0.3.0/` (export with `uv run python -m ml.export_ast_head --config configs/export_ast_head.json`; the bundle directory must not exist yet). Next is one of:
+- Phase 8 deployment of the updated app (the Space bundle is now about 140 MB);
+- audit a fresh untouched test set (DCASE 2023/2024 bearing and gearbox, licence check) before any further model change;
+- improve bearing, where ADR-010's gain is small;
+- Phase 5 timestamped data.
 
 ## Latest verified results
 - **EXP-016 (held-out DCASE 2022 sections 03–05, second use of that set):**

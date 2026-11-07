@@ -31,5 +31,5 @@ ENV SONOVATE_BUNDLES_DIR=/srv/bundles \
     HF_HUB_OFFLINE=1
 USER user
 EXPOSE 7860
-# One worker: each loads AST (about 350 MB) and the abuse limits are per process.
+# One worker: each loads the 4-layer AST and head (about 140 MB) and the abuse limits are per process.
 CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "7860", "--workers", "1", "--timeout-keep-alive", "5", "--proxy-headers"]

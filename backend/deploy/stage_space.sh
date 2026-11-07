@@ -7,13 +7,13 @@
 # Then:  hf upload <user>/<space> <out-dir> . --repo-type space
 set -euo pipefail
 
-BUNDLE="sonovate-ast-knn-0.2.0"
+BUNDLE="sonovate-ast-head-0.3.0"
 bundles_dir="${1:?usage: stage_space.sh <bundles-dir> <out-dir>}"
 out_dir="${2:?usage: stage_space.sh <bundles-dir> <out-dir>}"
 backend_dir="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [[ ! -f "$bundles_dir/$BUNDLE/bundle.json" ]]; then
-  echo "error: $bundles_dir/$BUNDLE/bundle.json not found; export it with ml.export_ast" >&2
+  echo "error: $bundles_dir/$BUNDLE/bundle.json not found; export it with ml.export_ast_head" >&2
   exit 1
 fi
 if [[ -e "$out_dir" && -n "$(ls -A "$out_dir")" ]]; then

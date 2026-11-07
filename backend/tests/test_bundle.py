@@ -185,7 +185,7 @@ def test_allow_list_pins_bundle_json(tmp_path: Path) -> None:
 
 
 def test_autoencoders_are_not_on_the_default_allow_list() -> None:
-    assert all(e.kind == "ast" for e in ALLOWED_BUNDLES)
+    assert all(e.kind == "ast_head" for e in ALLOWED_BUNDLES)
     assert not {e.name for e in AUTOENCODER_BUNDLES} & {e.name for e in ALLOWED_BUNDLES}
 
 

@@ -116,6 +116,31 @@ Only record accepted decisions here. Proposed options belong in an issue or task
   - Real timestamped recordings are needed to validate the rule.
 - **Evidence:** EXP-011 in `docs/EXPERIMENT_LOG.md`.
 
+## ADR-010 — Product model: AST layer-4 frequency pooling with a condition-classifier head
+- **Status:** Accepted (approved by the user, 2026-11-07)
+- **Date:** 2026-11-07
+- **Context:** On held-out DCASE 2022 evaluation sections 03–05 (second use of that set), the EXP-014 head beat the ADR-008 feature in the app setup (10 own baselines):
+  - own10 AUC 0.791 vs 0.670, higher in 11 of 12 section-domains;
+  - recall at the app threshold 0.266 vs 0.065, at a similar FPR (0.041 vs 0.043);
+  - official AUC 0.771 vs 0.681 (95% gain +0.071 to +0.121) (EXP-016).
+  The pipeline was selected on development data only (EXP-013 to EXP-015).
+- **Decision:**
+  - Encoder: frozen AST (`MIT/ast-finetuned-audioset-10-10-0.4593`, BSD-3), using only its first 4 transformer layers. The feature is the mean over time of the layer-4 patch tokens for each of the 12 frequency rows (9,216 values).
+  - Head: the EXP-014 condition-classifier network (seed 0, fixed in advance, not chosen by results), trained on MIMII DG `train`/`adaptation` clips only. It maps the standardized feature to a 128-value L2-normalized embedding.
+  - Scoring and threshold are unchanged from ADR-008: k = 1 cosine distance to the machine's own baselines, and a leave-one-out threshold at spread 2.0 with at least 10 baselines.
+  - ADR-007's prototype labelling and ADR-009's alert rule still apply.
+- **Alternatives considered:**
+  - Keeping the ADR-008 feature.
+  - The frozen layer-4 feature without the head (better than ADR-008 on held-out data, but below the head).
+  - Fusing the two scores (EXP-015, rejected by its rule).
+- **Consequences/trade-offs:**
+  - Gearbox improves a lot. Bearing improves little and unevenly, and results must say so.
+  - Recall at about 4% FPR is still only about 27%, so most anomalies are still missed.
+  - The bundle adds small head weights and a training step to reproduce. The model gets cheaper: 4 of AST's 12 layers.
+  - Existing machines' baselines are re-embedded once with the new model version (automatic in the backend).
+  - The DCASE 2022 evaluation set is now used twice. Further model changes need a new untouched test set.
+- **Evidence:** EXP-013 to EXP-016 in `docs/EXPERIMENT_LOG.md`.
+
 ## Pending decisions
 - Feature representation beyond the EXP-002 setup.
 - Recording hardware and context-sensor strategy.

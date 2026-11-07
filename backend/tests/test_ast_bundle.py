@@ -1,4 +1,4 @@
-"""Frozen AST bundle (ADR-008): parity with the ML export, integrity, scoring.
+"""Frozen AST bundle (ADR-008, superseded by ADR-010): parity with the ML export, integrity, scoring.
 
 The bundle is local and git-ignored. Point SONOVATE_BUNDLES_DIR at the
 directory that holds it (by default `<repo>/artifacts/bundles`); tests that
@@ -31,7 +31,7 @@ needs_bundle = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def registry() -> BundleRegistry:
-    return BundleRegistry(BUNDLES_DIR)
+    return BundleRegistry(BUNDLES_DIR, (AST_BUNDLE,))
 
 
 @pytest.fixture(scope="module")
@@ -51,8 +51,8 @@ def parity_embeddings(model: AstBundleModel) -> np.ndarray:
 
 
 @needs_bundle
-def test_default_allow_list_serves_ast_for_bearing_and_gearbox(registry: BundleRegistry) -> None:
-    assert ALLOWED_BUNDLES == (AST_BUNDLE,)
+def test_superseded_ast_bundle_still_loads_when_passed_explicitly(registry: BundleRegistry) -> None:
+    assert AST_BUNDLE not in ALLOWED_BUNDLES
     bearing, gearbox = registry.model_for("bearing"), registry.model_for("gearbox")
     assert isinstance(bearing, AstBundleModel) and bearing is gearbox
     assert registry.model_for("other") is None
@@ -134,7 +134,7 @@ def test_altered_config_is_refused(tmp_path: Path) -> None:
     with pytest.raises(BundleError, match="config.json does not match"):
         load_ast_bundle(directory, AST_BUNDLE)
     with pytest.raises(BundleError):
-        BundleRegistry(tmp_path)
+        BundleRegistry(tmp_path, (AST_BUNDLE,))
 
 
 @needs_bundle
