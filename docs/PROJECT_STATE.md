@@ -29,7 +29,8 @@ Deploy the hardened app to the cloud once accounts and hosting are approved.
 - [x] Phase 5 on simulated timelines: alert rule "2 of the last 3" (EXP-011, ADR-009); real timestamped data still needed
 - [x] Security and privacy review (2026-11-03): no critical issues; high: no rate limiting on inference, `model_versions` only in seed data
 - [x] Deploy prep merged (PR #9): Hugging Face Space image and Turnstile CAPTCHA; not deployed
-- [x] Goal 2 (bearing), development only: bearing-specific features gave no gain (EXP-018, +0.007); LoRA fine-tuning helps gearbox (0.784 → 0.819) but hurts bearing (0.874 → 0.795) (EXP-019). Proposal: per-machine-type model (bearing frozen layer-4, gearbox LoRA), pending a fresh held-out test
+- [x] **Goal 3, fresh gearbox test on MIMII DUE (EXP-020):** no leakage. LoRA rejected (worse on fresh data, full AUC −0.111). Spread 1.5 confirmed: FPR 0.087, recall 0.162 (vs 0.078 at 2.0). The app model's advantage over ADR-008 mostly does not transfer (own AUC 0.655 vs 0.642)
+- [x] Goal 2 (bearing), development only: bearing-specific features gave no gain (EXP-018, +0.007); LoRA helped gearbox on development (0.784 → 0.819) but failed the fresh test (EXP-020), so it is not adopted
 - [x] Threshold setting for the ADR-010 model (EXP-017, development): spread 1.5 gives FPR 0.089 / recall 0.328 at 10 baselines and 0.067 / 0.506 at 30 (now 0.039 / 0.191 at spread 2.0); awaiting confirmation on a fresh test set
 - [x] **Phase 9 model improvement (EXP-013 to EXP-016):** AST layer 4 with frequency-preserving pooling, plus a condition-classifier head trained on MIMII DG. Held-out DCASE 2022 sections 03–05: app-setup AUC 0.670 → 0.791, recall at the app threshold 0.065 → 0.266, official AUC 0.681 → 0.771 (95% gain +0.071 to +0.121). Integrated (ADR-010): bundle exported, backend loads it, migration adds the model version; local end-to-end walkthrough passed.
 - [x] Baseline count and sensitivity curve (EXP-012, development): 20–30 baselines rank better (mean AUC 0.716 → 0.770), but recall at the app threshold does not rise
@@ -47,6 +48,7 @@ Phase 8 deployment: cloud Supabase project, frontend hosting, backend hosting fo
 1. **Product model:** decided, frozen AST (ADR-008), merged in PR #7.
 2. **Next research step:** fine-tune AST on condition labels, or try stronger pretrained models. Either needs another untouched test set, such as DCASE 2023 or 2024.
 3. Phase 5 data source: own timestamped recordings, or a clearly labelled simulation.
+6. **Proposed (EXP-017, EXP-020):** change the app threshold spread from 2.0 to 1.5 and recommend 30 baselines. Awaiting approval.
 5. **ADR-010:** decided (2026-11-07) and integrated — AST layer 4 with frequency pooling plus the condition head.
 4. **Proposed (EXP-012):** the app recommends 20–30 baseline recordings and keeps the minimum of 10. Awaiting approval.
 
@@ -58,6 +60,7 @@ The app runs `sonovate-ast-head` 0.3.0 from `artifacts/bundles/sonovate-ast-head
 - Phase 5 timestamped data.
 
 ## Latest verified results
+- **EXP-020 (fresh MIMII DUE gearbox, first use):** app model own AUC 0.655 (N=10) / 0.690 (N=30); spread 1.5 gives FPR 0.087 / recall 0.162; LoRA candidate worse (0.589).
 - **EXP-016 (held-out DCASE 2022 sections 03–05, second use of that set):**
   - Head vs current app model: own10 AUC 0.791 vs 0.670 (11/12 wins); recall 0.266 vs 0.065 at FPR about 0.04; official AUC 0.771 vs 0.681.
   - Gearbox gains are large; bearing gains are small and uneven.

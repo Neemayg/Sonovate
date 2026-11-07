@@ -1,0 +1,31 @@
+{
+  "experiment": "EXP-020",
+  "raw_root": "data/raw/mimii_due/gearbox",
+  "mimii_dg_config": "configs/mimii_dg.json",
+  "dev_features": "artifacts/EXP-013/ast_layers.npz",
+  "bundle_dir": "artifacts/bundles/sonovate-ast-head-0.3.0",
+  "lora_config": "configs/lora_ast.json",
+  "lora_weights": "artifacts/EXP-019/trainable_epoch4.pt",
+  "model_id": "MIT/ast-finetuned-audioset-10-10-0.4593",
+  "output": "artifacts/EXP-020",
+  "device": "mps",
+  "batch_size": 8,
+  "simulation": {
+    "sizes": [10, 30],
+    "spreads": [1.5, 2.0],
+    "repeats": 200,
+    "seed": 0
+  },
+  "max_fpr": 0.1,
+  "rule": {
+    "size": 10,
+    "min_wins": 4,
+    "spread": 1.5,
+    "max_mean_fpr": 0.10,
+    "max_section_fpr": 0.20
+  },
+  "bootstrap": {
+    "samples": 2000,
+    "seed": 0
+  }
+}

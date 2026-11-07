@@ -980,3 +980,75 @@ Status: **Complete: adopted for gearbox only (+0.035); bearing worse (−0.079);
     - gearbox: LoRA AST + head (0.819).
   - Development figures assembled from selections across several experiments are optimistic. This proposal must be confirmed on fresh held-out data (goal 3), with its threshold re-selected as in EXP-017, before any app change.
   - Bearing remains the open problem.
+
+### EXP-020 — Fresh held-out gearbox test on MIMII DUE
+Status: **Complete: LoRA rejected (worse on fresh data, 0/6 wins); spread 1.5 confirmed for gearbox false alarms; the app model's advantage largely does not transfer to MIMII DUE.** This plan was written into the log before any MIMII DUE audio was opened, but not committed separately. The run used `883e182` plus the uncommitted EXP-020 files. Goal 3: confirm EXP-017 and EXP-019 on data no model or selection has seen.
+- **Date:** 2026-11-07
+- **Test data:** MIMII DUE gearbox development archive (Zenodo 4740355 v1.01, `dev_data_gearbox.zip`, MD5 checked against Zenodo; CC-BY-NC-SA-4.0, **evaluation only**).
+  - Test clips: sections 00–02, source and target.
+  - Training clips: references for the full protocol only.
+  - First use of this set.
+- **Leakage checks:**
+  - MD5 of every MIMII DUE clip against the MIMII DG manifest.
+  - Duplicates within MIMII DUE.
+  - The nearest MIMII DG gearbox clip for each test clip in the frozen layer-4 feature space; any distance below 1e-4 counts as a near-duplicate.
+  - Audio must be 16 kHz mono with 160,000 samples.
+- **Systems (all fixed earlier):**
+  - **app:** the shipped ADR-010 bundle (`sonovate-ast-head` 0.3.0: 4-layer AST, layer-4 frequency pooling, `head.npz`).
+  - **lora:** the EXP-019 epoch-4 checkpoint (seed 0).
+  - frozen: layer-4 frequency pooling without the head (context).
+  - adr008: last-layer AST mean (context).
+- **Protocols:**
+  - own-baseline: N = 10 and 30 baselines from each section-domain's normal test clips, with the remaining normals for evaluation. 200 draws, seed 0. Spreads 1.5 and 2.0.
+  - full: the section's training clips as references, official DCASE domain AUC, and a 2,000-sample bootstrap for the LoRA-vs-app difference.
+- **Decision rules (fixed in advance):**
+  1. **Gearbox model:** LoRA is better than app if its mean own AUC at N=10 over the 6 section-domains is higher and it wins in at least 4 of 6. The full-protocol interval is reported alongside.
+  2. **Threshold (EXP-017):** spread 1.5 is confirmed for gearbox if, with the gearbox model chosen by rule 1, mean FPR at N=10 is 0.10 or below and every section-domain is 0.20 or below. Spread 2.0 is reported alongside.
+  - Neither rule covers bearing: no fresh bearing set exists (Dataset Register, goal 3 audit).
+  - This run selects nothing else.
+- **Reproduction command/config path:** `uv run python -m ml.fresh_gearbox_eval --config configs/fresh_gearbox_eval.json --stage embed`, then `--stage evaluate`.
+- **Artifacts path:** `artifacts/EXP-020/`
+- **Leakage checks (all passed):**
+  - 0 exact MD5 matches with MIMII DG; 0 duplicates within MIMII DUE.
+  - Nearest MIMII DG gearbox clip for each test clip: minimum distance 0.018, median 0.083. For comparison, the median nearest MIMII DUE neighbour is at 0.032.
+  - 0 near-duplicates.
+  - All clips are 16 kHz mono with 160,000 samples.
+- **Counts (normal/anomaly):** 00 source 195/105, 00 target 96/108, 01 source 108/108, 01 target 108/108, 02 source 108/138, 02 target 105/120.
+- **Results:** own AUC per section-domain at N=10.
+
+  | Section / domain | app | lora | frozen | adr008 |
+  |---|---|---|---|---|
+  | gearbox 00 source | 0.632 | 0.581 | 0.599 | 0.588 |
+  | gearbox 00 target | 0.650 | 0.544 | 0.669 | 0.597 |
+  | gearbox 01 source | 0.757 | 0.664 | 0.696 | 0.763 |
+  | gearbox 01 target | 0.761 | 0.639 | 0.683 | 0.757 |
+  | gearbox 02 source | 0.568 | 0.562 | 0.584 | 0.584 |
+  | gearbox 02 target | 0.562 | 0.545 | 0.594 | 0.560 |
+
+  | System | own AUC N=10 | own AUC N=30 | full AUC | FPR / recall N=10, s1.5 | N=10, s2.0 | N=30, s1.5 | N=30, s2.0 |
+  |---|---|---|---|---|---|---|---|
+  | **app (ADR-010)** | **0.655** | **0.690** | 0.759 | 0.087 / 0.162 | 0.042 / 0.078 | 0.061 / 0.144 | 0.020 / 0.049 |
+  | lora (EXP-019) | 0.589 | 0.623 | 0.648 | 0.090 / 0.115 | 0.043 / 0.055 | 0.069 / 0.098 | 0.024 / 0.030 |
+  | frozen | 0.637 | 0.675 | 0.764 | 0.080 / 0.132 | 0.029 / 0.049 | 0.073 / 0.143 | 0.018 / 0.039 |
+  | adr008 | 0.642 | 0.675 | 0.758 | 0.098 / 0.136 | 0.046 / 0.061 | 0.089 / 0.130 | 0.036 / 0.044 |
+
+  Decisions under the rules:
+  1. **LoRA vs app: not better.** own AUC Δ −0.066, 0 of 6 wins. Full AUC Δ −0.111 (95% −0.132 to −0.092), so LoRA is clearly worse.
+  2. **Spread 1.5 on the app model: confirmed for gearbox.** Mean FPR 0.087 at N=10, with a maximum section-domain FPR of 0.098. Recall is 0.162, against 0.078 at spread 2.0.
+- **Error analysis:**
+  - **The EXP-019 development gain was overfitting.** Fine-tuning to MIMII DG gearbox conditions (+0.035 on development) made the embedding worse on a different gearbox recording campaign (−0.066). Adapting the encoder to one dataset's operating conditions does not transfer.
+  - **MIMII DUE gearbox is much harder for every system:**
+    - The app model's own AUC is 0.655, against 0.791 on DCASE 2022 sections 03–05 (EXP-016).
+    - Its advantage over the pre-ADR-010 model nearly vanishes: 0.655 vs 0.642 own AUC; 0.759 vs 0.758 full AUC.
+    - The head still ranks better than the frozen feature in the app setup (0.655 vs 0.637).
+  - **The app threshold rule transfers well.** False alarms stay close to the development figures (0.087 vs 0.089 on development at spread 1.5), so the leave-one-out threshold is robust across datasets.
+  - **Recall on this data is low at any setting** (0.08–0.16). That is a ranking limit.
+  - **More baselines help on fresh data too** (N=30: +0.035 AUC for the app model).
+- **Limitations:**
+  - One fresh gearbox dataset, and no fresh bearing data.
+  - MIMII DUE's anomalies and machines differ from MIMII DG's, which makes it a harder, more realistic shift.
+  - In the own-baseline protocol, baselines and scored clips come from the same pool.
+- **Conclusion / next experiment:**
+  - Drop the per-machine-type LoRA proposal and keep the ADR-010 model.
+  - Propose (for approval) changing the app's threshold spread from 2.0 to 1.5. False alarms are confirmed at about 9% on fresh gearbox data. Bearing is not confirmable on fresh data.
+  - Honest product claim: on a new gearbox recording setup, the detector ranks anomalies only modestly (AUC about 0.66, or 0.69 with 30 baselines). Real-machine recordings (goal 4) are the main route to better and verifiable performance.
