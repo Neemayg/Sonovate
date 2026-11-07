@@ -1,0 +1,20 @@
+{
+  "experiment": "EXP-017",
+  "head_config": "configs/attribute_head.json",
+  "output": "artifacts/EXP-017",
+  "seeds": [0, 1, 2],
+  "product_seed": 0,
+  "simulation": {
+    "sizes": [10, 20, 30],
+    "evaluation_normals": 20,
+    "spreads": [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0],
+    "repeats": 200,
+    "seed": 0
+  },
+  "max_fpr": 0.1,
+  "rule": {
+    "size": 10,
+    "max_mean_fpr": 0.10,
+    "max_section_fpr": 0.20
+  }
+}

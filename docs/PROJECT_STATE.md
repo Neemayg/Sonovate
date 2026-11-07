@@ -29,6 +29,7 @@ Deploy the hardened app to the cloud once accounts and hosting are approved.
 - [x] Phase 5 on simulated timelines: alert rule "2 of the last 3" (EXP-011, ADR-009); real timestamped data still needed
 - [x] Security and privacy review (2026-11-03): no critical issues; high: no rate limiting on inference, `model_versions` only in seed data
 - [x] Deploy prep merged (PR #9): Hugging Face Space image and Turnstile CAPTCHA; not deployed
+- [x] Threshold setting for the ADR-010 model (EXP-017, development): spread 1.5 gives FPR 0.089 / recall 0.328 at 10 baselines and 0.067 / 0.506 at 30 (now 0.039 / 0.191 at spread 2.0); awaiting confirmation on a fresh test set
 - [x] **Phase 9 model improvement (EXP-013 to EXP-016):** AST layer 4 with frequency-preserving pooling, plus a condition-classifier head trained on MIMII DG. Held-out DCASE 2022 sections 03–05: app-setup AUC 0.670 → 0.791, recall at the app threshold 0.065 → 0.266, official AUC 0.681 → 0.771 (95% gain +0.071 to +0.121). Integrated (ADR-010): bundle exported, backend loads it, migration adds the model version; local end-to-end walkthrough passed.
 - [x] Baseline count and sensitivity curve (EXP-012, development): 20–30 baselines rank better (mean AUC 0.716 → 0.770), but recall at the app threshold does not rise
 - [x] Hardening and ADR-009 alert in the app (PR #8): rate limits and caps, model versions in a migration, account deletion removes audio, https-only Supabase in production, security headers. Checked: 131 backend tests, frontend build, 74 database tests

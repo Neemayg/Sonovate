@@ -836,3 +836,42 @@ Status: **Complete: the head is better than the incumbent on held-out data (own1
   - Propose (not yet decided) ADR-010: the app switches to AST layer 4 with frequency-preserving pooling and the EXP-014 condition head, keeping the leave-one-out threshold and the prototype labelling.
   - Bearing results must say the gain there is small and uneven.
   - Any further model change needs a new untouched test set (for example DCASE 2023/2024 bearing and gearbox, after a licence check).
+
+### EXP-017 — Threshold setting for the ADR-010 model (development selection)
+Status: **Complete: spread 1.5 selected on development data; not yet confirmed on a fresh test set, so not in the app.** This plan was written into the log before the run, but not committed separately. The run used `26fb5c0` plus the uncommitted EXP-017 files. Goal 1 of the improvement plan: catch more anomalies at an agreed false-alarm limit.
+- **Date:** 2026-11-07
+- **Research question:** The app flags a recording when its log score exceeds mean + 2.0 standard deviations of the baseline's leave-one-out log scores. A smaller spread catches more anomalies but raises more false alarms. Which spread maximizes recall while keeping false alarms at about 10% or below?
+- **Model:** the ADR-010 product model, rebuilt as in the bundle export: the `freq/L4/raw` feature plus the EXP-014 head, seed 0. Seeds 1 and 2 are reported for robustness only.
+- **Data and protocol:** MIMII DG development `test` role. As EXP-012: per section-domain, 200 draws (seed 0) with 20 shared evaluation normals, nested baselines of 10, 20 and 30, and all 50 anomalies scored. Spreads −1.0 to 3.0.
+- **Selection rule (fixed in advance):**
+  - At 10 baselines (the app minimum), pick the smallest spread whose mean FPR over the 12 section-domains is 0.10 or below, with every section-domain's mean FPR at 0.20 or below.
+  - The 10% target is the default suggested in the session; the user did not name a different one.
+  - The same spread is then reported at 20 and 30 baselines.
+- **What this run cannot show:** the selected spread is tuned on development data. The rule allows no app change until a fresh untouched test set (goal 3) confirms the FPR and recall. Any change to ADR-010's threshold also needs approval.
+- **Reproduction command/config path:** `uv run python -m ml.threshold_select --config configs/threshold_select.json`
+- **Artifacts path:** `artifacts/EXP-017/`
+- **Results:** Product seed 0, means over the 12 section-domains. Full tables: `artifacts/EXP-017/SUMMARY.txt`.
+
+  | Spread | FPR, N=10 | Recall, N=10 | FPR, N=20 | Recall, N=20 | FPR, N=30 | Recall, N=30 |
+  |---|---|---|---|---|---|---|
+  | 1.00 | 0.187 | 0.541 | 0.169 | 0.681 | 0.167 | 0.730 |
+  | 1.25 | 0.132 | 0.426 | 0.114 | 0.560 | 0.109 | 0.624 |
+  | **1.50 (selected)** | **0.089** | **0.328** | 0.076 | 0.432 | 0.067 | 0.506 |
+  | 1.75 | 0.060 | 0.250 | 0.048 | 0.321 | 0.040 | 0.385 |
+  | 2.00 (current app) | 0.039 | 0.191 | 0.030 | 0.237 | 0.024 | 0.279 |
+
+  - At N=10 and spread 1.5, the highest section-domain FPR is 0.121 (gearbox 00 source).
+  - Recall by section-domain ranges from 0.11 (bearing 01 source) to 0.86 (bearing 02 target).
+  - Seeds 1 and 2 at N=10, spread 1.5: FPR 0.088 / 0.086, recall 0.357 / 0.337.
+- **Error analysis:**
+  - **Loosening the threshold from 2.0 to 1.5 raises recall from 0.19 to 0.33** at 10 baselines, while mean FPR rises from 0.039 to 0.089.
+  - **Recording more baselines adds recall at the same setting.** With 30 baselines, spread 1.5 catches half of the anomalies (0.506) with 6.7% false alarms. This matches EXP-012: more baselines make the threshold stricter, so a lower spread pays off more with more baselines.
+  - **Bearing 00 and 01 stay weak** (recall 0.11–0.20) whatever the setting. That is a model limit (goal 2), not a threshold one.
+- **Limitations:**
+  - Tuned on development data.
+  - FPR per draw is estimated from only 20 evaluation normals.
+  - The 10% limit is a suggested default, not a user requirement.
+- **Conclusion / next experiment:**
+  - Proposal (not adopted): spread 1.5 and a recommendation of 30 baselines.
+  - Before any app change, confirm on a fresh untouched test set (goal 3) that mean FPR stays at about 0.10 or below.
+  - Any model change from goal 2 needs this threshold re-selected, because a spread belongs to a specific model.
