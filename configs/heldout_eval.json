@@ -1,0 +1,17 @@
+{
+  "experiment": "EXP-016",
+  "raw_root": "data/raw/dcase2022_eval",
+  "truth_dir": "data/raw/dcase2022_eval/ground_truth",
+  "features_config": "configs/ast_layers.json",
+  "head_config": "configs/attribute_head.json",
+  "output": "artifacts/EXP-016",
+  "machines": ["bearing", "gearbox"],
+  "incumbent_layer": 12,
+  "frozen_layer": 4,
+  "max_fpr": 0.1,
+  "min_wins": 8,
+  "bootstrap": {
+    "samples": 2000,
+    "seed": 0
+  }
+}

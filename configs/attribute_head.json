@@ -1,0 +1,21 @@
+{
+  "experiment": "EXP-014",
+  "data_config": "configs/mimii_dg.json",
+  "features_config": "configs/ast_layers.json",
+  "reference_results": "artifacts/EXP-013/develop.json",
+  "output": "artifacts/EXP-014",
+  "machines": ["bearing", "gearbox"],
+  "feature": "freq/L4/raw",
+  "head": {
+    "hidden": 512,
+    "dim": 128,
+    "scale": 16.0,
+    "margin": 0.2,
+    "lr": 0.001,
+    "weight_decay": 0.001,
+    "epochs": 60,
+    "batch_size": 128
+  },
+  "seeds": [0, 1, 2],
+  "min_gain": 0.01
+}

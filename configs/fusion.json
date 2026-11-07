@@ -1,0 +1,11 @@
+{
+  "experiment": "EXP-015",
+  "data_config": "configs/mimii_dg.json",
+  "features_config": "configs/ast_layers.json",
+  "head_config": "configs/attribute_head.json",
+  "frozen_results": "artifacts/EXP-013/develop.json",
+  "head_results": "artifacts/EXP-014/results.json",
+  "output": "artifacts/EXP-015",
+  "machines": ["bearing", "gearbox"],
+  "min_gain": 0.01
+}
