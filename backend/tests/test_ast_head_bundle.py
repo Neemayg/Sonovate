@@ -1,4 +1,4 @@
-"""AST layer-4 + condition-head bundle (ADR-010): parity with the ML export, integrity, scoring.
+"""AST layer-4 + condition-head bundle (ADR-010, threshold ADR-011): parity with the ML export, integrity, scoring.
 
 The bundle is local and git-ignored. Point SONOVATE_BUNDLES_DIR at the directory that
 holds it (by default `<repo>/artifacts/bundles`); tests that need it are skipped, with the
@@ -22,7 +22,7 @@ from app.ast_head_bundle import (
     load_ast_head_bundle,
 )
 from app.audio import validate_wav
-from app.bundle import ALLOWED_BUNDLES, AST_HEAD_BUNDLE, AllowedBundle, BundleError, BundleRegistry
+from app.bundle import ALLOWED_BUNDLES, AST_HEAD_BUNDLE, AST_HEAD_BUNDLE_0_3_0, AllowedBundle, BundleError, BundleRegistry
 from app.registry import ContextValue
 from app.thresholds import ThresholdRule
 
@@ -67,7 +67,7 @@ def test_default_allow_list_serves_the_head_model_for_bearing_and_gearbox(regist
     assert isinstance(bearing, AstHeadBundleModel) and bearing is gearbox
     assert registry.model_for("other") is None
     assert gearbox.info.model_version_id == AST_HEAD_BUNDLE.model_version_id
-    assert gearbox.rule == ThresholdRule(minimum_baseline_recordings=10, spread=2.0)
+    assert gearbox.rule == ThresholdRule(minimum_baseline_recordings=10, spread=1.5)
     assert gearbox.encoder.config.num_hidden_layers == 4
 
 
@@ -114,6 +114,20 @@ def test_context_does_not_change_the_embedding(model: AstHeadBundleModel, parity
 def test_unsupported_machine_type_is_refused(model: AstHeadBundleModel, parity_audio: list) -> None:
     with pytest.raises(ValueError):
         model.embed(parity_audio[0], "other", {})
+
+
+@pytest.mark.skipif(not (BUNDLES_DIR / AST_HEAD_BUNDLE_0_3_0.directory_name).is_dir(), reason="0.3.0 bundle not present")
+def test_0_3_1_changes_only_the_threshold_and_text_of_0_3_0() -> None:
+    """ADR-011: same weights and parity as 0.3.0, spread 1.5 instead of 2.0."""
+    old = BundleRegistry(BUNDLES_DIR, (AST_HEAD_BUNDLE_0_3_0,)).model_for("gearbox")
+    new = BundleRegistry(BUNDLES_DIR).model_for("gearbox")
+    assert isinstance(old, AstHeadBundleModel) and isinstance(new, AstHeadBundleModel)
+    assert old.rule.spread == 2.0 and new.rule.spread == 1.5
+    assert old.parity == new.parity
+    old_spec = json.loads((old.directory / "bundle.json").read_text())
+    new_spec = json.loads((new.directory / "bundle.json").read_text())
+    assert old_spec["sha256"] == new_spec["sha256"]
+    assert old.info.model_version_id != new.info.model_version_id
 
 
 # --- integrity ---------------------------------------------------------------

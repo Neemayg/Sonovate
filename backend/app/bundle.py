@@ -1,4 +1,4 @@
-"""Versioned model bundles (ADR-007, ADR-008, ADR-010).
+"""Versioned model bundles (ADR-007, ADR-008, ADR-010, ADR-011).
 
 A bundle is a directory exported by the ML side holding `bundle.json` (the
 spec), the model files and parity WAVs. This service reimplements each
@@ -57,8 +57,20 @@ class AllowedBundle:
         return f"{self.name}-{self.version}"
 
 
-# ADR-010: AST layer-4 frequency pooling + condition head (app/ast_head_bundle.py).
+# ADR-010 model with the ADR-011 threshold (spread 1.5): AST layer-4 frequency
+# pooling + condition head (app/ast_head_bundle.py). Weights identical to 0.3.0.
 AST_HEAD_BUNDLE = AllowedBundle(
+    name="sonovate-ast-head",
+    version="0.3.1",
+    kind="ast_head",
+    machine_types=frozenset({"bearing", "gearbox"}),
+    bundle_json_sha256="675e414533e29626d2ae8b1c76ae5a4bddf790aff89a5024282bd6477e14c88a",
+    model_version_id=uuid.UUID("5e1d0000-0000-4000-8000-00000000b005"),
+)
+
+# Superseded by 0.3.1 (ADR-011, threshold spread 2.0 -> 1.5); kept so it stays
+# loadable for comparison. Never loaded unless passed to BundleRegistry explicitly.
+AST_HEAD_BUNDLE_0_3_0 = AllowedBundle(
     name="sonovate-ast-head",
     version="0.3.0",
     kind="ast_head",

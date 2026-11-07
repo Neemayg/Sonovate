@@ -30,6 +30,9 @@ export type Prediction = Tables["predictions"]["Row"] & {
 
 // Minimum baseline recordings before results are shown (ADR-007, EXP-005).
 export const BASELINE_REQUIRED = 10;
+// Recommended baseline recordings: more baselines catch more anomalies at the
+// same false-alarm level (ADR-011; EXP-012, EXP-017, EXP-020). Not enforced.
+export const BASELINE_RECOMMENDED = 30;
 
 export type RecordingDetail = Recording & {
   machines: Pick<Machine, "id" | "name" | "machine_type"> | null;

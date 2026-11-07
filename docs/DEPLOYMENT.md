@@ -46,7 +46,7 @@ to set, and the service only receives a JSON body with a recording id. Local val
 | `SUPABASE_URL` | The project URL. **Must be https**; the service refuses to start with plain http unless the host is loopback. |
 | `SUPABASE_PUBLISHABLE_KEY` | The project's publishable key. |
 | `SUPABASE_SECRET_KEY` | The project's secret key, from a secret store. Needed for results, thresholds, embeddings and account deletion. Never expose it to browsers. |
-| `SONOVATE_BUNDLES_DIR` | Path to the allow-listed `sonovate-ast-head-0.3.0` bundle on the server (about 140 MB, not in git). |
+| `SONOVATE_BUNDLES_DIR` | Path to the allow-listed `sonovate-ast-head-0.3.1` bundle on the server (about 140 MB, not in git). |
 | `CORS_ORIGINS` | Only the production frontend origin. |
 | `SONOVATE_ANALYSES_PER_WINDOW`, `SONOVATE_RATE_WINDOW_SECONDS` | Per-user analysis rate limit (default 20 per 600 s), per process. |
 | `SONOVATE_EMBED_CONCURRENCY` | Transformer passes run at once per process (default 1). |

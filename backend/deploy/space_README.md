@@ -24,7 +24,7 @@ Source: https://github.com/Neemayg/Sonovate (`backend/`).
 
 ## Third-party model
 
-`bundles/sonovate-ast-head-0.3.0/` contains the unmodified weights of the first
+`bundles/sonovate-ast-head-0.3.1/` contains the unmodified weights of the first
 4 transformer layers (and their configs) of [MIT/ast-finetuned-audioset-10-10-0.4593](https://huggingface.co/MIT/ast-finetuned-audioset-10-10-0.4593)
 (Gong, Chung and Glass, "AST: Audio Spectrogram Transformer", Interspeech 2021),
 released under the BSD 3-Clause licence. `head.npz` is our own head, trained

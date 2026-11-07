@@ -11,6 +11,7 @@ import { PageHead } from "@/components/PageHead";
 import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
 import { UploadForm } from "@/components/UploadForm";
 import {
+  BASELINE_RECOMMENDED,
   BASELINE_REQUIRED,
   deleteMachine,
   getMachine,
@@ -121,13 +122,19 @@ export function MachineDetail({ id }: { id: string }) {
               <p>
                 Results compare a recording with this machine&apos;s own normal sound. Upload at least{" "}
                 {BASELINE_REQUIRED} baseline recordings, made while the machine runs normally, before analysing.
+                About {BASELINE_RECOMMENDED} are recommended: with more baselines the model catches more unusual
+                sounds without more false alarms.
               </p>
               <BaselineMeter
                 count={baselineCount}
                 required={BASELINE_REQUIRED}
                 caption={
                   baselineReady
-                    ? `Ready for analysis${baselineCount > BASELINE_REQUIRED ? ` · ${baselineCount} in total` : ""}`
+                    ? `Ready for analysis · ${baselineCount} in total${
+                        baselineCount < BASELINE_RECOMMENDED
+                          ? ` · ${BASELINE_RECOMMENDED - baselineCount} more recommended`
+                          : ""
+                      }`
                     : `${BASELINE_REQUIRED - baselineCount} more needed`
                 }
               />

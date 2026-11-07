@@ -5,7 +5,7 @@
 ## Current status
 - **Phase:** 5 done on simulation (EXP-011, ADR-009); 8 in progress (hardening PR #8 and deploy prep PR #9 merged; cloud deployment not done); ML Phase 9 (EXP-012 to EXP-016) done; ADR-010 accepted and integrated in the backend (bundle `sonovate-ast-head` 0.3.0); not deployed
 - **Status:** App runs frozen AST with the ADR-009 machine alert; security review findings fixed; nothing deployed
-- **Last updated:** 2026-11-07 (ADR-010 integration)
+- **Last updated:** 2026-11-08 (ADR-011 integration)
 - **Current owner:** Team
 - **Working title:** Environment-Aware Acoustic Machine Health
 - **Repository:** Sonovate (`github.com/Neemayg/Sonovate`, public)
@@ -29,6 +29,7 @@ Deploy the hardened app to the cloud once accounts and hosting are approved.
 - [x] Phase 5 on simulated timelines: alert rule "2 of the last 3" (EXP-011, ADR-009); real timestamped data still needed
 - [x] Security and privacy review (2026-11-03): no critical issues; high: no rate limiting on inference, `model_versions` only in seed data
 - [x] Deploy prep merged (PR #9): Hugging Face Space image and Turnstile CAPTCHA; not deployed
+- [x] ADR-011 integrated: bundle `sonovate-ast-head` 0.3.1 (spread 1.5, weights identical to 0.3.0), migration, app recommends 30 baselines; local end-to-end check passed
 - [x] **Goal 3, fresh gearbox test on MIMII DUE (EXP-020):** no leakage. LoRA rejected (worse on fresh data, full AUC −0.111). Spread 1.5 confirmed: FPR 0.087, recall 0.162 (vs 0.078 at 2.0). The app model's advantage over ADR-008 mostly does not transfer (own AUC 0.655 vs 0.642)
 - [x] Goal 2 (bearing), development only: bearing-specific features gave no gain (EXP-018, +0.007); LoRA helped gearbox on development (0.784 → 0.819) but failed the fresh test (EXP-020), so it is not adopted
 - [x] Threshold setting for the ADR-010 model (EXP-017, development): spread 1.5 gives FPR 0.089 / recall 0.328 at 10 baselines and 0.067 / 0.506 at 30 (now 0.039 / 0.191 at spread 2.0); awaiting confirmation on a fresh test set
@@ -37,7 +38,7 @@ Deploy the hardened app to the cloud once accounts and hosting are approved.
 - [x] Hardening and ADR-009 alert in the app (PR #8): rate limits and caps, model versions in a migration, account deletion removes audio, https-only Supabase in production, security headers. Checked: 131 backend tests, frontend build, 74 database tests
 
 ## Current task
-Phase 8 deployment: cloud Supabase project, frontend hosting, backend hosting for the ADR-010 bundle (about 140 MB), production settings from the PR #8 checklist, then an end-to-end check. Needs the user's approval and accounts.
+Phase 8 deployment: cloud Supabase project, frontend hosting, backend hosting for the ADR-011 bundle 0.3.1 (about 140 MB), production settings from the PR #8 checklist, then an end-to-end check. Needs the user's approval and accounts.
 
 ## Blockers
 - Neither system is a strong detector at a low false-alarm rate: AST catches 4–23% of anomalies at the baseline threshold.
@@ -48,12 +49,12 @@ Phase 8 deployment: cloud Supabase project, frontend hosting, backend hosting fo
 1. **Product model:** decided, frozen AST (ADR-008), merged in PR #7.
 2. **Next research step:** fine-tune AST on condition labels, or try stronger pretrained models. Either needs another untouched test set, such as DCASE 2023 or 2024.
 3. Phase 5 data source: own timestamped recordings, or a clearly labelled simulation.
-6. **Proposed (EXP-017, EXP-020):** change the app threshold spread from 2.0 to 1.5 and recommend 30 baselines. Awaiting approval.
+6. **ADR-011:** decided (2026-11-08) and integrated — threshold spread 1.5 (bundle 0.3.1) and a recommendation of 30 baselines.
 5. **ADR-010:** decided (2026-11-07) and integrated — AST layer 4 with frequency pooling plus the condition head.
 4. **Proposed (EXP-012):** the app recommends 20–30 baseline recordings and keeps the minimum of 10. Awaiting approval.
 
 ## Next action
-The app runs `sonovate-ast-head` 0.3.0 from `artifacts/bundles/sonovate-ast-head-0.3.0/` (export with `uv run python -m ml.export_ast_head --config configs/export_ast_head.json`; the bundle directory must not exist yet). Next is one of:
+The app runs `sonovate-ast-head` 0.3.1 (ADR-010 model, ADR-011 threshold) from `artifacts/bundles/sonovate-ast-head-0.3.1/`. Export 0.3.0 with `uv run python -m ml.export_ast_head --config configs/export_ast_head.json`, then derive 0.3.1 with `uv run python -m ml.rebundle --config configs/rebundle_0_3_1.json`; bundle directories must not exist yet. Next is one of:
 - Phase 8 deployment of the updated app (the Space bundle is now about 140 MB);
 - audit a fresh untouched test set (DCASE 2023/2024 bearing and gearbox, licence check) before any further model change;
 - improve bearing, where ADR-010's gain is small;

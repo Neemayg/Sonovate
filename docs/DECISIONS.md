@@ -141,6 +141,27 @@ Only record accepted decisions here. Proposed options belong in an issue or task
   - The DCASE 2022 evaluation set is now used twice. Further model changes need a new untouched test set.
 - **Evidence:** EXP-013 to EXP-016 in `docs/EXPERIMENT_LOG.md`.
 
+## ADR-011 — Threshold spread 1.5 and a recommendation of 30 baselines
+- **Status:** Accepted (approved by the user, 2026-11-08). It amends ADR-010's threshold setting; the model is unchanged.
+- **Date:** 2026-11-08
+- **Context:**
+  - On development data, spread 1.5 was the smallest setting with mean FPR of 0.10 or below and every section-domain at 0.20 or below at 10 baselines: FPR 0.089 / recall 0.328, against 0.039 / 0.191 at spread 2.0. With 30 baselines: FPR 0.067 / recall 0.506 (EXP-017).
+  - On fresh MIMII DUE gearbox data, spread 1.5 kept FPR at 0.087, with every section-domain at 0.098 or below, and doubled recall from 0.078 to 0.162 (EXP-020). The same rule had been fixed in advance.
+- **Decision:**
+  - The leave-one-out threshold uses spread 1.5 instead of 2.0 (bundle `sonovate-ast-head` 0.3.1; weights identical to 0.3.0).
+  - The minimum stays at 10 baselines (ADR-007).
+  - The app recommends 30 baseline recordings, because more baselines raise detection at the same false-alarm level (EXP-012, EXP-017, EXP-020).
+- **Alternatives considered:**
+  - Keeping spread 2.0 (fewer false alarms, about half the recall).
+  - Spread 1.25 (development FPR 0.13 at 10 baselines, over the limit).
+  - Requiring 30 baselines (a heavier burden on users; the minimum stays 10).
+- **Consequences/trade-offs:**
+  - About 1 in 11 healthy recordings will be flagged at 10 baselines, against about 1 in 25 before.
+  - Most anomalies are still missed on unfamiliar recording setups.
+  - Confirmed on fresh data for gearbox only. Bearing rests on development data.
+  - Existing machines get new thresholds automatically, because thresholds are stored per model version.
+- **Evidence:** EXP-012, EXP-017 and EXP-020 in `docs/EXPERIMENT_LOG.md`.
+
 ## Pending decisions
 - Feature representation beyond the EXP-002 setup.
 - Recording hardware and context-sensor strategy.
