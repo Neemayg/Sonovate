@@ -29,6 +29,7 @@ Deploy the hardened app to the cloud once accounts and hosting are approved.
 - [x] Phase 5 on simulated timelines: alert rule "2 of the last 3" (EXP-011, ADR-009); real timestamped data still needed
 - [x] Security and privacy review (2026-11-03): no critical issues; high: no rate limiting on inference, `model_versions` only in seed data
 - [x] Deploy prep merged (PR #9): Hugging Face Space image and Turnstile CAPTCHA; not deployed
+- [x] Demo with public data (`docs/DEMO.md`, `ml/demo_seed.py`): three labelled demo machines from unseen MIMII DG test clips (CC-BY-4.0), seeded and analysed through the real local stack; first run caught 9/10, 3/10 and 5/10 anomalies with 2/10, 0/10 and 1/10 normals flagged
 - [x] Goal 4 groundwork: recording protocol (`docs/DATA_COLLECTION.md`), metadata template, and `ml/own_data.py` (ingest raw WAVs to 16 kHz 10 s clips; evaluate with the shipped bundle using a time-ordered baseline, as in the app). **No recordings yet**: needs the user's machines and a microphone
 - [x] ADR-011 integrated: bundle `sonovate-ast-head` 0.3.1 (spread 1.5, weights identical to 0.3.0), migration, app recommends 30 baselines; local end-to-end check passed
 - [x] **Goal 3, fresh gearbox test on MIMII DUE (EXP-020):** no leakage. LoRA rejected (worse on fresh data, full AUC −0.111). Spread 1.5 confirmed: FPR 0.087, recall 0.162 (vs 0.078 at 2.0). The app model's advantage over ADR-008 mostly does not transfer (own AUC 0.655 vs 0.642)
