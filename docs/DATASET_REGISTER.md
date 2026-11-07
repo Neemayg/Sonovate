@@ -125,6 +125,33 @@ Test clips were used only for format and integrity checks and for a few example 
 - **Load/RPM/state available?** Secondary sources report a tachometer channel, microphone, and a speed sweep of about 12–61 Hz. One derivative work reports unreliable tachometer results.
 - **Why kept:** It could offer a *measured* speed signal, unlike the set-points in MIMII DG, if reviewers challenge the set-point approach. Verify the license before any use.
 
+## Fresh held-out test set audit (2026-11-07, goal 3)
+**Purpose:** a test set our models have never seen, for confirming EXP-017 (threshold) and EXP-019 (per-machine-type model).
+
+**Requirements:**
+- bearing or gearbox recordings with no overlap with MIMII DG or the DCASE 2022 evaluation data;
+- normal/anomaly labels;
+- at least about 20 normal 10-second clips from one machine and condition, enough for the app setup (10 baselines plus held-out normals);
+- a licence that allows evaluation. Non-commercial is acceptable for evaluation only, never for training a product model.
+
+**Method:** a desk audit of record pages, papers and Mendeley's public file API. The MIMII DUE gearbox archive's file list was read with capped HTTP range requests (central directory only, about 0.7 MB). Nothing was downloaded.
+
+| Candidate | Licence | What was found | Verdict |
+|---|---|---|---|
+| **MIMII DUE gearbox, dev archive** (Zenodo 4740355, `dev_data_gearbox.zip`, 1.20 GB) | CC-BY-NC-SA-4.0 | Recorded for DCASE 2021, before MIMII DG. Sections 00–02, labelled test clips: 96–195 normal and 105–138 anomaly per section-domain, about 1,500 in total. Train filenames carry weight, arm length and voltage. | **Recommended fresh gearbox test** (evaluation only). Check overlap after download (MD5 against the MIMII DG manifest, plus near-duplicate embedding distances). |
+| MIMII DUE gearbox, eval sections 03–05 | CC-BY-NC-SA-4.0 | `eval_data_gearbox_train.zip` (848 MB) is in record 4740355. Test clips and ground truth are in separate DCASE 2021 records, not checked. | Optional second gearbox set, later |
+| DCASE 2026 Task 2 dev, bearing/gearbox "(Emu)" | CC-BY-NC-SA-4.0 (per register) | Simulated by convolving measured impulse responses with *previously recorded* machine sounds (task paper, arXiv 2606.01578). The source recordings are not named, and are likely MIMII DG. | Reject: contamination risk |
+| DCASE 2023–2025 Task 2 | 2023 CC-BY-4.0; later NC | Development bearing/gearbox reuse the MIMII DG format and data. Evaluation sets use other machine types. | Reject: not fresh |
+| Univ. Ottawa UORED-VAFCLS (Mendeley y2px5tg92h) | CC BY 4.0 | 20 bearings × 3 states (healthy, developing, faulty), one 10-second recording each at 42 kHz, with a microphone. | Reject: one healthy clip per bearing, too few for 10 baselines |
+| KAIST rotating machine (Mendeley ztmf3m7h5x, Data in Brief 2023) | CC BY 4.0 | Acoustic data only at 0 Nm: one 60-second normal file and four 60-second bearing-fault files (inner/outer race, 0.3/1.0 mm), 51.2 kHz. | Reject: 6 normal 10-second clips from one machine |
+| FSTF bearing sounds (Mendeley n9y9c7xrz3) | CC BY 4.0 | 2 setups × 6 cases × 3 speeds, one short recording each, 65 MB in total. | Reject: far too small |
+| SUBF v2.0 (Kaggle) | CC BY-NC-SA 4.0 (search result) | Healthy, inner and outer race sounds. Size and clip counts unverified (needs a Kaggle login). | Unverified; not pursued |
+
+**Conclusion:**
+- A fresh **gearbox** test exists: MIMII DUE.
+- No public **bearing** audio set found meets the app-setup requirement. Bearing can only be confirmed on held-out data with recordings of a real machine (goal 4), or exploratorily on the small sets above with a weaker protocol, which would not support claims.
+- This audit was not exhaustive.
+
 ## Split protocol (MIMII DG, Phase 2)
 Defined in `ml/splits.py` and `configs/mimii_dg.json` (seed 0, validation fraction 0.1). Output: `data/manifests/mimii_dg_splits.csv`.
 
