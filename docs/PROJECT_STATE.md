@@ -3,9 +3,9 @@
 > Update at milestone boundaries. Keep this file short enough to scan quickly.
 
 ## Current status
-- **Phase:** 5 done on simulation (EXP-011, ADR-009); 8 in progress (hardening merged in PR #8; cloud deployment next)
+- **Phase:** 5 done on simulation (EXP-011, ADR-009); 8 in progress (hardening PR #8 and deploy prep PR #9 merged; cloud deployment not done); ML follow-up EXP-012 done
 - **Status:** App runs frozen AST with the ADR-009 machine alert; security review findings fixed; nothing deployed
-- **Last updated:** 2026-11-03
+- **Last updated:** 2026-11-07
 - **Current owner:** Team
 - **Working title:** Environment-Aware Acoustic Machine Health
 - **Repository:** Sonovate (`github.com/Neemayg/Sonovate`, public)
@@ -28,6 +28,8 @@ Deploy the hardened app to the cloud once accounts and hosting are approved.
 - [x] App additions merged: delete recordings and machines (PR #4), machines overview (PR #5), UI redesign (PR #6); local only
 - [x] Phase 5 on simulated timelines: alert rule "2 of the last 3" (EXP-011, ADR-009); real timestamped data still needed
 - [x] Security and privacy review (2026-11-03): no critical issues; high: no rate limiting on inference, `model_versions` only in seed data
+- [x] Deploy prep merged (PR #9): Hugging Face Space image and Turnstile CAPTCHA; not deployed
+- [x] Baseline count and sensitivity curve (EXP-012, development): 20–30 baselines rank better (mean AUC 0.716 → 0.770), but recall at the app threshold does not rise
 - [x] Hardening and ADR-009 alert in the app (PR #8): rate limits and caps, model versions in a migration, account deletion removes audio, https-only Supabase in production, security headers. Checked: 131 backend tests, frontend build, 74 database tests
 
 ## Current task
@@ -42,6 +44,7 @@ Phase 8 deployment: cloud Supabase project, frontend hosting, backend hosting wi
 1. **Product model:** decided, frozen AST (ADR-008), merged in PR #7.
 2. **Next research step:** fine-tune AST on condition labels, or try stronger pretrained models. Either needs another untouched test set, such as DCASE 2023 or 2024.
 3. Phase 5 data source: own timestamped recordings, or a clearly labelled simulation.
+4. **Proposed (EXP-012):** the app recommends 20–30 baseline recordings and keeps the minimum of 10. Awaiting approval.
 
 ## Next action
 The app runs frozen AST from `artifacts/bundles/sonovate-ast-knn-0.2.0/` (export with `uv run python -m ml.export_ast --config configs/export_ast.json`). Next is one of:
@@ -50,6 +53,7 @@ The app runs frozen AST from `artifacts/bundles/sonovate-ast-knn-0.2.0/` (export
 - fine-tuning AST, verified on a new untouched test set.
 
 ## Latest verified results
+- **EXP-012 (development, AST, own-baseline references):** mean AUC 0.671 / 0.716 / 0.753 / 0.770 with 5 / 10 / 20 / 30 baselines. At spread 2.0: FPR 0.047 → 0.033 and recall 0.097 → 0.074 (10 → 30). The threshold gets stricter as baselines grow.
 - **EXP-009 (untouched DCASE 2022 evaluation sections 03–05, official AUC):**
   - Mean over 12 section-domains: AST 0.678 vs autoencoder 0.650. ΔAUC +0.028 (95% +0.001 to +0.055), so AST is better.
   - Gearbox: AST 0.730 vs 0.654.

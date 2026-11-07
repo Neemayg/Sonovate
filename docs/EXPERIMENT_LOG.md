@@ -573,3 +573,61 @@ Status: **Complete: R3 (2 of the last 3) selected; false alerts controllable, de
   - Use R3 for any over-time machine alert in the app; never R1. Label it as based on simulation.
   - With the current detector, over-time alerts will miss most faults, and the app must say so.
   - Real value here depends on a stronger detector (Phase 9 fine-tuning) and on real timestamped recordings to validate the rule.
+
+### EXP-012 — Number of baseline recordings and the sensitivity curve (development)
+Status: **Complete: rule met (more baselines rank better); recall at the app threshold does not rise.** The plan below was written into the log before the run, but it was not committed separately. The run used `ec3d130` plus the uncommitted EXP-012 files. It checks the app setup (ADR-008); it is not a new model comparison.
+- **Date:** 2026-11-07
+- **Research question:** In the app, AST compares a new recording with a machine's own baseline recordings. Does using more baselines (5, 10, 20, 30) improve detection? And what does the trade-off between false alarms and recall look like as the threshold setting changes?
+- **Hypothesis:** AUC rises with more baselines, with smaller gains after 20. The spread of false-positive rates across draws narrows. At the app's threshold (spread 2.0), recall changes little, because the threshold rises along with ranking quality.
+- **Dataset/version:** MIMII DG development set (`test` role), using the EXP-007 AST embeddings (`artifacts/EXP-007/embeddings_ast.npz`). The DCASE 2022 evaluation data is not reused.
+- **Split protocol:** For each section, domain and draw (200 draws, seed 0), shuffle that pool's 50 normal clips once:
+  - The first 20 are evaluation normals, the same for every baseline size in that draw.
+  - Baselines of 5, 10, 20 and 30 are nested, taken in order from the other 30 clips, so baseline and evaluation clips never overlap.
+  - All 50 anomaly clips are scored.
+  - A 50-clip baseline is not possible: each pool has only 50 normal clips, and some must be left for evaluation.
+- **Model and configuration:** As EXP-010: score = k = 1 cosine distance to the baseline. The threshold is mean + spread × standard deviation of the baseline clips' leave-one-out log scores.
+- **Threshold sweep:** spread ∈ {0, 0.5, 1, 1.5, 2, 2.5, 3}; the app uses 2.0.
+- **Metrics:**
+  - Per section-domain and size: mean AUC, pAUC (FPR 0–0.1), and FPR and recall at spread 2.0 with 5th–95th percentile ranges.
+  - Paired AUC gain against 10 baselines, per draw.
+  - Sensitivity curve: mean FPR and recall at each spread, averaged over the 12 section-domains.
+- **Decision rule (fixed in advance):** If the mean AUC gain over 10 baselines is 0.02 or more at 20 or 30 baselines, propose that the app recommend more baselines. Any app change remains a proposal needing approval. No threshold setting is selected from this run.
+- **Reproduction command/config path:** `uv run python -m ml.baseline_size --config configs/baseline_size.json`
+- **Artifacts path:** `artifacts/EXP-012/`
+- **Results:** Means over 200 draws per section-domain. Full per-section table: `artifacts/EXP-012/SUMMARY.txt`.
+
+  | Baselines | Mean AUC | ΔAUC vs 10 (paired) | Mean pAUC | FPR at spread 2.0 | Recall at spread 2.0 |
+  |---|---|---|---|---|---|
+  | 5 | 0.671 | −0.044 | 0.157 | 0.082 | 0.134 |
+  | 10 | 0.716 | — | 0.180 | 0.047 | 0.097 |
+  | 20 | 0.753 | +0.037 | 0.206 | 0.035 | 0.079 |
+  | 30 | 0.770 | +0.054 | 0.220 | 0.033 | 0.074 |
+
+  Sensitivity curve, mean FPR / recall over the 12 section-domains:
+
+  | Spread | 5 | 10 | 20 | 30 |
+  |---|---|---|---|---|
+  | 0.0 | 0.455 / 0.677 | 0.492 / 0.807 | 0.496 / 0.870 | 0.494 / 0.890 |
+  | 0.5 | 0.326 / 0.518 | 0.326 / 0.615 | 0.323 / 0.702 | 0.321 / 0.742 |
+  | 1.0 | 0.206 / 0.339 | 0.183 / 0.370 | 0.173 / 0.417 | 0.172 / 0.458 |
+  | 1.5 | 0.127 / 0.209 | 0.093 / 0.191 | 0.081 / 0.194 | 0.081 / 0.201 |
+  | 2.0 | 0.082 / 0.134 | 0.047 / 0.097 | 0.035 / 0.079 | 0.033 / 0.074 |
+  | 2.5 | 0.057 / 0.093 | 0.025 / 0.048 | 0.014 / 0.029 | 0.011 / 0.022 |
+  | 3.0 | 0.041 / 0.066 | 0.013 / 0.026 | 0.006 / 0.010 | 0.004 / 0.006 |
+
+- **Error analysis:**
+  - **Ranking improves with more baselines everywhere.** Mean AUC rose from 10 to 30 baselines in all 12 section-domains:
+    - The largest gain was bearing 00 target, 0.687 → 0.801.
+    - The smallest was gearbox 01 target, 0.634 → 0.658.
+    - Per draw the gain is noisy: the 5th percentile is below zero in 11 of 12 section-domains at 30 baselines, so a single machine's baseline set can be unlucky.
+  - **False alarms become steadier.** The 95th-percentile FPR at spread 2.0 in gearbox 00 target fell from 0.25 (10 baselines) to 0.10 (30). With 5 baselines, single draws reach 0.30–0.40.
+  - **At the app's threshold, recall falls rather than rises** (0.097 → 0.074). With more baselines the leave-one-out threshold becomes stricter, which cancels the better ranking. At a given FPR, the curve for 30 baselines is above the one for 10. For example, 30 baselines at spread 1.5 give FPR 0.081 / recall 0.201, against 10 baselines at spread 2.0 with 0.047 / 0.097. That is a different operating point, not a free gain.
+  - **5 baselines is clearly worse** on every measure. That supports keeping at least 10.
+- **Limitations:**
+  - Development data, used before for selection. Baseline, evaluation normals and anomalies come from the same pool, which favours same-domain baselines (as in EXP-010).
+  - Only 20 evaluation normals per draw, so each FPR estimate moves in steps of 0.05.
+  - 50 baselines could not be tested.
+  - The spread values on the curve were not selected; choosing one from this run would be tuning on development data.
+- **Conclusion / next experiment:**
+  - Rule met: propose that the app *recommend* 20–30 baseline recordings while keeping the minimum of 10. This is a proposal, not yet a decision.
+  - More baselines alone do not raise recall at the current threshold rule. A rule that adapts the spread to the baseline count, for example one targeting a fixed FPR, would need its own pre-registered experiment and a fresh held-out check before any claim.

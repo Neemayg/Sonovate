@@ -1,0 +1,20 @@
+{
+  "experiment": "EXP-012",
+  "data_config": "configs/mimii_dg.json",
+  "embeddings": "artifacts/EXP-007/embeddings_ast.npz",
+  "output": "artifacts/EXP-012",
+  "machines": ["bearing", "gearbox"],
+  "simulation": {
+    "sizes": [5, 10, 20, 30],
+    "reference_size": 10,
+    "evaluation_normals": 20,
+    "spreads": [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
+    "app_spread": 2.0,
+    "repeats": 200,
+    "seed": 0
+  },
+  "max_fpr": 0.1,
+  "decision_rule": {
+    "min_mean_auc_gain": 0.02
+  }
+}
