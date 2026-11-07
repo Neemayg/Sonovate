@@ -1,0 +1,1 @@
+recording_id,file,machine_id,machine_type,session_id,recorded_at,label,fault_type,fault_evidence,mic_device,mic_position_id,distance_cm,speed,speed_unit,load,load_unit,temperature_c,humidity_pct,background_noise,notes

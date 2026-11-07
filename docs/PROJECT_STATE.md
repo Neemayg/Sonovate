@@ -29,6 +29,7 @@ Deploy the hardened app to the cloud once accounts and hosting are approved.
 - [x] Phase 5 on simulated timelines: alert rule "2 of the last 3" (EXP-011, ADR-009); real timestamped data still needed
 - [x] Security and privacy review (2026-11-03): no critical issues; high: no rate limiting on inference, `model_versions` only in seed data
 - [x] Deploy prep merged (PR #9): Hugging Face Space image and Turnstile CAPTCHA; not deployed
+- [x] Goal 4 groundwork: recording protocol (`docs/DATA_COLLECTION.md`), metadata template, and `ml/own_data.py` (ingest raw WAVs to 16 kHz 10 s clips; evaluate with the shipped bundle using a time-ordered baseline, as in the app). **No recordings yet**: needs the user's machines and a microphone
 - [x] ADR-011 integrated: bundle `sonovate-ast-head` 0.3.1 (spread 1.5, weights identical to 0.3.0), migration, app recommends 30 baselines; local end-to-end check passed
 - [x] **Goal 3, fresh gearbox test on MIMII DUE (EXP-020):** no leakage. LoRA rejected (worse on fresh data, full AUC −0.111). Spread 1.5 confirmed: FPR 0.087, recall 0.162 (vs 0.078 at 2.0). The app model's advantage over ADR-008 mostly does not transfer (own AUC 0.655 vs 0.642)
 - [x] Goal 2 (bearing), development only: bearing-specific features gave no gain (EXP-018, +0.007); LoRA helped gearbox on development (0.784 → 0.819) but failed the fresh test (EXP-020), so it is not adopted
@@ -57,6 +58,7 @@ Phase 8 deployment: cloud Supabase project, frontend hosting, backend hosting fo
 The app runs `sonovate-ast-head` 0.3.1 (ADR-010 model, ADR-011 threshold) from `artifacts/bundles/sonovate-ast-head-0.3.1/`. Export 0.3.0 with `uv run python -m ml.export_ast_head --config configs/export_ast_head.json`, then derive 0.3.1 with `uv run python -m ml.rebundle --config configs/rebundle_0_3_1.json`; bundle directories must not exist yet. Next is one of:
 - Phase 8 deployment of the updated app (the Space bundle is now about 140 MB);
 - audit a fresh untouched test set (DCASE 2023/2024 bearing and gearbox, licence check) before any further model change;
+- record own machines following `docs/DATA_COLLECTION.md` (goal 4), the main route to verified real-world performance and to Phase 5 data;
 - improve bearing, where ADR-010's gain is small;
 - Phase 5 timestamped data.
 
