@@ -1,0 +1,17 @@
+{
+  "experiment": "EXP-018",
+  "data_config": "configs/mimii_dg.json",
+  "features_config": "configs/ast_layers.json",
+  "output": "artifacts/EXP-018",
+  "machines": ["bearing", "gearbox"],
+  "encoder": {
+    "model_id": "MIT/ast-finetuned-audioset-10-10-0.4593",
+    "device": "mps",
+    "batch_size": 8
+  },
+  "ast_layers": [1, 2, 3, 4],
+  "spectrum_n_fft": [1024, 4096],
+  "bearing_reference": "freq/L4/raw (EXP-013)",
+  "bearing_reference_auc": 0.874,
+  "min_gain": 0.01
+}

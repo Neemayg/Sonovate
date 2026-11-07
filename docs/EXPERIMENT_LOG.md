@@ -875,3 +875,108 @@ Status: **Complete: spread 1.5 selected on development data; not yet confirmed o
   - Proposal (not adopted): spread 1.5 and a recommendation of 30 baselines.
   - Before any app change, confirm on a fresh untouched test set (goal 3) that mean FPR stays at about 0.10 or below.
   - Any model change from goal 2 needs this threshold re-selected, because a spread belongs to a specific model.
+
+### EXP-018 — Bearing-focused feature candidates (development selection)
+Status: **Complete: rule not met (best +0.007); bearing keeps `freq/L4/raw`.** This plan was written into the log before the run, but not committed separately. The run used `b891000` plus the uncommitted EXP-018 files. Goal 2 of the improvement plan: improve bearing, where ADR-010's gain is small.
+- **Date:** 2026-11-07
+- **Research question:** Does a feature that keeps more time or fine-frequency detail beat the frozen `freq/L4/raw` feature on bearing in the app setup?
+- **Hypothesis:** Bearing faults are often impulsive or narrow-band. Pooling the variation over time (standard deviation), earlier AST layers, or linear-frequency spectra without mel compression of high frequencies should help.
+- **Dataset/version:** MIMII DG development `test` role. Training-role clips are used only for standardization statistics and full-protocol references.
+- **Candidates:**
+  - AST layers 1–4 (a 4-layer AST from the same checkpoint): per frequency row, the mean over time, the standard deviation over time, and both concatenated (each half L2-normalized).
+  - Log power spectra at n_fft 1024 and 4096 (Hann window, 50% hop): the mean over frames, and the mean plus the standard deviation.
+  - Each candidate raw, or standardized per machine with `train`-role statistics only.
+- **Protocol:** own10 (primary) and full, as EXP-013. Bearing and gearbox are both reported.
+- **Selection rule (fixed in advance):**
+  - Pick the candidate with the highest mean own10 AUC over the 6 bearing section-domains.
+  - It is selected for bearing only if it beats the current best for bearing, frozen `freq/L4/raw` (0.874 on development), by 0.01 or more. Otherwise bearing keeps `freq/L4/raw`.
+  - Gearbox is not selected here: the head (0.784 on gearbox) stays the gearbox reference.
+- **Note:** a per-machine-type model (bearing on its best feature, gearbox on the head) is the implied proposal. Any app change needs the fresh test set (goal 3) and approval.
+- **Reproduction command/config path:** `uv run python -m ml.bearing_features --config configs/bearing_features.json --stage embed`, then `--stage develop`.
+- **Artifacts path:** `artifacts/EXP-018/`
+
+- **Results:** Development set, own10 AUC means. Top candidates plus the pooling families; all 32 are in `artifacts/EXP-018/DEVELOP_SUMMARY.txt`.
+
+  | Candidate | Bearing own10 | Gearbox own10 | Full AUC |
+  |---|---|---|---|
+  | spec_mean/n4096/standardized | **0.881** | 0.591 | 0.630 |
+  | spec_mean/n1024/standardized | 0.877 | 0.592 | 0.636 |
+  | ast_mean/L4/raw (= reference `freq/L4/raw`) | 0.874 | 0.703 | 0.682 |
+  | ast_meanstd/L4/raw | 0.872 | 0.703 | 0.680 |
+  | ast_mean/L3/raw | 0.872 | 0.673 | 0.680 |
+  | ast_mean/L1/raw | 0.848 | 0.639 | 0.690 |
+  | ast_std/L1/raw (best std-only) | 0.770 | 0.680 | 0.636 |
+
+  Bearing per section-domain for the best candidate, against the reference `freq/L4/raw` (EXP-013):
+  - 00 source 0.953 vs 0.885; 00 target 0.898 vs 0.805.
+  - 01 source 0.806 vs 0.777; 01 target 0.788 vs 0.814.
+  - 02 source 0.868 vs 0.965; 02 target 0.976 vs 0.997.
+- **Sanity check:** `ast_mean/L4/raw` from the 4-layer model gives exactly the EXP-013 reference (0.874), so the truncated model reproduces the shipped feature.
+- **Error analysis:**
+  - **No candidate clears the bar.** The best gain is +0.007.
+  - **Linear spectra are complementary, not better.** They are much stronger on bearing 00, the section with speed changes (0.953 vs 0.885 source, 0.898 vs 0.805 target). They are weaker on bearing 02 and poor on gearbox (0.59).
+  - **Pooling the variation over time hurts** in every layer (bearing 0.72–0.77). The time variation is dominated by normal fluctuation, not fault impulses.
+  - **Layer 4 stays best among AST layers** for bearing; earlier layers do not help.
+- **Limitations:** Development set, used many times; 32 candidates compared.
+- **Conclusion / next experiment:**
+  - Bearing keeps `freq/L4/raw`.
+  - The bearing-00 strength of linear spectra is a lead for a later, pre-registered fusion test; it is not adopted.
+  - Next: EXP-019 (LoRA fine-tuning). EXP-019's bearing reference stays 0.874.
+
+### EXP-019 — LoRA fine-tuning of the 4-layer AST with the condition head (development)
+Status: **Complete: adopted for gearbox only (+0.035); bearing worse (−0.079); overall +0.002 (not adopted).** This plan was written into the log before the run, but not committed separately. The run used `b891000` plus the uncommitted EXP-019 files. Goal 2, step 2.
+- **Date:** 2026-11-07
+- **Research question:** EXP-014 trained a head on frozen features. Does adapting the AST layers themselves, with LoRA, to the same condition-classification task give better anomaly embeddings, especially for bearing?
+- **Model:**
+  - The 4-layer AST from the AudioSet checkpoint, frozen, with LoRA adapters (rank 8, alpha 16, B initialized to zero) on the query, key and value projections of all 4 layers.
+  - Feature: the layer-4 frequency pooling, standardized with the frozen feature's `train`-role statistics.
+  - Head: the EXP-014 architecture, trained jointly.
+- **Training:**
+  - Data: MIMII DG `train`/`adaptation` clips only (46 classes); `validation` monitors accuracy. Test clips are never used in training.
+  - Settings: AdamW (LoRA lr 2e-4, head lr 1e-3, weight decay 1e-3), batch 16, 4 epochs, seed 0, class-weighted cross-entropy with a CosFace margin (as EXP-014).
+  - One seed because of cost.
+- **Evaluation:** own10 and full (as EXP-013) after epochs 1, 2 and 4. **The decision uses epoch 4 only**; the earlier epochs are diagnostics, not a choice.
+- **Decision rule (fixed in advance):** each gain must be 0.01 or more, measured against EXP-014 and EXP-013 figures on development data.
+  - Overall own10 AUC over the head (0.805).
+  - Bearing own10 AUC over the best bearing system so far (0.874, or the EXP-018 winner if it is higher).
+  - Gearbox own10 AUC over the head (0.784).
+  - Each machine type can be adopted separately.
+- **Reproduction command/config path:** `uv run python -m ml.lora_ast --config configs/lora_ast.json --stage features`, then `--stage train`.
+- **Artifacts path:** `artifacts/EXP-019/`
+- **Results:** Development set, seed 0. Validation accuracy after epochs 1–4: 0.958, 0.968, 0.971, 0.982. Each epoch took about 6.3 minutes on the M4 Pro GPU.
+
+  | Epoch | own10 AUC | Bearing | Gearbox | own10 FPR | own10 recall | Full AUC |
+  |---|---|---|---|---|---|---|
+  | 1 | 0.799 | 0.813 | 0.786 | 0.042 | 0.212 | 0.681 |
+  | 2 | 0.808 | 0.820 | 0.796 | 0.042 | 0.210 | 0.705 |
+  | **4 (decision)** | **0.807** | **0.795** | **0.819** | 0.042 | 0.232 | 0.709 |
+
+  own10 AUC per section-domain at epoch 4, against the EXP-014 head (3-seed mean):
+
+  | Section | Source | Target |
+  |---|---|---|
+  | bearing 00 | 0.791 (head 0.800) | 0.750 (0.791) |
+  | bearing 01 | 0.646 (0.683) | 0.658 (0.728) |
+  | bearing 02 | 0.937 (0.968) | 0.989 (0.987) |
+  | gearbox 00 | 0.844 (0.826) | 0.712 (0.730) |
+  | gearbox 01 | 0.795 (0.761) | 0.865 (0.771) |
+  | gearbox 02 | 0.910 (0.808) | 0.786 (0.810) |
+
+  Decisions under the rule:
+  - Overall: +0.002, not adopted.
+  - Bearing: −0.079 against 0.874, not adopted.
+  - **Gearbox: +0.035 against 0.784, adopted for gearbox.**
+- **Error analysis:**
+  - **Adapting AST to condition labels sharpens gearbox but blurs bearing**, the same direction as the EXP-014 head, only stronger. Bearing degrades further with more training (0.820 at epoch 2, 0.795 at epoch 4).
+  - Learning to tell bearing speeds apart seems to suppress the cues that separate faulty from normal bearings.
+  - The best gearbox gains are at new conditions and in gearbox 02 (01 target +0.094, 02 source +0.102).
+- **Limitations:**
+  - One seed. The gearbox reference is the head's 3-seed mean, so part of the +0.035 may be seed noise.
+  - Development set, used many times.
+  - Adopting it would require shipping the LoRA adapter weights.
+- **Conclusion / next experiment:**
+  - The goal 2 proposal (not adopted) is a per-machine-type model:
+    - bearing: frozen `freq/L4/raw` (development own10 0.874);
+    - gearbox: LoRA AST + head (0.819).
+  - Development figures assembled from selections across several experiments are optimistic. This proposal must be confirmed on fresh held-out data (goal 3), with its threshold re-selected as in EXP-017, before any app change.
+  - Bearing remains the open problem.

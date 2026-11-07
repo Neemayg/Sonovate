@@ -1,0 +1,30 @@
+{
+  "experiment": "EXP-019",
+  "data_config": "configs/mimii_dg.json",
+  "head_config": "configs/attribute_head.json",
+  "output": "artifacts/EXP-019",
+  "machines": ["bearing", "gearbox"],
+  "model_id": "MIT/ast-finetuned-audioset-10-10-0.4593",
+  "layers": 4,
+  "device": "mps",
+  "seed": 0,
+  "lora": {
+    "targets": ["q_proj", "k_proj", "v_proj"],
+    "rank": 8,
+    "alpha": 16.0
+  },
+  "training": {
+    "epochs": 4,
+    "batch_size": 16,
+    "lr_lora": 0.0002,
+    "lr_head": 0.001,
+    "weight_decay": 0.001,
+    "evaluate_epochs": [1, 2, 4]
+  },
+  "references": {
+    "head_overall": 0.805,
+    "best_bearing": 0.874,
+    "head_gearbox": 0.784
+  },
+  "min_gain": 0.01
+}
