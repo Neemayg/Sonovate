@@ -1226,3 +1226,14 @@ Status: **Planned (pre-registered before any run).** Goal: rank anomalies better
 - **Note on evidence:** the fresh sets have been used several times; a pass here is supporting evidence, not a clean first-use result.
 - **Reproduction:** `uv run python -m ml.robust_scores --config configs/patch_scores.json`
 - **Artifacts path:** `artifacts/EXP-027/`
+
+### EXP-028 — Fusion (G) for bearings only (held-out bearing check)
+Status: **Planned (pre-registered after EXP-027's development run, before any held-out run).**
+- **Date:** 2026-11-09
+- **Why:** In EXP-027 no candidate met the overall development rule (best TG +0.005). Per machine, G (head + frozen feature fusion) raised bearing development own10 AUC in 5 of 6 section-domains (mean about 0.825 → 0.859) and lowered gearbox in 5 of 6. Choosing G for bearings comes from looking at development results, so it must be checked on held-out bearing data.
+- **Candidate:** G exactly as EXP-027, used for **bearing** machines only. Gearbox keeps app.
+- **Held-out data:** DCASE 2022 evaluation bearing sections 03–05, 6 section-domains (fifth use: EXP-009, 016, 022, 026, now 028). No untouched bearing set exists, so this is weak evidence.
+- **Protocol:** as EXP-027 (own-baseline, N = 10 and 30, 200 draws, seed 0, spread 1.5 on each system's own leave-one-out scores).
+- **Adopt for bearings** if mean own10 AUC is at least 0.010 higher than app, with ≥ 4 of 6 section-domain wins, mean FPR ≤ 0.10 and every section-domain ≤ 0.20. Otherwise bearings keep app.
+- **Reproduction:** `uv run python -m ml.robust_scores --config configs/patch_scores.json --stage bearing`
+- **Artifacts path:** `artifacts/EXP-028/`
