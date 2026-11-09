@@ -21,7 +21,7 @@ Browser (Next.js, publishable key + user session)
   └── Inference service  POST /v1/analyses with the user's access token
         ├── verifies the token against Supabase JWKS
         ├── reads the recording row and file with the user's token (RLS applies)
-        ├── validates the WAV (16 kHz, mono, 10 s, <= 2 MiB)
+        ├── validates the WAV (16 kHz, mono, 10-60 s, <= 2 MiB); scores each 10 s window (ADR-012)
         ├── machine type 'other' -> unsupported_machine_type
         ├── no bundles configured -> 503 no_validated_model
         ├── baseline recording itself -> baseline_recording

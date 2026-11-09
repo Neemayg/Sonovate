@@ -1,6 +1,6 @@
 # Sonovate frontend
 
-Next.js 16 + TypeScript. Technicians sign in, register machines, upload 10-second
+Next.js 16 + TypeScript. Technicians sign in, register machines, upload 10 to 60 second
 recordings with optional operating context, and open an analysis page.
 
 No model is validated yet, so the analysis page shows a "No validated model yet"

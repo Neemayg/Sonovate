@@ -266,7 +266,13 @@ def run(recording: Path, baselines: list[Path], analyzer: Analyzer) -> tuple[dic
     base_files = expand(baselines)
     if not base_files:
         raise ValueError("no baseline files found")
-    base_waves = np.concatenate([windows(load_audio(f))[0] for f in base_files])
+    # One 10 s window (the first) per baseline recording, as in the experiments and the backend:
+    # windows of the same recording are near each other and would make the threshold too tight.
+    base_windows = [windows(load_audio(f))[0] for f in base_files]
+    short = [f.name for f, w in zip(base_files, base_windows) if len(w) == 0]
+    if short:
+        raise ValueError(f"baseline recordings shorter than 10 s: {', '.join(short)}")
+    base_waves = np.stack([w[0] for w in base_windows])
     samples = load_audio(recording)
     waves, leftover = windows(samples)
     if len(waves) == 0:

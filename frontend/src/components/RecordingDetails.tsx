@@ -59,11 +59,31 @@ export function PredictionView({ p }: { p: Prediction }) {
       <p className="muted small">{decisionExplanation(p.decision)}</p>
       {p.log_score !== null && <ScoreStrip logScore={p.log_score} threshold={p.threshold} />}
       <dl className="details">
-        <dt>Log score</dt>
+        <dt>{p.window_count > 1 ? "Mean log score" : "Log score"}</dt>
         <dd className="num">
           {p.log_score !== null ? p.log_score.toFixed(3) : "—"}{" "}
           <span className="muted">(threshold {p.threshold.toFixed(3)})</span>
         </dd>
+        <dt>Analysed as</dt>
+        <dd>
+          {p.window_count > 1
+            ? `${p.window_count} windows of 10 s, judged on their mean (${p.window_count >= 6 ? "60 s rule" : p.window_count >= 3 ? "30 s rule" : "single-window threshold"})`
+            : "One 10 s window"}
+        </dd>
+        {p.window_count > 1 && p.window_log_scores && (
+          <>
+            <dt>Window log scores</dt>
+            <dd className="num">
+              <ol className="window-scores" aria-label="Log score of each 10 s window, in order">
+                {p.window_log_scores.map((v, i) => (
+                  <li key={i}>
+                    <span className="muted">{i * 10}–{i * 10 + 10} s</span> {v.toFixed(3)}
+                  </li>
+                ))}
+              </ol>
+            </dd>
+          </>
+        )}
         <dt>Raw score</dt>
         <dd className="num">{p.score.toPrecision(4)}</dd>
         <dt>Threshold from</dt>

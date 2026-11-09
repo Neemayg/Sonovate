@@ -4,7 +4,9 @@
 
 export const MAX_RECORDING_BYTES = 2 * 1024 * 1024;
 const EXPECTED_RATE = 16000;
-const EXPECTED_SECONDS = 10;
+// ADR-012: 10 to 60 s; the service analyses each 10 s window and judges the mean.
+const MIN_SECONDS = 10;
+const MAX_SECONDS = 60;
 const TOLERANCE_SECONDS = 0.05;
 
 export type WavInfo = {
@@ -63,10 +65,10 @@ export async function checkWav(file: File): Promise<WavCheck> {
     return { ok: false, message: `Recording must be mono (this file has ${fmt.channels} channels).` };
   }
   const durationSeconds = Math.floor(dataLength / fmt.block) / fmt.rate;
-  if (Math.abs(durationSeconds - EXPECTED_SECONDS) > TOLERANCE_SECONDS) {
+  if (durationSeconds < MIN_SECONDS - TOLERANCE_SECONDS || durationSeconds > MAX_SECONDS + TOLERANCE_SECONDS) {
     return {
       ok: false,
-      message: `Recording must be 10 seconds long (this file is ${durationSeconds.toFixed(2)} s).`,
+      message: `Recording must be 10 to 60 seconds long (this file is ${durationSeconds.toFixed(2)} s).`,
     };
   }
   return { ok: true, info: { sampleRateHz: fmt.rate, channels: fmt.channels, durationSeconds } };

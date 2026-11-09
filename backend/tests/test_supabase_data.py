@@ -98,7 +98,7 @@ def test_list_baselines_filters_by_machine_and_kind_with_user_token() -> None:
 
 def test_get_threshold_reads_ids_as_a_set() -> None:
     ids = [str(uuid.uuid4()) for _ in range(10)]
-    body = [{"threshold": 3.25, "baseline_count": 10, "baseline_recording_ids": ids}]
+    body = [{"threshold": 3.25, "baseline_count": 10, "baseline_recording_ids": ids, "log_mean": 3.0, "log_std": 0.125}]
     stored = source_for(lambda req: httpx.Response(200, json=body)).get_threshold(USER, uuid.uuid4(), uuid.uuid4())
     assert stored is not None
     assert stored.threshold == 3.25 and stored.baseline_recording_ids == frozenset(uuid.UUID(i) for i in ids)

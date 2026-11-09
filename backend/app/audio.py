@@ -14,7 +14,8 @@ import numpy as np
 
 EXPECTED_SAMPLE_RATE_HZ = 16_000
 EXPECTED_CHANNELS = 1
-EXPECTED_DURATION_S = 10.0
+EXPECTED_DURATION_S = 10.0  # the model's input window
+MAX_DURATION_S = 60.0  # ADR-012: up to six 10 s windows per recording
 DURATION_TOLERANCE_S = 0.05
 # Matches the storage bucket limit in the Supabase migration.
 MAX_RECORDING_BYTES = 2 * 1024 * 1024
@@ -101,10 +102,10 @@ def validate_wav(data: bytes) -> ValidatedAudio:
         raise AudioValidationError("malformed_wav", "WAV block alignment is inconsistent.")
 
     duration = (data_length // block_align) / rate
-    if abs(duration - EXPECTED_DURATION_S) > DURATION_TOLERANCE_S:
+    if not EXPECTED_DURATION_S - DURATION_TOLERANCE_S <= duration <= MAX_DURATION_S + DURATION_TOLERANCE_S:
         raise AudioValidationError(
             "wrong_duration",
-            f"Recording must be {EXPECTED_DURATION_S:g} seconds long (got {duration:.2f} s).",
+            f"Recording must be {EXPECTED_DURATION_S:g} to {MAX_DURATION_S:g} seconds long (got {duration:.2f} s).",
         )
 
     return ValidatedAudio(
@@ -117,6 +118,35 @@ def validate_wav(data: bytes) -> ValidatedAudio:
         frames_offset=data_offset,
         frames_length=data_length,
     )
+
+
+def window_count(audio: ValidatedAudio) -> int:
+    """Number of 10 s windows (a final window may be up to the tolerance short); 1 to 6."""
+    return max(1, int((audio.duration_s + DURATION_TOLERANCE_S) // EXPECTED_DURATION_S))
+
+
+def split_windows(audio: ValidatedAudio) -> list[ValidatedAudio]:
+    """Consecutive 10 s windows of a validated recording, as views on the same bytes.
+    Audio after the last full window (less than 10 s) is not analysed."""
+    frame_bytes = audio.channels * audio.bits_per_sample // 8
+    window_bytes = int(EXPECTED_DURATION_S * audio.sample_rate_hz) * frame_bytes
+    windows = []
+    for i in range(window_count(audio)):
+        start = i * window_bytes
+        length = min(window_bytes, audio.frames_length - start)
+        windows.append(
+            ValidatedAudio(
+                data=audio.data,
+                sample_rate_hz=audio.sample_rate_hz,
+                channels=audio.channels,
+                bits_per_sample=audio.bits_per_sample,
+                encoding=audio.encoding,
+                duration_s=(length // frame_bytes) / audio.sample_rate_hz,
+                frames_offset=audio.frames_offset + start,
+                frames_length=length,
+            )
+        )
+    return windows
 
 
 def decode_samples(audio: ValidatedAudio) -> np.ndarray:

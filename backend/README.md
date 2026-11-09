@@ -70,7 +70,7 @@ say why.
 | 401 | `unauthenticated` | Missing, expired or invalid token |
 | 404 | `recording_not_found` | Recording does not exist or belongs to someone else |
 | 422 | `invalid_request` | Body is not `{"recording_id": uuid}` |
-| 422 | `not_wav`, `malformed_wav`, `unsupported_encoding`, `wrong_sample_rate`, `wrong_channel_count`, `wrong_duration`, `recording_too_large` | Audio fails the input contract (WAV, 16 kHz, mono, 10 s ± 0.05 s, ≤ 2 MiB) |
+| 422 | `not_wav`, `malformed_wav`, `unsupported_encoding`, `wrong_sample_rate`, `wrong_channel_count`, `wrong_duration`, `recording_too_large` | Audio fails the input contract (WAV, 16 kHz, mono, 10–60 s (± 0.05 s), ≤ 2 MiB) |
 | 422 | `unsupported_machine_type` | Machine type is `other`, or no model is registered for its type |
 | 422 | `baseline_recording` | The recording is a baseline; baselines set the threshold and are not analysed |
 | 409 | `baseline_required` | Fewer than 10 baseline recordings; `details` has `baseline_count` and `baseline_required` |

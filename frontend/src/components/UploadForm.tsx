@@ -112,7 +112,8 @@ export function UploadForm({ machineId, machineType, defaultKind = "analysis", o
   return (
     <form className="form" onSubmit={handleSubmit} noValidate aria-describedby={`${uid}-help`}>
       <p id={`${uid}-help`} className="muted small">
-        WAV, 16 kHz, mono, 10 seconds, up to 2 MiB.
+        WAV, 16 kHz, mono, 10 to 60 seconds, up to 2 MiB. Record 60 s per check: the result then uses six 10 s
+        windows and catches more problems. Baseline recordings use their first 10 s.
       </p>
       {error && <ErrorMessage>{error}</ErrorMessage>}
       <div className="field">

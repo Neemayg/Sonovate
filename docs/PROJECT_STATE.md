@@ -4,7 +4,7 @@
 
 ## Current status
 - **Phase:** 5 done on simulation (EXP-011, ADR-009); 8 in progress (hardening PR #8 and deploy prep PR #9 merged; cloud deployment not done); ML Phase 9 (EXP-012 to EXP-016) done; ADR-010 accepted and integrated in the backend (bundle `sonovate-ast-head` 0.3.0); not deployed
-- **Status:** App runs the ADR-010/011 model with the ADR-009 machine alert; nothing deployed. Model work of 2026-11-09 (EXP-021 to EXP-026, branch `claude/model-localisation`): model unchanged; new analysis tool for audio and video (`ml/analyze.py`, `docs/ANALYZE.md`); recording-level rule for 30 s / 60 s recordings proposed (ADR-012)
+- **Status:** App runs the ADR-010/011 model with the ADR-009 machine alert; nothing deployed. Model work of 2026-11-09 (EXP-021 to EXP-026, branch `claude/model-localisation`): model unchanged; new analysis tool for audio and video (`ml/analyze.py`, `docs/ANALYZE.md`); recording-level rule for 30 s / 60 s recordings accepted and integrated in backend, database and app (ADR-012; local only)
 - **Last updated:** 2026-11-09 (EXP-021 to EXP-026)
 - **Current owner:** Team
 - **Working title:** Environment-Aware Acoustic Machine Health
@@ -54,7 +54,7 @@ Phase 8 deployment: cloud Supabase project, frontend hosting, backend hosting fo
 6. **ADR-011:** decided (2026-11-08) and integrated — threshold spread 1.5 (bundle 0.3.1) and a recommendation of 30 baselines.
 5. **ADR-010:** decided (2026-11-07) and integrated — AST layer 4 with frequency pooling plus the condition head.
 4. **Proposed (EXP-012):** the app recommends 20–30 baseline recordings and keeps the minimum of 10. Awaiting approval.
-7. **Proposed (ADR-012, EXP-026):** judge recordings of 30 s or more on the mean of their 10 s window scores (60 s: spread 0.75; 30 s: 1.0) and recommend 60 s per check. Awaiting approval; then integrate in the backend and app.
+7. **ADR-012:** decided (2026-11-09) and integrated locally — recordings of 10–60 s, judged on the mean of their 10 s window scores (60 s: spread 0.75; 30 s: 1.0); the app recommends 60 s per check. Local end-to-end check passed.
 
 ## Next action
 The app runs `sonovate-ast-head` 0.3.1 (ADR-010 model, ADR-011 threshold) from `artifacts/bundles/sonovate-ast-head-0.3.1/`. Export 0.3.0 with `uv run python -m ml.export_ast_head --config configs/export_ast_head.json`, then derive 0.3.1 with `uv run python -m ml.rebundle --config configs/rebundle_0_3_1.json`; bundle directories must not exist yet. Next is one of:

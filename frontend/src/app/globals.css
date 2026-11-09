@@ -1411,3 +1411,13 @@ button:disabled {
 .captcha {
   min-height: 65px;
 }
+
+/* ADR-012: per-window log scores of a longer recording */
+.window-scores {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+}

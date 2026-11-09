@@ -163,21 +163,22 @@ Only record accepted decisions here. Proposed options belong in an issue or task
 - **Evidence:** EXP-012, EXP-017 and EXP-020 in `docs/EXPERIMENT_LOG.md`.
 
 ## ADR-012 — Judge recordings of 30 s or more on the average of their 10 s windows
-- **Status:** Proposed (2026-11-09), awaiting the user's approval. The model and the per-window threshold are unchanged.
+- **Status:** Accepted (approved by the user, 2026-11-09) and integrated: backend, migration `20261109230000_recording_windows.sql`, frontend upload (10–60 s) and result page. The model and the per-window threshold are unchanged.
 - **Date:** 2026-11-09
 - **Context:**
   - Users will often upload recordings, or videos, longer than the model's 10 s input. Each is cut into 10 s windows.
   - Averaging the shipped model's window log scores ranks anomalies far better: on fresh MIMII DUE gearbox data, AUC 0.667 (10 s) → 0.763 (30 s) → 0.837 (60 s) (EXP-025).
   - With spreads chosen on development data by ADR-011's rule (30 s: 1.0; 60 s: 0.75), fresh gearbox false alarms stayed at 8.0% and 8.8%, with every section-domain at 10% or below, while recall rose from 25.4% to 32.8% and 42.3% (EXP-026).
-- **Proposed decision:**
-  - A recording of 60 s or more gets a recording-level decision: the mean of its window log scores against mean + 0.75 × std of the baseline leave-one-out log scores. 30–59 s uses 1.0. Shorter recordings keep the per-window decision.
+- **Decision:**
+  - Recordings may be 10 to 60 s (16 kHz mono WAV, ≤ 2 MiB, which fits 60 s of 16-bit audio). Each full 10 s window is scored; a baseline recording contributes its first 10 s only, as in the experiments.
+  - A recording of 60 s gets a recording-level decision: the mean of its window log scores against mean + 0.75 × std of the baseline leave-one-out log scores. 30–59 s uses 1.0. 20–29 s (two windows) uses the single-window spread on the mean, which is stricter and was not tested separately; 10–19 s is one window, as before.
   - Per-window results stay visible next to it. The app recommends recording at least 60 s per check.
 - **Alternatives considered:** per-window only (current); the single-window threshold on the average (too strict, recall fell, EXP-025); a 1/√k spread (too loose, FPR 0.11–0.13, EXP-025).
 - **Consequences/trade-offs:**
   - Roughly 1.7× as many anomalies caught at about the same false-alarm rate, for 60 s recordings.
   - The evidence comes from pseudo-recordings built from independent clips; real continuous recordings may gain less. Confirmed for gearbox; bearing figures come from a reused set.
   - The ADR-009 "2 of the last 3" rule would then apply to recording-level decisions.
-  - Implemented in `ml/analyze.py`; the backend and app are not changed yet.
+  - Implemented in the inference service, the database (`window_count`, `window_log_scores` on predictions) and the app, and in `ml/analyze.py`. Videos and non-WAV formats are accepted by `ml/analyze.py` only; the app still takes WAV.
 - **Evidence:** EXP-025 and EXP-026 in `docs/EXPERIMENT_LOG.md`.
 
 ## Pending decisions

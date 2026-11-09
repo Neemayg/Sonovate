@@ -58,6 +58,8 @@ class StoredThreshold:
     threshold: float
     baseline_count: int
     baseline_recording_ids: frozenset[uuid.UUID]
+    log_mean: float
+    log_std: float
 
 
 class RecordingSource(Protocol):
@@ -86,6 +88,7 @@ class PredictionStore(Protocol):
         threshold: float,
         decision: str,
         baseline_count: int,
+        window_log_scores: list[float] | None = None,
     ) -> StoredPrediction: ...
 
     def save_threshold(
@@ -168,7 +171,7 @@ class SupabaseRecordingSource:
                 "machine_id": f"eq.{machine_id}",
                 "model_version_id": f"eq.{model_version_id}",
                 "owner_id": f"eq.{user.id}",
-                "select": "threshold,baseline_count,baseline_recording_ids",
+                "select": "threshold,baseline_count,baseline_recording_ids,log_mean,log_std",
             },
         )
         if not rows:
@@ -178,6 +181,8 @@ class SupabaseRecordingSource:
             threshold=float(row["threshold"]),
             baseline_count=int(row["baseline_count"]),
             baseline_recording_ids=frozenset(uuid.UUID(i) for i in row["baseline_recording_ids"]),
+            log_mean=float(row["log_mean"]),
+            log_std=float(row["log_std"]),
         )
 
     def get_baseline_embeddings(
@@ -276,7 +281,9 @@ class SupabasePredictionStore:
         threshold: float,
         decision: str,
         baseline_count: int,
+        window_log_scores: list[float] | None = None,
     ) -> StoredPrediction:
+        windows = window_log_scores or [log_score]
         res = self._post(
             "predictions",
             {
@@ -288,6 +295,8 @@ class SupabasePredictionStore:
                 "threshold": threshold,
                 "decision": decision,
                 "baseline_count": baseline_count,
+                "window_count": len(windows),
+                "window_log_scores": windows,
             },
             "return=representation",
         )

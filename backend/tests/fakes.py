@@ -103,12 +103,13 @@ class FakeRecordingSource:
         return rid
 
     def add_baselines(
-        self, owner: uuid.UUID, count: int, machine_type: MachineType = "bearing", machine_id: uuid.UUID | None = None
+        self, owner: uuid.UUID, count: int, machine_type: MachineType = "bearing", machine_id: uuid.UUID | None = None,
+        data: bytes | None = None,
     ) -> uuid.UUID:
         """Adds `count` baseline recordings to one machine and returns its id."""
         mid = machine_id or uuid.uuid4()
         for _ in range(count):
-            self.add(owner, wav_bytes(), machine_type, kind="baseline", machine_id=mid)
+            self.add(owner, data or wav_bytes(), machine_type, kind="baseline", machine_id=mid)
         return mid
 
     def machine_of(self, recording_id: uuid.UUID) -> uuid.UUID:
@@ -212,11 +213,12 @@ class RecordingPredictionStore:
         threshold: float,
         decision: str,
         baseline_count: int,
+        window_log_scores: list[float] | None = None,
     ) -> StoredPrediction:
         self.saved.append((recording.id, score, decision))
         self.saved_rows.append(
             {"score": score, "log_score": log_score, "threshold": threshold, "decision": decision,
-             "baseline_count": baseline_count}
+             "baseline_count": baseline_count, "window_log_scores": window_log_scores or [log_score]}
         )
         return StoredPrediction(id=uuid.uuid4(), created_at=datetime.now(timezone.utc))
 
@@ -242,4 +244,6 @@ class RecordingPredictionStore:
                 threshold=computed.threshold,
                 baseline_count=computed.count,
                 baseline_recording_ids=frozenset(baseline_recording_ids),
+                log_mean=computed.log_mean,
+                log_std=computed.log_std,
             )

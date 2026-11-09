@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.audio import AudioValidationError, ValidatedAudio, validate_wav
+from app.audio import AudioValidationError, ValidatedAudio, split_windows, validate_wav
 from app.auth import AuthenticatedUser, AuthError, JwksKeyResolver, TokenVerifier
 from app.config import ConfigError, Settings, load_settings
 from app.limits import AnalysisInProgress, EmbedGate, ModelBusy, RateLimited, UserLimiter
@@ -36,7 +36,7 @@ from app.supabase_data import (
     SupabaseRecordingSource,
     UpstreamError,
 )
-from app.thresholds import baseline_threshold, decide
+from app.thresholds import BaselineThreshold, baseline_threshold, decide, recording_spread, recording_threshold
 
 logger = logging.getLogger("sonovate.inference")
 
@@ -88,6 +88,11 @@ class PredictionOut(BaseModel):
     threshold: float
     decision: Literal["below_threshold", "above_threshold"]
     baseline_count: int
+    # ADR-012: a 30-60 s recording is judged on the mean of its 10 s window log scores
+    # (log_score), against a threshold for that many windows.
+    window_count: int
+    window_log_scores: list[float]
+    threshold_spread: float
     model: ModelSummary
     limitations: list[str]
     created_at: datetime
@@ -303,25 +308,37 @@ def create_app(
                     {"baseline_count": len(baselines), "baseline_required": required},
                 )
             vectors = baseline_vectors(user, model, baselines, store)
-            threshold = machine_threshold(user, model, recording, baselines, vectors, store)
+            stats = machine_threshold(user, model, recording, baselines, vectors, store)
 
-            with embed_gate.slot():
-                query = model.embed(audio, recording.machine_type, recording.context)
-            score = float(model.score(query, vectors))
-            if not math.isfinite(score):
-                raise RuntimeError("model returned a non-finite score")
-            if score <= SAME_AUDIO_DISTANCE:
-                raise ApiError(
-                    422,
-                    "same_as_baseline",
-                    "This recording sounds identical to one of the machine's baseline recordings, so it cannot "
-                    "be compared with them. Nothing was stored.",
-                )
-            log_score = math.log(score)
+            window_scores = []
+            for window in split_windows(audio):
+                with embed_gate.slot():
+                    query = model.embed(window, recording.machine_type, recording.context)
+                window_score = float(model.score(query, vectors))
+                if not math.isfinite(window_score):
+                    raise RuntimeError("model returned a non-finite score")
+                if window_score <= SAME_AUDIO_DISTANCE:
+                    raise ApiError(
+                        422,
+                        "same_as_baseline",
+                        "This recording sounds identical to one of the machine's baseline recordings, so it "
+                        "cannot be compared with them. Nothing was stored.",
+                    )
+                window_scores.append(window_score)
+            window_logs = [math.log(s) for s in window_scores]
+            log_score = float(np.mean(window_logs))
+            # One window: its score; several: the geometric mean of the window scores.
+            score = window_scores[0] if len(window_scores) == 1 else math.exp(log_score)
+            spread = recording_spread(len(window_logs), model.rule.spread)
+            threshold = (
+                stats.threshold
+                if len(window_logs) == 1
+                else recording_threshold(stats.log_mean, stats.log_std, len(window_logs), model.rule.spread)
+            )
             decision: Literal["below_threshold", "above_threshold"] = decide(log_score, threshold)  # type: ignore[assignment]
             info = model.info
             stored = store.save(
-                recording, info.model_version_id, score, log_score, threshold, decision, len(baselines)
+                recording, info.model_version_id, score, log_score, threshold, decision, len(baselines), window_logs
             )
         except UpstreamError as exc:
             logger.warning("upstream failure: %s", exc)
@@ -337,6 +354,9 @@ def create_app(
                 threshold=threshold,
                 decision=decision,
                 baseline_count=len(baselines),
+                window_count=len(window_logs),
+                window_log_scores=window_logs,
+                threshold_spread=spread,
                 model=ModelSummary(
                     machine_type=recording.machine_type,
                     name=info.name,
@@ -361,7 +381,9 @@ def create_app(
         for b in baselines:
             vector = stored.get(b.id)
             if vector is None:
-                baseline_audio = _baseline_audio(user, b)
+                # A baseline is represented by its first 10 s window, as in the experiments
+                # (EXP-010 to EXP-026 used one clip per baseline recording).
+                baseline_audio = split_windows(_baseline_audio(user, b))[0]
                 with embed_gate.slot():
                     vector = model.embed(baseline_audio, b.machine_type, b.context)
                 store.save_baseline_embedding(b, version, vector)
@@ -375,13 +397,14 @@ def create_app(
         baselines: list[Recording],
         vectors: list[np.ndarray],
         store: PredictionStore,
-    ) -> float:
+    ) -> BaselineThreshold:
         """The stored threshold if it was computed from exactly these baselines;
         otherwise recompute it from the baselines' values and store it."""
         ids = frozenset(b.id for b in baselines)
         stored = recording_source.get_threshold(user, recording.machine_id, model.info.model_version_id)
         if stored is not None and stored.baseline_recording_ids == ids:
-            return stored.threshold
+            return BaselineThreshold(threshold=stored.threshold, log_mean=stored.log_mean,
+                                     log_std=stored.log_std, count=stored.baseline_count)
 
         distances = model.baseline_distances(vectors)
         if min(distances) <= SAME_AUDIO_DISTANCE:
@@ -403,7 +426,7 @@ def create_app(
             model.rule.spread,
             sorted(ids),
         )
-        return computed.threshold
+        return computed
 
     def _baseline_audio(user: AuthenticatedUser, baseline: Recording) -> ValidatedAudio:
         label = baseline.original_filename or "a baseline recording"
