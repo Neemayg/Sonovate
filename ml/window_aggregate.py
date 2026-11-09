@@ -15,7 +15,7 @@ from ml.baseline import git_commit
 from ml.export_ast_head import apply_head
 from ml.localise import PatchEncoder, pooled_features
 from ml.metrics import auc
-from ml.patch_scores import dev_groups, due_eval_groups, read_clip
+from ml.patch_scores import dcase22_bearing_groups, dev_groups, due_dev_groups, due_eval_groups, read_clip
 from ml.pretrained import log
 
 KS = (1, 3, 6)
@@ -106,10 +106,86 @@ def run(config: dict) -> dict:
     return report
 
 
+SPREADS = (0.50, 0.75, 1.00, 1.25, 1.50)
+
+
+def simulate26(d: np.ndarray, n_normal: int, n_anomaly: int, repeats: int, seed: int) -> dict:
+    rng = np.random.default_rng(seed)
+    keys = ["k1s1.50"] + [f"k{k}s{s:.2f}" for k in (3, 6) for s in SPREADS]
+    acc = {key: {"fpr": [], "recall": [], "auc": []} for key in keys}
+    anomalies = np.arange(n_normal, n_normal + n_anomaly)
+    for _ in range(repeats):
+        order = rng.permutation(n_normal)
+        base, rest = order[:10], order[10:]
+        bb = d[np.ix_(base, base)].copy()
+        np.fill_diagonal(bb, np.inf)
+        loo = np.log(bb.min(axis=1))
+        mu, sd = float(loo.mean()), float(loo.std())
+        normal_log = np.log(d[np.ix_(rest, base)].min(axis=1))
+        anomaly_log = np.log(d[np.ix_(anomalies, base)].min(axis=1))
+        for k in (1, 3, 6):
+            nr, ar = recordings(normal_log, k, rng), recordings(anomaly_log, k, rng)
+            a = auc(nr, ar)
+            for s in ((1.5,) if k == 1 else SPREADS):
+                key = f"k{k}s{s:.2f}"
+                threshold = mu + s * sd
+                acc[key]["auc"].append(a)
+                acc[key]["fpr"].append(float((nr > threshold).mean()))
+                acc[key]["recall"].append(float((ar > threshold).mean()))
+    return {key: {m: float(np.mean(v)) for m, v in vals.items()} for key, vals in acc.items()}
+
+
+def evaluate26(config: dict, groups: dict, encoder: PatchEncoder, head: dict, label: str) -> dict:
+    sim = config["simulation"]
+    per = {}
+    for key, clips in groups.items():
+        log(f"{label} {key}")
+        d = app_matrix(encoder, head, clips["normal"] + clips["anomaly"], config["batch_size"])
+        per[key] = simulate26(d, len(clips["normal"]), len(clips["anomaly"]), sim["repeats"], sim["seed"])
+    names = list(next(iter(per.values())))
+    return {"per_group": per,
+            "summary": {n: {m: float(np.mean([per[k][n][m] for k in per])) for m in ("auc", "fpr", "recall")}
+                        | {"max_fpr": float(max(per[k][n]["fpr"] for k in per))} for n in names}}
+
+
+def run26(config: dict) -> dict:
+    bundle = Path(config["bundle_dir"])
+    encoder = PatchEncoder(bundle, config["device"])
+    with np.load(bundle / "head.npz", allow_pickle=False) as data:
+        head = {k: data[k] for k in data.files}
+    sets = {"develop": dev_groups(config), "due_eval_gearbox": due_eval_groups(config),
+            "due_dev_gearbox": due_dev_groups(config), "dcase22_eval_bearing": dcase22_bearing_groups(config)}
+    results = {name: evaluate26(config, groups, encoder, head, name) for name, groups in sets.items()}
+    dev = results["develop"]["summary"]
+    fresh = results["due_eval_gearbox"]["summary"]
+    decisions = {}
+    for k in (3, 6):
+        chosen = next((s for s in SPREADS if ok(dev[f"k{k}s{s:.2f}"])), None)
+        key = f"k{k}s{chosen:.2f}" if chosen is not None else None
+        confirmed = bool(key and ok(fresh[key]) and fresh[key]["recall"] > fresh["k1s1.50"]["recall"])
+        decisions[f"k{k}"] = {"spread": chosen, "confirmed": confirmed}
+    report = {"experiment": "EXP-026", "commit": git_commit(), "results": results, "decisions": decisions}
+    out = Path("artifacts/EXP-026")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "results.json").write_text(json.dumps(report, indent=2))
+    lines = [f"EXP-026 (commit {report['commit']})"]
+    for name, part in results.items():
+        lines.append(f"\n{name}: setting | AUC | FPR | max FPR | recall")
+        for n, v in part["summary"].items():
+            lines.append(f"  {n:9s} {v['auc']:.3f} {v['fpr']:.3f} {v['max_fpr']:.3f} {v['recall']:.3f}")
+    lines.append(f"\ndecisions: {json.dumps(decisions)}")
+    (out / "SUMMARY.txt").write_text("\n".join(lines) + "\n")
+    print("\n".join(lines))
+    return report
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
-    run(json.loads(Path(parser.parse_args().config).read_text()))
+    parser.add_argument("--exp", type=int, default=25, choices=[25, 26])
+    args = parser.parse_args()
+    config = json.loads(Path(args.config).read_text())
+    (run26 if args.exp == 26 else run)(config)
 
 
 if __name__ == "__main__":
