@@ -1,0 +1,21 @@
+{
+  "experiment": "EXP-021",
+  "mimii_dg_config": "configs/mimii_dg.json",
+  "bundle_dir": "artifacts/bundles/sonovate-ast-head-0.3.1",
+  "output": "artifacts/EXP-021",
+  "output_fresh": "artifacts/EXP-022",
+  "device": "mps",
+  "batch_size": 8,
+  "centre": {"per_section": 100, "seed": 0},
+  "simulation": {"sizes": [10, 30], "spread": 1.5, "repeats": 200, "seed": 0},
+  "rule": {"min_gain": 0.010, "max_mean_fpr": 0.10},
+  "localise": {"baseline": 10, "tests": 20, "snr_db": [0, -10], "time_tolerance_s": 0.3, "seed": 0},
+  "fresh": {
+    "due_eval_root": "data/raw/mimii_due_eval/gearbox/test",
+    "due_eval_truth": "data/raw/mimii_due_eval/ground_truth",
+    "due_dev_root": "data/raw/mimii_due/gearbox",
+    "dcase22_root": "data/raw/dcase2022_eval",
+    "dcase22_truth": "data/raw/dcase2022_eval/ground_truth"
+  },
+  "fresh_rule": {"min_wins": 4, "max_mean_fpr": 0.10, "max_section_fpr": 0.20, "bearing_tolerance": 0.010}
+}
