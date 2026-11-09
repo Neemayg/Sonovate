@@ -7,9 +7,11 @@ input size; a trailing part shorter than 10 s is not analysed and is reported as
 
 For every window of the recording the output gives, with the bundle's model (ADR-010/011):
 * score, threshold and decision (above / below this machine's baseline threshold);
-* a time curve and frequency profile of how far each part of the window is from the baseline
-  (EXP-021 patch map, in baseline standard deviations), the peak time in the recording and the
-  frequency band of the peak.
+* a time curve and frequency profile of how far the spectrogram differs from the baseline
+  (EXP-024 L-mel2, in baseline standard deviations), the peak times in the recording and the
+  frequency band at the strongest peak. On synthetic events added to normal clips this map put
+  the peak within 0.3 s for about 90% of 0.5 s tones (and the right band for about 90%) but only
+  about 70% of 20 ms clicks; it is a descriptive view, not a validated fault locator.
 
 The score is an uncalibrated anomaly score, not a probability. A peak in the map shows where
 the recording differs most from the baseline; it is not a fault diagnosis, and nothing here
@@ -33,27 +35,27 @@ import soundfile as sf
 from ml.export_ast_head import apply_head
 from ml.localise import (
     CLIP_SAMPLES,
-    FREQ_ROWS,
+    N_MELS,
     SAMPLE_RATE,
+    MelBaseline,
     PatchEncoder,
-    frequency_profile,
-    leave_one_out_maps,
-    normalise_tokens,
-    patch_centre_s,
-    patch_map,
+    mel_frame_centre_s,
+    mel_frequency_profile,
+    mel_points_hz,
     pooled_features,
-    row_hz,
-    row_patch_distances,
-    row_stats,
-    score_top_fraction,
-    standardised_map,
-    time_curve,
 )
 
 AUDIO_SUFFIXES = {".wav", ".flac", ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 DEFAULT_BUNDLE = "artifacts/bundles/sonovate-ast-head-0.3.1"
-DEFAULT_CENTRE = "artifacts/EXP-021/centre.npy"
 MIN_BASELINE_WINDOWS = 10
+CURVE_STEP = 5  # frames (50 ms) per point in the reported time curve
+MAP_TIME, MAP_BANDS = 100, 32  # reported map resolution per window
+PEAK_SD, PEAK_GAP_S = 3.0, 0.5
+LOCALISATION = {
+    "method": "L-mel2: per-bin log-mel z-values against the baseline; narrow-band and broadband channels (EXP-024)",
+    "validated_as_fault_locator": False,
+    "synthetic_hit_rates_0dB": {"tone_time": 0.9, "tone_band": 0.9, "click_time": 0.7},
+}
 
 
 # --- audio input ------------------------------------------------------------------------------
@@ -103,16 +105,31 @@ def expand(paths: list[Path]) -> list[Path]:
 @dataclass
 class Baseline:
     embeddings: np.ndarray  # (N, 128)
-    grid: np.ndarray  # (N, 12, 101, 768) centred, normalised
     log_mean: float
     log_std: float
     threshold: float
-    row_mean: np.ndarray
-    row_std: np.ndarray
+    mel: MelBaseline
+
+
+def band_edges() -> np.ndarray:
+    points = mel_points_hz()
+    return np.array([[points[b], points[b + 2]] for b in range(N_MELS)])
+
+
+def peaks(curve: np.ndarray, times: np.ndarray, level: float, gap_s: float, limit: int = 3) -> list[dict]:
+    """Up to `limit` strongest local maxima above `level`, at least `gap_s` apart."""
+    order = np.argsort(curve)[::-1]
+    chosen: list[int] = []
+    for i in order:
+        if curve[i] < level or len(chosen) == limit:
+            break
+        if all(abs(times[i] - times[j]) >= gap_s for j in chosen):
+            chosen.append(int(i))
+    return [{"time_s": round(float(times[i]), 3), "deviation_sd": round(float(curve[i]), 2)} for i in sorted(chosen)]
 
 
 class Analyzer:
-    def __init__(self, bundle: Path = Path(DEFAULT_BUNDLE), centre: Path = Path(DEFAULT_CENTRE), device: str = "cpu") -> None:
+    def __init__(self, bundle: Path = Path(DEFAULT_BUNDLE), device: str = "cpu") -> None:
         spec = json.loads((bundle / "bundle.json").read_text())
         self.bundle_name = f"{spec['name']} {spec['version']}"
         self.spread = float(spec["threshold"]["spread"])
@@ -120,59 +137,63 @@ class Analyzer:
         self.encoder = PatchEncoder(bundle, device)
         with np.load(bundle / "head.npz", allow_pickle=False) as data:
             self.head = {k: data[k] for k in data.files}
-        self.centre = np.load(centre)
-        self.device = device
 
     def _encode(self, waves: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        emb, grids = [], []
+        emb, mels = [], []
         for i in range(0, len(waves), 8):
-            tokens = self.encoder.tokens(waves[i : i + 8])
+            mel, (tokens,) = self.encoder.forward(waves[i : i + 8], layers=(-1,))
             emb.append(apply_head(self.head, pooled_features(tokens)))
-            grids.append(normalise_tokens(tokens, self.centre))
-        return np.concatenate(emb), np.concatenate(grids)
+            mels.append(mel)
+        return np.concatenate(emb), np.concatenate(mels)
 
     def baseline(self, waves: np.ndarray) -> Baseline:
         if len(waves) < MIN_BASELINE_WINDOWS:
             raise ValueError(f"need at least {MIN_BASELINE_WINDOWS} baseline windows of 10 s, got {len(waves)}")
-        emb, grid = self._encode(waves)
+        emb, mels = self._encode(waves)
         d = 1.0 - emb @ emb.T
         np.fill_diagonal(d, np.inf)
         logs = np.log(np.clip(d.min(axis=1), 1e-12, None))
         mean, std = float(logs.mean()), float(logs.std())
-        row_mean, row_std = row_stats(leave_one_out_maps(row_patch_distances(grid, grid, self.device)))
-        return Baseline(emb, grid, mean, std, mean + self.spread * std, row_mean, row_std)
+        return Baseline(emb, mean, std, mean + self.spread * std, MelBaseline(mels))
 
     def analyse(self, waves: np.ndarray, base: Baseline) -> list[dict]:
-        emb, grid = self._encode(waves)
+        emb, mels = self._encode(waves)
         scores = np.clip((1.0 - emb @ base.embeddings.T).min(axis=1), 1e-12, None)
-        maps = patch_map(row_patch_distances(grid, base.grid, self.device))
+        edges = band_edges()
         results = []
-        for i, (score, m) in enumerate(zip(scores, maps)):
-            z = standardised_map(m, base.row_mean, base.row_std)
-            curve = time_curve(z)
-            peak_t = int(np.argmax(curve))
-            profile = frequency_profile(z, peak_t)
-            peak_row = int(np.argmax(profile))
-            lo, hi = row_hz(peak_row)
+        for i, (score, mel) in enumerate(zip(scores, mels)):
+            offset = i * 10.0
+            z = base.mel.z(mel)
+            curve = base.mel.time_curve(z)
+            times = offset + np.asarray(mel_frame_centre_s(np.arange(len(curve))))
+            peak = int(np.argmax(curve))
+            profile = mel_frequency_profile(z, peak)
+            peak_bin = int(np.argmax(profile))
+            n = len(curve) // CURVE_STEP * CURVE_STEP
+            coarse = curve[:n].reshape(-1, CURVE_STEP).max(axis=1)
+            tmap = np.stack([chunk.mean(axis=0) for chunk in np.array_split(z, MAP_TIME)])  # covers all frames
+            fmap = tmap.reshape(MAP_TIME, MAP_BANDS, -1).mean(axis=2).T  # (bands, time)
+            band_groups = edges.reshape(MAP_BANDS, -1, 2)
             log_score = float(np.log(score))
             results.append({
                 "window": i,
-                "start_s": i * 10.0,
-                "end_s": i * 10.0 + 10.0,
+                "start_s": offset,
+                "end_s": offset + 10.0,
                 "score": float(score),
                 "log_score": log_score,
                 "threshold": base.threshold,
                 "decision": "above_threshold" if log_score > base.threshold else "below_threshold",
                 "distance_from_threshold_sd": (log_score - base.threshold) / max(base.log_std, 1e-9),
-                "patch_score_top10": float(score_top_fraction(m)),
-                "peak_time_s": round(i * 10.0 + float(patch_centre_s(peak_t)), 3),
-                "peak_deviation_sd": float(curve[peak_t]),
-                "peak_band_hz": [round(lo), round(hi)],
-                "time_curve": {"t_s": [round(i * 10.0 + float(patch_centre_s(t)), 3) for t in range(len(curve))],
-                               "deviation_sd": [round(float(v), 3) for v in curve]},
-                "frequency_profile": {"band_hz": [[round(a), round(b)] for a, b in map(row_hz, range(FREQ_ROWS))],
-                                      "deviation_sd": [round(float(v), 3) for v in profile]},
-                "map_sd": np.round(z, 2).tolist(),
+                "peak_time_s": round(float(times[peak]), 3),
+                "peak_deviation_sd": round(float(curve[peak]), 2),
+                "peak_band_hz": [round(float(edges[peak_bin][0])), round(float(edges[peak_bin][1]))],
+                "peaks_above_3sd": peaks(curve, times, PEAK_SD, PEAK_GAP_S),
+                "time_curve": {"t_s": [round(float(t), 3) for t in times[:n].reshape(-1, CURVE_STEP)[:, 0]],
+                               "deviation_sd": [round(float(v), 2) for v in coarse]},
+                "frequency_profile": {"bin_hz": [round(float((a + b) / 2)) for a, b in edges],
+                                      "deviation_sd": [round(float(v), 2) for v in profile]},
+                "map_sd": {"band_hz": [[round(float(g[0][0])), round(float(g[-1][1]))] for g in band_groups],
+                           "values": np.round(fmap, 2).tolist()},
             })
         return results
 
@@ -202,12 +223,13 @@ def plot(report: dict, samples: np.ndarray, path: Path) -> None:
     axes[0].specgram(used + 1e-9, NFFT=512, Fs=SAMPLE_RATE, noverlap=352, cmap="magma")
     axes[0].set_ylabel("Frequency (Hz)")
     axes[0].set_title(f"{report['recording']} vs baseline ({report['model']})")
-    full = np.concatenate([np.asarray(w["map_sd"]) for w in wins], axis=1)
-    edges = [row_hz(f)[0] for f in range(FREQ_ROWS)] + [row_hz(FREQ_ROWS - 1)[1]]
+    full = np.concatenate([np.asarray(w["map_sd"]["values"]) for w in wins], axis=1)
+    bands = wins[0]["map_sd"]["band_hz"]
     axes[1].imshow(np.clip(full, -3, 6), aspect="auto", origin="lower", cmap="viridis",
-                   extent=[0, len(wins) * 10.0, 0, FREQ_ROWS])
-    axes[1].set_yticks(np.arange(FREQ_ROWS) + 0.5, [f"{round(edges[f] / 100) / 10:g}k" for f in range(FREQ_ROWS)], fontsize=7)
-    axes[1].set_ylabel("Band (lower edge)")
+                   extent=[0, len(wins) * 10.0, 0, len(bands)])
+    ticks = list(range(0, len(bands), 4))
+    axes[1].set_yticks([t + 0.5 for t in ticks], [f"{bands[t][0] / 1000:.1f}k" for t in ticks], fontsize=7)
+    axes[1].set_ylabel("Band (lower edge, Hz)")
     for w in wins:
         axes[2].plot(w["time_curve"]["t_s"], w["time_curve"]["deviation_sd"], color="tab:red" if w["decision"] == "above_threshold" else "tab:gray")
         axes[2].axvline(w["start_s"], color="k", lw=0.3)
@@ -236,10 +258,11 @@ def run(recording: Path, baselines: list[Path], analyzer: Analyzer) -> tuple[dic
         "baseline": {"files": len(base_files), "windows": len(base_waves), "threshold": base.threshold,
                      "threshold_rule": f"mean + {analyzer.spread} x std of leave-one-out log distances"},
         "summary": summarise(per_window, leftover),
+        "localisation": LOCALISATION,
         "windows": per_window,
         "notes": [
             "Scores are uncalibrated anomaly scores, not failure probabilities.",
-            "The map shows where the recording differs most from this machine's baseline; it is not a diagnosis.",
+            "The map shows where the spectrogram differs most from this machine's baseline; it is descriptive, not a validated fault locator or a diagnosis.",
             "No remaining-life or time-to-failure estimate is given: the training data has no run-to-failure recordings.",
             *analyzer.limitations,
         ],
@@ -254,10 +277,9 @@ def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--plot", type=Path)
     parser.add_argument("--bundle", type=Path, default=Path(DEFAULT_BUNDLE))
-    parser.add_argument("--centre", type=Path, default=Path(DEFAULT_CENTRE))
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
-    analyzer = Analyzer(args.bundle, args.centre, args.device)
+    analyzer = Analyzer(args.bundle, args.device)
     report, samples = run(args.recording, args.baseline, analyzer)
     args.out.write_text(json.dumps(report, indent=1))
     if args.plot:
