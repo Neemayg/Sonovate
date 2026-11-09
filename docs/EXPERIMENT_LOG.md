@@ -1120,3 +1120,15 @@ Status: **Planned (pre-registered after EXP-023, before any run of this method).
 - **Rule:** as EXP-023: at 0 dB, time hit ≥ 0.8 for tones and clicks of both machines, and frequency hit ≥ 0.8 for tones of both machines. If met, L-mel2 is the "where" display; otherwise no localisation is shown. L-mel is reported for reference.
 - **Reproduction:** `uv run python -m ml.localise_check --config configs/patch_scores.json --exp 24`
 - **Artifacts path:** `artifacts/EXP-024/`
+
+### EXP-025 — Longer recordings: averaging over several 10 s windows
+Status: **Planned (pre-registered before any run).** The analysis tool cuts a longer recording (or a video's audio) into 10 s windows. Does averaging their scores catch more anomalies at a controlled false-alarm rate?
+- **Date:** 2026-11-09
+- **System:** the shipped model (ADR-010/011) only; no model change.
+- **Simulated recordings:** within each section-domain and draw (own-baseline, N = 10, 200 draws, seed 0), the non-baseline normal clips and the anomaly clips are each shuffled and grouped into pseudo-recordings of k clips (k = 1, 3, 6, i.e. 10, 30, 60 s); leftover clips are dropped. A recording's score is the mean of its clips' log scores. **Limitation:** clips are independent recordings of the same machine and condition, not consecutive windows of one recording, so this is optimistic about how much averaging helps.
+- **Threshold variants (fixed now):** **A**, the single-window threshold unchanged (mean + 1.5 × std of the baseline leave-one-out log scores); **B**, the spread scaled by 1/√k (mean + 1.5 × std / √k).
+- **Data:** development set (MIMII DG `test`, 12 section-domains); then MIMII DUE gearbox evaluation sections 03–05 (second use, after EXP-022).
+- **Metrics:** recording-level AUC, FPR and recall, means over section-domains, and the maximum section-domain FPR.
+- **Rule:** on development, among (k ∈ {3, 6}) × (A, B), the setting with the highest recall whose mean FPR is ≤ 0.10 and maximum section FPR ≤ 0.20 is selected, if its recall beats k = 1. It is **confirmed** if, on the MIMII DUE evaluation set, the same setting also has mean FPR ≤ 0.10, maximum section FPR ≤ 0.20 and higher recall than k = 1. If confirmed, the tool reports the window-averaged decision for recordings of at least k × 10 s, next to the per-window results.
+- **Reproduction:** `uv run python -m ml.window_aggregate --config configs/patch_scores.json`
+- **Artifacts path:** `artifacts/EXP-025/`
