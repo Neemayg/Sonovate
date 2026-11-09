@@ -11,7 +11,7 @@
   "rule": {"min_gain": 0.010, "max_mean_fpr": 0.10},
   "localise": {"baseline": 10, "tests": 20, "snr_db": [0, -10], "time_tolerance_s": 0.3, "seed": 0},
   "fresh": {
-    "due_eval_root": "data/raw/mimii_due_eval/gearbox/test",
+    "due_eval_root": "data/raw/mimii_due_eval/gearbox",
     "due_eval_truth": "data/raw/mimii_due_eval/ground_truth",
     "due_dev_root": "data/raw/mimii_due/gearbox",
     "dcase22_root": "data/raw/dcase2022_eval",

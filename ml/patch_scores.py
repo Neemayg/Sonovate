@@ -86,7 +86,7 @@ def due_eval_groups(config: dict) -> dict[str, dict[str, list[Path]]]:
                 m = re.match(r"section_(\d{2})_(source|target)_test_\d{4}\.wav$", name)
                 if m is None:
                     raise ValueError(f"unexpected name {name}")
-                rows.append({"path": name, "machine": "gearbox", "section": m[1], "domain": m[2],
+                rows.append({"path": f"{m[2]}_test/{name}", "machine": "gearbox", "section": m[1], "domain": m[2],
                              "label": "anomaly" if label.strip() == "1" else "normal", "role": "test"})
     return _group(rows, root)
 
