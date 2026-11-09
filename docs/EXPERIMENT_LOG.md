@@ -1237,3 +1237,13 @@ Status: **Planned (pre-registered after EXP-027's development run, before any he
 - **Adopt for bearings** if mean own10 AUC is at least 0.010 higher than app, with ≥ 4 of 6 section-domain wins, mean FPR ≤ 0.10 and every section-domain ≤ 0.20. Otherwise bearings keep app.
 - **Reproduction:** `uv run python -m ml.robust_scores --config configs/patch_scores.json --stage bearing`
 - **Artifacts path:** `artifacts/EXP-028/`
+
+### EXP-029 — 30 s / 60 s spreads for the bearing fusion score
+Status: **Planned (pre-registered after EXP-028, before any run).**
+- **Date:** 2026-11-09
+- **Why:** EXP-028 adopts G for bearings. The ADR-012 spreads (0.75 at 60 s, 1.0 at 30 s) were selected for the app log score (EXP-026), not for G's fused z-sums.
+- **Method:** as EXP-026, for G on bearing only: N = 10 baselines, 200 draws, seed 0; pseudo-recordings of k = 3 and 6 clips; recording score = mean of the clips' fused z-sums; threshold = mean + s × std of the baselines' leave-one-out fused z-sums, s ∈ {0.50, 0.75, 1.00, 1.25, 1.50}.
+- **Selection (development, MIMII DG bearing `test`, 6 section-domains):** for each k, the smallest s with mean FPR ≤ 0.10 and every section-domain ≤ 0.20.
+- **Confirmation (DCASE 2022 evaluation bearing, sixth use, weak evidence):** the selected s must give mean FPR ≤ 0.10, every section-domain ≤ 0.20, and recall above G's single-window setting (k = 1, s = 1.5). If not confirmed for a k, bearing recordings of that length use the single-window spread 1.5 on the mean (stricter).
+- **Reproduction:** `uv run python -m ml.robust_scores --config configs/patch_scores.json --stage bearing_windows`
+- **Artifacts path:** `artifacts/EXP-029/`
