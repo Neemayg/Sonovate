@@ -1207,3 +1207,22 @@ Status: **Complete: 30 s → spread 1.0 and 60 s → spread 0.75 selected on dev
 - **Alongside (not decisive):** MIMII DUE gearbox dev: 10 s 0.094 / 0.164; 30 s 0.086 / 0.256; 60 s 0.098 / 0.370 (FPR / recall). DCASE 2022 bearing: 10 s 0.086 / 0.168; 30 s 0.081 / 0.259; 60 s 0.087 / 0.367 (max FPR 0.126).
 - **Limitations:** pseudo-recordings built from independent clips; real continuous recordings share more within-recording variation, so the gain may be smaller. Validated for exactly 30 s and 60 s.
 - **Conclusion:** propose (ADR-012) that a recording of 60 s or more is judged on the mean of its window log scores with spread 0.75 (30–59 s: spread 1.0), next to the per-window results. At about 9% false alarms this catches roughly 1.7× as many anomalies as a single 10 s clip on fresh gearbox data. Implemented in `ml/analyze.py`; not yet in the web app.
+
+### EXP-027 — Shift test-time augmentation and embedding fusion (development selection, fresh confirmation)
+Status: **Planned (pre-registered before any run).** Goal: rank anomalies better without changing the encoder weights (LoRA fine-tuning overfit in EXP-019/020).
+- **Date:** 2026-11-09
+- **Base system (app):** ADR-010/011, the shipped bundle 0.3.1 head embedding, k = 1 cosine distance.
+- **Candidates (fixed now):**
+  - **T (shift TTA):** every clip (baseline and query) is embedded K = 4 times, circularly shifted by 0, 2.5, 5 and 7.5 s. The baseline bank holds all N × 4 embeddings. Query score = mean over its 4 versions of the nearest-bank distance. A baseline clip's leave-one-out score excludes all 4 versions of itself. Rationale: machine sound is close to stationary, so shifted copies are extra views of the same recording; this enlarges a small baseline and averages out frame-position noise.
+  - **G (fusion with the frozen feature):** z(app) + z(frozen), where frozen = the layer-4 frequency-pooled feature standardised with the head's `feature_mean` / `feature_std` (MIMII DG training statistics) and L2-normalised, k = 1 cosine distance. Each z uses the mean and std of that system's own baseline leave-one-out log scores.
+  - **TG:** T applied to both embeddings, then fused as G.
+- **Protocol:** own-baseline (EXP-010/020), N = 10 and 30, 200 draws, seed 0; each system's threshold = mean + 1.5 × std of its own baseline leave-one-out scores (log scores; fused z-sums for G and TG).
+- **Development data:** MIMII DG `test` role, 12 section-domains.
+- **Development rule:** the candidate with the highest mean own10 AUC is carried forward if it beats app by ≥ 0.010 and has mean FPR ≤ 0.10 with every section-domain ≤ 0.20 at N = 10.
+- **Fresh confirmation (run once, only for a carried candidate; app figures reported alongside):**
+  - Primary: MIMII DUE gearbox evaluation 03–05 (fourth use: EXP-022, 025, 026). Decisive.
+  - Also: MIMII DUE gearbox development 00–02 (fourth use) and DCASE 2022 evaluation bearing (fifth use).
+  - **Adopt** if, on the primary set, mean own10 AUC is higher than app with ≥ 4 of 6 section-domain wins, mean FPR ≤ 0.10 and every section-domain ≤ 0.20; **and** own10 AUC is not lower than app on MIMII DUE development; **and** on bearing it is not lower by more than 0.010.
+- **Note on evidence:** the fresh sets have been used several times; a pass here is supporting evidence, not a clean first-use result.
+- **Reproduction:** `uv run python -m ml.robust_scores --config configs/patch_scores.json`
+- **Artifacts path:** `artifacts/EXP-027/`
