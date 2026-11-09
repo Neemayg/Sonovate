@@ -1313,3 +1313,14 @@ Status: **Planned (pre-registered before any synthetic data is generated).**
   - **No-regression rule:** the new head replaces the shipped one only if at least one machine type passes **and** the other is not lower than shipped by more than 0.005. Otherwise bundle 0.4.0 stays unchanged.
 - **Reproduction:** `uv run python -m ml.synth_head --config configs/synth_head.json --stage generate`, then `--stage train`, then `--stage confirm`.
 - **Artifacts path:** `artifacts/EXP-030/`
+
+### EXP-031 — Setup-augmented head (H-aug) for gearboxes only (real fresh gearbox check)
+Status: **Planned (pre-registered after EXP-030's development run, before any held-out run).**
+- **Date:** 2026-11-09
+- **Why:** In EXP-030 no synthetic candidate met the overall rule (H-aug +0.007 vs H-real). Per machine type, H-aug raised gearbox development AUC from 0.784 (H-real) and 0.780 (shipped) to 0.804, consistently over seeds (0.802 to 0.806), and lowered bearing slightly (0.858 → 0.853). Pseudo-fault outlier exposure (H-oe, H-both) lowered gearbox to about 0.75 and is rejected. Choosing H-aug for gearboxes comes from development results, so it needs a real held-out check.
+- **Candidate:** the EXP-030 H-aug head, seed 0 (deterministic retrain), for **gearbox** machines only, scored as the head (k = 1 cosine). Bearing keeps the shipped 0.4.0 scoring (shipped head + fusion).
+- **Held-out data (real recordings only):** MIMII DUE gearbox evaluation 03–05 (fifth use) is decisive; MIMII DUE gearbox development 00–02 (fifth use) must not be lower.
+- **Protocol:** own-baseline N = 10, 200 draws, seed 0, spread 1.5 (as EXP-030).
+- **Adopt for gearboxes** if, on MIMII DUE evaluation, own10 AUC ≥ shipped + 0.010, ≥ 4 of 6 section-domain wins, mean FPR ≤ 0.10 and every section-domain ≤ 0.20, **and** MIMII DUE development own10 AUC is not lower than shipped. Otherwise gearboxes keep the shipped head.
+- **Reproduction:** `uv run python -m ml.synth_head --config configs/synth_head.json --stage gearbox_aug`
+- **Artifacts path:** `artifacts/EXP-031/`
