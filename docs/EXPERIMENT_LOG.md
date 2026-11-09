@@ -1092,3 +1092,18 @@ Status: **Planned (pre-registered before any MIMII DUE evaluation audio is opene
 - **Adoption rule (fixed now):** the candidate replaces **app** as the detector only if, on the primary set, its mean own10 AUC is higher, it wins at least 4 of the 6 section-domains, its mean FPR at N = 10 is 0.10 or below with every section-domain at 0.20 or below, **and** on bearing its mean own10 AUC is not lower than app's by more than 0.010. Otherwise **app** stays.
 - **Reproduction:** `uv run python -m ml.patch_scores --config configs/patch_scores.json --stage fresh`.
 - **Artifacts path:** `artifacts/EXP-022/`
+
+### EXP-023 — More local anomaly maps (synthetic localisation, new clips)
+Status: **Planned (pre-registered after EXP-021's localisation check failed, before any run of these methods).**
+- **Date:** 2026-11-09
+- **Why:** In EXP-021 the layer-4 patch map missed the 0.8 criterion (time hits 0.45–0.90, frequency hits 0.40–0.70 at 0 dB). Layer-4 tokens have passed through self-attention, which mixes the whole clip, and averaging over 12 rows dilutes narrow-band events.
+- **Candidates (fixed now):**
+  - **L-mel:** the AST input log-mel spectrogram itself (128 bins, 10 ms frames; first 998 frames). Each bin is standardised by the mean and std of that bin over all frames of the baseline clips. Time curve: per frame, the mean of the 8 largest bin z-values, smoothed over 10 frames (0.1 s). Frequency profile: bin z-values averaged over ±0.25 s around the time peak.
+  - **L-tok0:** layer-0 patch tokens (patch embedding plus position, before any attention), minus the baseline clips' mean token at each grid position, L2-normalised; row-wise nearest-patch map as EXP-021; rows standardised with the baseline leave-one-out maps; time curve = maximum over rows.
+  - **L-tok4max:** the EXP-021 centred layer-4 map, with the time curve as the maximum over rows instead of the mean.
+- **Data:** development normal clips of **section 01 source** of each machine (not used for EXP-021's check), seed 1, 10 baseline and 20 test clips per machine; the EXP-021 event generator (0.5 s tones at 300–6,000 Hz, 20 ms clicks; 0 dB and −10 dB).
+- **Hits:** time hit as EXP-021 (±0.3 s). Frequency hit: for L-mel, the peak bin is within ±2 bins of the tone's mel bin; for the token maps, the peak row contains the tone's bin (as EXP-021).
+- **Rule:** a candidate qualifies if, at 0 dB, time hit ≥ 0.8 for tones and clicks of both machines and frequency hit ≥ 0.8 for tones of both machines. Among qualifying candidates, the one with the highest mean 0 dB hit rate is used for the "where" display. If none qualifies, no localisation is shown.
+- **What this shows and does not:** that the map points to where the sound *changed* relative to the baseline, for added events. It does not show that it locates real machine faults, which in these datasets have no time or frequency labels.
+- **Reproduction:** `uv run python -m ml.localise_check --config configs/patch_scores.json`
+- **Artifacts path:** `artifacts/EXP-023/`
