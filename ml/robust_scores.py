@@ -194,7 +194,7 @@ def run_fresh(config: dict) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
-    parser.add_argument("--stage", required=True, choices=["develop", "fresh", "bearing"])
+    parser.add_argument("--stage", required=True, choices=["develop", "fresh", "bearing", "bearing_windows"])
     args = parser.parse_args()
     config = json.loads(Path(args.config).read_text())
     {"develop": run_develop, "fresh": run_fresh, "bearing": run_bearing,
