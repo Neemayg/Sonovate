@@ -27,7 +27,12 @@ Per 10 s window:
 | `peak_time_s`, `peak_band_hz`, `peaks_above_3sd` | where the spectrogram differs most from the baseline (time in the recording, mel band) |
 | `time_curve`, `frequency_profile`, `map_sd` | the spectrogram-difference view: per 50 ms, per mel bin, and a 32-band × 100-step map, in baseline standard deviations |
 
-`summary` gives the number of windows analysed and above threshold, and the most unusual window.
+`summary` gives the number of windows analysed and above threshold, the most unusual window, and,
+for recordings of 30 s or more, a **recording-level decision** (`recording_decision`): the mean of the
+window log scores against mean + 1.0 × std (30–59 s) or mean + 0.75 × std (60 s or more) of the
+baseline leave-one-out log scores. On fresh gearbox data this kept false alarms at about 8–9% while
+catching 33% (30 s) and 42% (60 s) of anomalies, against 25% for a single 10 s clip (EXP-026; proposed
+as ADR-012). **Record at least 60 s per check.**
 `--plot` saves a spectrogram, the difference map and the time curve (windows above threshold in red).
 
 ## How to read it

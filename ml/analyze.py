@@ -48,6 +48,9 @@ from ml.localise import (
 AUDIO_SUFFIXES = {".wav", ".flac", ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 DEFAULT_BUNDLE = "artifacts/bundles/sonovate-ast-head-0.3.1"
 MIN_BASELINE_WINDOWS = 10
+# EXP-026: recording-level rule on the mean of the window log scores (selected on development data,
+# confirmed on fresh MIMII DUE gearbox data). 30 s: spread 1.0; 60 s or longer: spread 0.75.
+RECORDING_RULES = ((6, 0.75, "EXP-026, 60 s rule"), (3, 1.00, "EXP-026, 30 s rule"))
 CURVE_STEP = 5  # frames (50 ms) per point in the reported time curve
 MAP_TIME, MAP_BANDS = 100, 32  # reported map resolution per window
 PEAK_SD, PEAK_GAP_S = 3.0, 0.5
@@ -198,14 +201,32 @@ class Analyzer:
         return results
 
 
-def summarise(windows_out: list[dict], leftover: float) -> dict:
+def recording_decision(windows_out: list[dict], base: Baseline) -> dict | None:
+    """Window-averaged decision for recordings of 30 s or more (EXP-026); None if shorter."""
+    n = len(windows_out)
+    rule = next(((k, s, label) for k, s, label in RECORDING_RULES if n >= k), None)
+    if rule is None:
+        return None
+    k, spread, label = rule
+    mean_log = float(np.mean([w["log_score"] for w in windows_out]))
+    threshold = base.log_mean + spread * base.log_std
+    note = "validated for exactly 30 s and 60 s; longer recordings average more windows, which was not tested separately"
+    return {"windows_averaged": n, "mean_log_score": mean_log, "threshold": threshold, "rule": label,
+            "decision": "above_threshold" if mean_log > threshold else "below_threshold",
+            "note": note if n not in (3, 6) else None}
+
+
+def summarise(windows_out: list[dict], leftover: float, base: Baseline) -> dict:
     above = [w for w in windows_out if w["decision"] == "above_threshold"]
     strongest = max(windows_out, key=lambda w: w["log_score"] - w["threshold"])
+    recording = recording_decision(windows_out, base)
     return {
+        "recording_decision": recording,
         "windows_analysed": len(windows_out),
         "windows_above_threshold": len(above),
         "seconds_not_analysed": round(leftover, 2),
-        "result": "above_threshold" if above else "below_threshold",
+        "result": recording["decision"] if recording else ("above_threshold" if above else "below_threshold"),
+        "result_basis": (recording["rule"] if recording else "any 10 s window above threshold (recordings under 30 s)"),
         "most_unusual_window": {k: strongest[k] for k in ("window", "start_s", "end_s", "decision", "peak_time_s",
                                                          "peak_band_hz", "peak_deviation_sd")},
     }
@@ -257,7 +278,7 @@ def run(recording: Path, baselines: list[Path], analyzer: Analyzer) -> tuple[dic
         "model": analyzer.bundle_name,
         "baseline": {"files": len(base_files), "windows": len(base_waves), "threshold": base.threshold,
                      "threshold_rule": f"mean + {analyzer.spread} x std of leave-one-out log distances"},
-        "summary": summarise(per_window, leftover),
+        "summary": summarise(per_window, leftover, base),
         "localisation": LOCALISATION,
         "windows": per_window,
         "notes": [

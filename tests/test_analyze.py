@@ -63,3 +63,19 @@ def test_expand_lists_audio_in_folders(tmp_path):
     (tmp_path / "y.mp4").write_bytes(b"")
     (tmp_path / "notes.txt").write_text("-")
     assert [p.name for p in expand([tmp_path])] == ["x.wav", "y.mp4"]
+
+
+def test_recording_decision_rules():
+    from ml.analyze import Baseline, recording_decision
+
+    base = Baseline(np.zeros((10, 2)), log_mean=-2.0, log_std=0.2, threshold=-1.7, mel=None)
+
+    def win(v):
+        return {"log_score": v}
+
+    assert recording_decision([win(-1.0)] * 2, base) is None
+    r3 = recording_decision([win(-1.85)] * 3, base)  # threshold -2.0 + 1.0 * 0.2 = -1.8
+    assert r3["decision"] == "below_threshold" and r3["threshold"] == pytest.approx(-1.8)
+    r6 = recording_decision([win(-1.84)] * 6, base)  # threshold -2.0 + 0.75 * 0.2 = -1.85
+    assert r6["decision"] == "above_threshold" and r6["threshold"] == pytest.approx(-1.85) and r6["note"] is None
+    assert recording_decision([win(-1.84)] * 8, base)["note"]

@@ -1054,7 +1054,7 @@ Status: **Complete: LoRA rejected (worse on fresh data, 0/6 wins); spread 1.5 co
   - Honest product claim: on a new gearbox recording setup, the detector ranks anomalies only modestly (AUC about 0.66, or 0.69 with 30 baselines). Real-machine recordings (goal 4) are the main route to better and verifiable performance.
 
 ### EXP-021 — Patch-level (time-frequency) scoring and anomaly localisation (development selection)
-Status: **Planned (pre-registered before any run).** Goal: catch more anomalies, and show *when* in a recording and *in which frequency range* it differs from the machine's baseline.
+Status: **Complete: no patch candidate carried forward (best F 0.783 vs app 0.803 own10 AUC); the layer-4 map failed the localisation criterion.** Pre-registered at `53ec1dd`; run on `e7f344d`.
 - **Date:** 2026-11-09
 - **Research question:**
   1. Does scoring each AST time-frequency patch against the same frequency row of the baseline recordings rank anomalies better than the shipped clip-level embedding (ADR-010)?
@@ -1080,9 +1080,25 @@ Status: **Planned (pre-registered before any run).** Goal: catch more anomalies,
 - **Out of scope:** remaining useful life, time-to-failure or degradation rate. MIMII DG, DCASE and MIMII DUE contain independent clips of induced faults, not run-to-failure recordings, so no such model can be trained or validated on them.
 - **Reproduction:** `uv run python -m ml.patch_scores --config configs/patch_scores.json --stage centre`, then `--stage develop` and `--stage localise`.
 - **Artifacts path:** `artifacts/EXP-021/`
+- **Results (development, means over 12 section-domains, spread 1.5):**
+
+  | System | own10 AUC | FPR | recall | own30 AUC | recall N30 |
+  |---|---|---|---|---|---|
+  | **app** | **0.803** | 0.089 | 0.330 | **0.879** | 0.502 |
+  | P-top10-raw | 0.693 | 0.105 | 0.197 | 0.729 | 0.196 |
+  | P-top10-c | 0.716 | 0.087 | 0.290 | 0.765 | 0.366 |
+  | P-mean-c | 0.780 | 0.088 | 0.356 | 0.822 | 0.448 |
+  | P-tmax-c | 0.754 | 0.088 | 0.282 | 0.796 | 0.372 |
+  | F | 0.783 | 0.091 | 0.348 | 0.844 | 0.467 |
+
+  - Selection: best candidate F, −0.020 against app, so **app stays the detector**.
+  - Patch scores led only on bearing 01 (P-mean-c 0.861/0.854 vs app 0.688/0.706); choosing per section from this would be tuning on development data.
+- **Localisation check (section 00 source, 0 dB):** time hits 0.45 (bearing tone), 0.90 (bearing click), 0.45 (gearbox tone), 0.55 (gearbox click); frequency hits 0.70 and 0.40. **Criterion not met.**
+- **Error analysis:** layer-4 tokens mix the whole clip through self-attention, so patch distances are not local, and the per-patch nearest-neighbour score is noisier than the head's clip embedding, which was trained on condition labels.
+- **Artifacts:** `artifacts/EXP-021/` (`develop.json`, `DEVELOP_SUMMARY.txt`, `localise.json`, `centre.npy`).
 
 ### EXP-022 — Fresh confirmation of the EXP-021 candidate and the app model
-Status: **Planned (pre-registered before any MIMII DUE evaluation audio is opened).** Runs once, only if EXP-021 carries a candidate forward; the **app** figures on the new set are reported either way.
+Status: **Complete: no candidate (EXP-021 carried none); first fresh figures for the app model on MIMII DUE gearbox evaluation data.** Pre-registered at `53ec1dd`; run on `5105735`. First use of the MIMII DUE evaluation set.
 - **Test data:**
   - **Gearbox, primary:** MIMII DUE gearbox *evaluation* sections 03–05, source and target (DCASE 2021 Task 2 evaluation set, Zenodo 4884786 `eval_data_gearbox_test.zip`, MD5 ee1cd888f44d0d3f865c5701f3b8f002; labels from `y-kawagu/dcase2021_task2_evaluator`, MIT). CC-BY-NC-SA-4.0: evaluation only. **First use.**
   - **Gearbox, secondary:** MIMII DUE gearbox development sections 00–02 (second use, after EXP-020).
@@ -1092,9 +1108,21 @@ Status: **Planned (pre-registered before any MIMII DUE evaluation audio is opene
 - **Adoption rule (fixed now):** the candidate replaces **app** as the detector only if, on the primary set, its mean own10 AUC is higher, it wins at least 4 of the 6 section-domains, its mean FPR at N = 10 is 0.10 or below with every section-domain at 0.20 or below, **and** on bearing its mean own10 AUC is not lower than app's by more than 0.010. Otherwise **app** stays.
 - **Reproduction:** `uv run python -m ml.patch_scores --config configs/patch_scores.json --stage fresh`.
 - **Artifacts path:** `artifacts/EXP-022/`
+- **Leakage checks:** 1,428 clips; 0 MD5 matches with MIMII DG or MIMII DUE development; 0 duplicates; all 16 kHz mono, 160,000 samples.
+- **Results, app model (spread 1.5):**
+
+  | Set | own10 AUC | FPR (max) | recall | own30 AUC | FPR N30 | recall N30 |
+  |---|---|---|---|---|---|---|
+  | **MIMII DUE gearbox eval 03–05 (first use)** | **0.667** | **0.085 (0.097)** | **0.256** | 0.678 | 0.059 | 0.253 |
+  | MIMII DUE gearbox dev 00–02 (second use) | 0.655 | 0.088 (0.097) | 0.154 | 0.691 | 0.063 | 0.146 |
+  | DCASE 2022 eval bearing 03–05 (third use) | 0.671 | 0.073 (0.089) | 0.148 | 0.721 | 0.052 | 0.179 |
+
+  - Per section-domain on the primary set (own10 AUC): 03 source 0.624, 04 source 0.732, 05 source 0.735, 03 target 0.669, 04 target 0.667, 05 target 0.576.
+  - The patch candidates were lower on both gearbox sets (best P-top10-raw 0.640 on the primary set). On bearing, F was 0.690 vs 0.671, on a set used for the third time and not decisive.
+- **Conclusion:** the app model's false-alarm control transfers to a second fresh gearbox set (8.5%, every section-domain under 10%); per-clip detection stays modest (AUC 0.67, about a quarter of anomalies caught).
 
 ### EXP-023 — More local anomaly maps (synthetic localisation, new clips)
-Status: **Planned (pre-registered after EXP-021's localisation check failed, before any run of these methods).**
+Status: **Complete: no candidate qualified; L-mel closest (tones met on bearing, clicks missed).** Pre-registered at `d333c2d`; run on `1d72d39`.
 - **Date:** 2026-11-09
 - **Why:** In EXP-021 the layer-4 patch map missed the 0.8 criterion (time hits 0.45–0.90, frequency hits 0.40–0.70 at 0 dB). Layer-4 tokens have passed through self-attention, which mixes the whole clip, and averaging over 12 rows dilutes narrow-band events.
 - **Candidates (fixed now):**
@@ -1107,9 +1135,15 @@ Status: **Planned (pre-registered after EXP-021's localisation check failed, bef
 - **What this shows and does not:** that the map points to where the sound *changed* relative to the baseline, for added events. It does not show that it locates real machine faults, which in these datasets have no time or frequency labels.
 - **Reproduction:** `uv run python -m ml.localise_check --config configs/patch_scores.json`
 - **Artifacts path:** `artifacts/EXP-023/`
+- **Results (section 01 source, 0 dB; time hit / frequency hit):**
+  - L-mel: bearing tone 0.95 / 0.95, bearing click 0.55; gearbox tone 0.80 / 0.75, gearbox click 0.40.
+  - L-tok0: 0.20 / 0.35, 0.00; 0.15 / 0.10, 0.20.
+  - L-tok4max: 0.35 / 0.40, 0.80; 0.20 / 0.15, 0.40.
+  - At −10 dB all hit rates fall (L-mel tones 0.80 / 0.65 and 0.65 / 0.55; clicks 0.15 or below).
+- **Conclusion:** the spectrogram itself localises tonal changes; token maps do not. Clicks are missed because the curve uses the 8 most deviating bins and 0.1 s smoothing.
 
 ### EXP-024 — Spectrogram map with a broadband channel (synthetic localisation, new clips)
-Status: **Planned (pre-registered after EXP-023, before any run of this method).**
+Status: **Complete: criterion not met (tones pass, clicks 0.70); L-mel2 is kept only as a descriptive view, not a validated localisation.** Pre-registered at `0aa1972`; run on `e747c61`.
 - **Date:** 2026-11-09
 - **Why:** In EXP-023, L-mel localised tones well at 0 dB (time 0.95 / 0.80, frequency 0.95 / 0.75 for bearing / gearbox) but missed clicks (0.55 / 0.40). Its time curve uses only the 8 most deviating bins and 0.1 s smoothing, which suits narrow-band events and dilutes a 20 ms broadband click. Token maps (L-tok0, L-tok4max) localised poorly and are dropped.
 - **Candidate L-mel2 (fixed now):** per-bin z-values against the baseline as L-mel, and two time curves:
@@ -1120,9 +1154,15 @@ Status: **Planned (pre-registered after EXP-023, before any run of this method).
 - **Rule:** as EXP-023: at 0 dB, time hit ≥ 0.8 for tones and clicks of both machines, and frequency hit ≥ 0.8 for tones of both machines. If met, L-mel2 is the "where" display; otherwise no localisation is shown. L-mel is reported for reference.
 - **Reproduction:** `uv run python -m ml.localise_check --config configs/patch_scores.json --exp 24`
 - **Artifacts path:** `artifacts/EXP-024/`
+- **Results (section 02 source; time hit / frequency hit):**
+  - L-mel2, 0 dB: bearing tone 0.90 / 0.95, bearing click 0.70; gearbox tone 0.90 / 0.90, gearbox click 0.70.
+  - L-mel2, −10 dB: bearing tone 0.50 / 0.55, click 0.20; gearbox tone 0.70 / 0.40, click 0.25.
+  - L-mel (reference), 0 dB: tones as L-mel2, clicks 0.60 and 0.45.
+- **Real-recording observation (demo clips, not an evaluation):** with baselines spanning 1.0–3.0 V, the map's strongest deviation on a 34 s test recording was a tone near 0.8 kHz in a *normal* clip, whose pitch follows motor voltage, while the model flagged only the fault clip. The map reacts to operating-condition changes as well as to faults.
+- **Conclusion:** no further localisation rounds on synthetic data (more would be tuning to pass). The analysis tool reports L-mel2 as a spectrogram-difference view with these hit rates and states it is not a fault locator.
 
 ### EXP-025 — Longer recordings: averaging over several 10 s windows
-Status: **Planned (pre-registered before any run).** The analysis tool cuts a longer recording (or a video's audio) into 10 s windows. Does averaging their scores catch more anomalies at a controlled false-alarm rate?
+Status: **Complete: neither fixed variant met the rule; recording-level AUC rose sharply.** Pre-registered at `39094ba`; run on `4f64222`. Second use of the MIMII DUE evaluation set.
 - **Date:** 2026-11-09
 - **System:** the shipped model (ADR-010/011) only; no model change.
 - **Simulated recordings:** within each section-domain and draw (own-baseline, N = 10, 200 draws, seed 0), the non-baseline normal clips and the anomaly clips are each shuffled and grouped into pseudo-recordings of k clips (k = 1, 3, 6, i.e. 10, 30, 60 s); leftover clips are dropped. A recording's score is the mean of its clips' log scores. **Limitation:** clips are independent recordings of the same machine and condition, not consecutive windows of one recording, so this is optimistic about how much averaging helps.
@@ -1132,9 +1172,20 @@ Status: **Planned (pre-registered before any run).** The analysis tool cuts a lo
 - **Rule:** on development, among (k ∈ {3, 6}) × (A, B), the setting with the highest recall whose mean FPR is ≤ 0.10 and maximum section FPR ≤ 0.20 is selected, if its recall beats k = 1. It is **confirmed** if, on the MIMII DUE evaluation set, the same setting also has mean FPR ≤ 0.10, maximum section FPR ≤ 0.20 and higher recall than k = 1. If confirmed, the tool reports the window-averaged decision for recordings of at least k × 10 s, next to the per-window results.
 - **Reproduction:** `uv run python -m ml.window_aggregate --config configs/patch_scores.json`
 - **Artifacts path:** `artifacts/EXP-025/`
+- **Results (N = 10, means over section-domains):**
+
+  | Setting | Dev AUC | Dev FPR (max) | Dev recall | Fresh AUC | Fresh FPR (max) | Fresh recall |
+  |---|---|---|---|---|---|---|
+  | k1 | 0.803 | 0.093 (0.112) | 0.341 | 0.667 | 0.086 (0.098) | 0.254 |
+  | k3 A | 0.921 | 0.027 (0.037) | 0.304 | 0.763 | 0.024 (0.028) | 0.157 |
+  | k3 B | 0.921 | 0.112 (0.130) | 0.623 | 0.763 | 0.108 (0.121) | 0.389 |
+  | k6 A | 0.967 | 0.013 (0.020) | 0.287 | 0.837 | 0.010 (0.014) | 0.119 |
+  | k6 B | 0.967 | 0.131 (0.161) | 0.780 | 0.837 | 0.127 (0.145) | 0.503 |
+
+- **Conclusion:** averaging ranks much better, but the threshold must be set for the averaged score: A is too strict, B too loose. Followed by EXP-026.
 
 ### EXP-026 — Threshold spread for 30 s and 60 s recordings
-Status: **Planned (pre-registered after EXP-025, before any run).**
+Status: **Complete: 30 s → spread 1.0 and 60 s → spread 0.75 selected on development and confirmed on fresh gearbox data.** Pre-registered at `66bfb04`; run on `f85a093`. Third use of the MIMII DUE evaluation set.
 - **Date:** 2026-11-09
 - **Why:** In EXP-025, averaging log scores over windows raised recording-level AUC sharply (fresh gearbox 0.667 → 0.763 at 30 s and 0.837 at 60 s), but neither fixed threshold variant met the rule: the single-window threshold was too strict (recall fell) and the 1/√k spread too loose (FPR 0.11–0.13).
 - **Method:** as EXP-025 (N = 10 baselines, 200 draws, seed 0, recording score = mean of k window log scores, k = 3 and 6), with threshold = mean + s × std of the baseline leave-one-out log scores, for s ∈ {0.50, 0.75, 1.00, 1.25, 1.50}.
@@ -1143,3 +1194,16 @@ Status: **Planned (pre-registered after EXP-025, before any run).**
 - **Limitation:** pseudo-recordings are built from independent clips (EXP-025), so real continuous recordings may gain less.
 - **Reproduction:** `uv run python -m ml.window_aggregate --config configs/patch_scores.json --exp 26`
 - **Artifacts path:** `artifacts/EXP-026/`
+- **Selection (development):** k = 3: smallest qualifying spread 1.00 (FPR 0.084, max 0.097, recall 0.544); k = 6: 0.75 (FPR 0.095, max 0.118, recall 0.699).
+- **Confirmation, MIMII DUE gearbox evaluation (decisive):**
+
+  | Setting | AUC | FPR (max) | recall |
+  |---|---|---|---|
+  | 10 s (single window, spread 1.5) | 0.667 | 0.086 (0.098) | 0.254 |
+  | **30 s, spread 1.00** | 0.763 | **0.080 (0.089)** | **0.328** |
+  | **60 s, spread 0.75** | 0.837 | **0.088 (0.100)** | **0.423** |
+
+  Both confirmed.
+- **Alongside (not decisive):** MIMII DUE gearbox dev: 10 s 0.094 / 0.164; 30 s 0.086 / 0.256; 60 s 0.098 / 0.370 (FPR / recall). DCASE 2022 bearing: 10 s 0.086 / 0.168; 30 s 0.081 / 0.259; 60 s 0.087 / 0.367 (max FPR 0.126).
+- **Limitations:** pseudo-recordings built from independent clips; real continuous recordings share more within-recording variation, so the gain may be smaller. Validated for exactly 30 s and 60 s.
+- **Conclusion:** propose (ADR-012) that a recording of 60 s or more is judged on the mean of its window log scores with spread 0.75 (30–59 s: spread 1.0), next to the per-window results. At about 9% false alarms this catches roughly 1.7× as many anomalies as a single 10 s clip on fresh gearbox data. Implemented in `ml/analyze.py`; not yet in the web app.

@@ -4,8 +4,8 @@
 
 ## Current status
 - **Phase:** 5 done on simulation (EXP-011, ADR-009); 8 in progress (hardening PR #8 and deploy prep PR #9 merged; cloud deployment not done); ML Phase 9 (EXP-012 to EXP-016) done; ADR-010 accepted and integrated in the backend (bundle `sonovate-ast-head` 0.3.0); not deployed
-- **Status:** App runs frozen AST with the ADR-009 machine alert; security review findings fixed; nothing deployed
-- **Last updated:** 2026-11-08 (ADR-011 integration)
+- **Status:** App runs the ADR-010/011 model with the ADR-009 machine alert; nothing deployed. Model work of 2026-11-09 (EXP-021 to EXP-026, branch `claude/model-localisation`): model unchanged; new analysis tool for audio and video (`ml/analyze.py`, `docs/ANALYZE.md`); recording-level rule for 30 s / 60 s recordings proposed (ADR-012)
+- **Last updated:** 2026-11-09 (EXP-021 to EXP-026)
 - **Current owner:** Team
 - **Working title:** Environment-Aware Acoustic Machine Health
 - **Repository:** Sonovate (`github.com/Neemayg/Sonovate`, public)
@@ -54,6 +54,7 @@ Phase 8 deployment: cloud Supabase project, frontend hosting, backend hosting fo
 6. **ADR-011:** decided (2026-11-08) and integrated — threshold spread 1.5 (bundle 0.3.1) and a recommendation of 30 baselines.
 5. **ADR-010:** decided (2026-11-07) and integrated — AST layer 4 with frequency pooling plus the condition head.
 4. **Proposed (EXP-012):** the app recommends 20–30 baseline recordings and keeps the minimum of 10. Awaiting approval.
+7. **Proposed (ADR-012, EXP-026):** judge recordings of 30 s or more on the mean of their 10 s window scores (60 s: spread 0.75; 30 s: 1.0) and recommend 60 s per check. Awaiting approval; then integrate in the backend and app.
 
 ## Next action
 The app runs `sonovate-ast-head` 0.3.1 (ADR-010 model, ADR-011 threshold) from `artifacts/bundles/sonovate-ast-head-0.3.1/`. Export 0.3.0 with `uv run python -m ml.export_ast_head --config configs/export_ast_head.json`, then derive 0.3.1 with `uv run python -m ml.rebundle --config configs/rebundle_0_3_1.json`; bundle directories must not exist yet. Next is one of:
@@ -64,6 +65,10 @@ The app runs `sonovate-ast-head` 0.3.1 (ADR-010 model, ADR-011 threshold) from `
 - Phase 5 timestamped data.
 
 ## Latest verified results
+- **EXP-026 (recording-level rule; fresh MIMII DUE gearbox evaluation, third use):** at about 9% false alarms, recall 0.254 (10 s) → 0.328 (30 s, spread 1.0) → 0.423 (60 s, spread 0.75); AUC 0.667 → 0.763 → 0.837. Pseudo-recordings from independent clips, so possibly optimistic.
+- **EXP-022 (fresh MIMII DUE gearbox evaluation sections 03–05, first use; no leakage):** app model own10 AUC 0.667, FPR 0.085 (max 0.097), recall 0.256. Patch-level candidates lower.
+- **EXP-021, EXP-023, EXP-024:** patch-level scoring does not beat the app model (development 0.783 vs 0.803). No anomaly map met the synthetic localisation criterion; the spectrogram map (L-mel2) finds 0.5 s tones about 90% of the time but 20 ms clicks only 70%, so it is reported as a descriptive view, not a fault locator.
+- **Not possible with current data:** remaining useful life or time to failure (no run-to-failure recordings in any dataset).
 - **EXP-020 (fresh MIMII DUE gearbox, first use):** app model own AUC 0.655 (N=10) / 0.690 (N=30); spread 1.5 gives FPR 0.087 / recall 0.162; LoRA candidate worse (0.589).
 - **EXP-016 (held-out DCASE 2022 sections 03–05, second use of that set):**
   - Head vs current app model: own10 AUC 0.791 vs 0.670 (11/12 wins); recall 0.266 vs 0.065 at FPR about 0.04; official AUC 0.771 vs 0.681.
