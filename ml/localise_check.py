@@ -13,6 +13,7 @@ import numpy as np
 
 from ml.baseline import git_commit
 from ml.localise import (
+    MelBaseline,
     PatchEncoder,
     frequency_profile,
     leave_one_out_maps,
@@ -59,6 +60,50 @@ def mel_hits(mel_b: np.ndarray, mel_t: np.ndarray, events, kind: str, tol: float
         if kind == "tone":
             f_hit.append(abs(int(np.argmax(mel_frequency_profile(z, peak))) - mel_bin_of(hz)) <= 2)
     return t_hit, f_hit
+
+
+def mel2_hits(mel_b: np.ndarray, mel_t: np.ndarray, events, kind: str, tol: float) -> tuple[list, list]:
+    mb = MelBaseline(mel_b)
+    t_hit, f_hit = [], []
+    for mel, (s, hz) in zip(mel_t, events):
+        z = mb.z(mel)
+        peak = int(np.argmax(mb.time_curve(z)))
+        t_hit.append(abs(float(mel_frame_centre_s(peak)) - s) <= tol)
+        if kind == "tone":
+            f_hit.append(abs(int(np.argmax(mel_frequency_profile(z, peak))) - mel_bin_of(hz)) <= 2)
+    return t_hit, f_hit
+
+
+def run24(config: dict) -> dict:
+    loc = config["localise"]
+    encoder = PatchEncoder(Path(config["bundle_dir"]), config["device"])
+    groups = dev_groups(config)
+    rng = np.random.default_rng(2)
+    hits: dict[str, dict] = {}
+    for machine in ("bearing", "gearbox"):
+        normals = groups[f"{machine}/02/source"]["normal"]
+        order = rng.permutation(len(normals))
+        base = [read_clip(normals[i]) for i in order[: loc["baseline"]]]
+        tests = [read_clip(normals[i]) for i in order[loc["baseline"] : loc["baseline"] + loc["tests"]]]
+        mel_b, _ = encoder.forward(base, layers=(-1,))
+        events = [(float(rng.uniform(1.0, 9.0)), float(np.exp(rng.uniform(np.log(300), np.log(6000))))) for _ in tests]
+        for kind in ("tone", "click"):
+            for snr in loc["snr_db"]:
+                mel_t, _ = encoder.forward([add_event(c, kind, s, hz, snr) for c, (s, hz) in zip(tests, events)], layers=(-1,))
+                for name, fn in (("L-mel2", mel2_hits), ("L-mel", mel_hits)):
+                    t_hit, f_hit = fn(mel_b, mel_t, events, kind, loc["time_tolerance_s"])
+                    key = f"{name}|{machine}/{kind}/{snr:+.0f}dB"
+                    hits[key] = {"time_hit": float(np.mean(t_hit)), "freq_hit": float(np.mean(f_hit)) if f_hit else None}
+    at0 = [v for k, v in hits.items() if k.startswith("L-mel2|") and k.endswith("+0dB")]
+    met = all(v["time_hit"] >= 0.8 for v in at0) and all(v["freq_hit"] >= 0.8 for v in at0 if v["freq_hit"] is not None)
+    report = {"experiment": "EXP-024", "commit": git_commit(), "hits": hits, "criterion_met": met}
+    out = Path("artifacts/EXP-024")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "results.json").write_text(json.dumps(report, indent=2))
+    lines = [f"EXP-024 (commit {report['commit']})"] + [f"  {k}: {v}" for k, v in hits.items()] + [f"criterion met: {met}"]
+    (out / "SUMMARY.txt").write_text("\n".join(lines) + "\n")
+    print("\n".join(lines))
+    return report
 
 
 def run(config: dict) -> dict:
@@ -113,7 +158,10 @@ def run(config: dict) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
-    run(json.loads(Path(parser.parse_args().config).read_text()))
+    parser.add_argument("--exp", type=int, default=23, choices=[23, 24])
+    args = parser.parse_args()
+    config = json.loads(Path(args.config).read_text())
+    (run24 if args.exp == 24 else run)(config)
 
 
 if __name__ == "__main__":

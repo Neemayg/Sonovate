@@ -234,3 +234,36 @@ def mel_frequency_profile(z: np.ndarray, around_frame: int, half_width: int = 25
 def mel_bin_hz(bin_index: int) -> float:
     """Centre frequency (Hz) of a mel bin."""
     return float(mel_points_hz()[bin_index + 1])
+
+
+# --- EXP-024 L-mel2: narrow-band and broadband channels ---------------------------------------------
+
+def _smooth(x: np.ndarray, width: int) -> np.ndarray:
+    return np.convolve(x, np.ones(width) / width, mode="same")
+
+
+def mel_channels(z: np.ndarray, top_bins: int = 8, narrow_smooth: int = 10, broad_smooth: int = 3) -> tuple[np.ndarray, np.ndarray]:
+    """Narrow-band (mean of top bins, 0.1 s) and broadband (mean of all bins, 0.03 s) curves per frame."""
+    narrow = _smooth(np.sort(z, axis=1)[:, -top_bins:].mean(axis=1), narrow_smooth)
+    broad = _smooth(z.mean(axis=1), broad_smooth)
+    return narrow, broad
+
+
+class MelBaseline:
+    """Per-bin statistics and channel-curve statistics of a machine's baseline clips (EXP-024)."""
+
+    def __init__(self, baseline_mels: np.ndarray) -> None:
+        self.mean, self.std = mel_baseline_stats(baseline_mels)
+        curves = [mel_channels(mel_z(m, self.mean, self.std)) for m in baseline_mels]
+        narrow = np.concatenate([c[0] for c in curves])
+        broad = np.concatenate([c[1] for c in curves])
+        self.n_mu, self.n_sd = float(narrow.mean()), max(float(narrow.std()), 1e-6)
+        self.b_mu, self.b_sd = float(broad.mean()), max(float(broad.std()), 1e-6)
+
+    def z(self, mel: np.ndarray) -> np.ndarray:
+        return mel_z(mel, self.mean, self.std)
+
+    def time_curve(self, z: np.ndarray) -> np.ndarray:
+        """Larger of the two standardised channel curves, per frame (baseline standard deviations)."""
+        narrow, broad = mel_channels(z)
+        return np.maximum((narrow - self.n_mu) / self.n_sd, (broad - self.b_mu) / self.b_sd)
