@@ -1132,3 +1132,14 @@ Status: **Planned (pre-registered before any run).** The analysis tool cuts a lo
 - **Rule:** on development, among (k ∈ {3, 6}) × (A, B), the setting with the highest recall whose mean FPR is ≤ 0.10 and maximum section FPR ≤ 0.20 is selected, if its recall beats k = 1. It is **confirmed** if, on the MIMII DUE evaluation set, the same setting also has mean FPR ≤ 0.10, maximum section FPR ≤ 0.20 and higher recall than k = 1. If confirmed, the tool reports the window-averaged decision for recordings of at least k × 10 s, next to the per-window results.
 - **Reproduction:** `uv run python -m ml.window_aggregate --config configs/patch_scores.json`
 - **Artifacts path:** `artifacts/EXP-025/`
+
+### EXP-026 — Threshold spread for 30 s and 60 s recordings
+Status: **Planned (pre-registered after EXP-025, before any run).**
+- **Date:** 2026-11-09
+- **Why:** In EXP-025, averaging log scores over windows raised recording-level AUC sharply (fresh gearbox 0.667 → 0.763 at 30 s and 0.837 at 60 s), but neither fixed threshold variant met the rule: the single-window threshold was too strict (recall fell) and the 1/√k spread too loose (FPR 0.11–0.13).
+- **Method:** as EXP-025 (N = 10 baselines, 200 draws, seed 0, recording score = mean of k window log scores, k = 3 and 6), with threshold = mean + s × std of the baseline leave-one-out log scores, for s ∈ {0.50, 0.75, 1.00, 1.25, 1.50}.
+- **Selection (development, ADR-011's rule):** for each k, the smallest s with mean FPR ≤ 0.10 and every section-domain FPR ≤ 0.20.
+- **Confirmation:** on MIMII DUE gearbox evaluation sections 03–05 (third use: EXP-022, EXP-025) the selected s must give mean FPR ≤ 0.10, every section-domain ≤ 0.20, and recall above the single-window setting (k = 1, s = 1.5). MIMII DUE development (third use) and DCASE 2022 evaluation bearing (fourth use) are reported alongside, not decisive.
+- **Limitation:** pseudo-recordings are built from independent clips (EXP-025), so real continuous recordings may gain less.
+- **Reproduction:** `uv run python -m ml.window_aggregate --config configs/patch_scores.json --exp 26`
+- **Artifacts path:** `artifacts/EXP-026/`
