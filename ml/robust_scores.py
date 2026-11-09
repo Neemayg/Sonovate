@@ -197,7 +197,82 @@ def main() -> None:
     parser.add_argument("--stage", required=True, choices=["develop", "fresh", "bearing"])
     args = parser.parse_args()
     config = json.loads(Path(args.config).read_text())
-    {"develop": run_develop, "fresh": run_fresh, "bearing": run_bearing}[args.stage](config)
+    {"develop": run_develop, "fresh": run_fresh, "bearing": run_bearing,
+     "bearing_windows": run_bearing_windows}[args.stage](config)
+
+
+WINDOW_SPREADS = (0.50, 0.75, 1.00, 1.25, 1.50)
+
+
+def simulate_windows(head_d: np.ndarray, frozen_d: np.ndarray, n_normal: int, n_anomaly: int,
+                     repeats: int, seed: int) -> dict:
+    """EXP-029: G fused z-sums averaged over pseudo-recordings of k clips (k = 1, 3, 6)."""
+    rng = np.random.default_rng(seed)
+    keys = ["k1s1.50"] + [f"k{k}s{s:.2f}" for k in (3, 6) for s in WINDOW_SPREADS]
+    acc = {key: {"auc": [], "fpr": [], "recall": []} for key in keys}
+    anomalies = np.arange(n_normal, n_normal + n_anomaly)
+    for _ in range(repeats):
+        order = rng.permutation(n_normal)
+        base, rest = order[:10], order[10:]
+        queries = np.concatenate([rest, anomalies])
+        (aq, al), (fq, fl) = zpair(*scores(head_d, queries, base, False)), zpair(*scores(frozen_d, queries, base, False))
+        q, loo = aq + fq, al + fl
+        mu, sd = float(loo.mean()), float(loo.std())
+        normal_q, anomaly_q = q[: len(rest)], q[len(rest):]
+        for k in (1, 3, 6):
+            def group(x: np.ndarray) -> np.ndarray:
+                o = rng.permutation(len(x))
+                n = len(x) // k * k
+                return x[o[:n]].reshape(-1, k).mean(axis=1)
+            nr, ar = group(normal_q), group(anomaly_q)
+            a = auc(nr, ar)
+            for s in ((1.5,) if k == 1 else WINDOW_SPREADS):
+                key = f"k{k}s{s:.2f}"
+                threshold = mu + s * sd
+                acc[key]["auc"].append(a)
+                acc[key]["fpr"].append(float((nr > threshold).mean()))
+                acc[key]["recall"].append(float((ar > threshold).mean()))
+    return {key: {m: float(np.mean(v)) for m, v in vals.items()} for key, vals in acc.items()}
+
+
+def run_bearing_windows(config: dict) -> dict:
+    sim = config["simulation"]
+    emb = Embedder(config)
+    dev_all = dev_groups(config)
+    sets = {"develop_bearing": {k: v for k, v in dev_all.items() if k.startswith("bearing/")},
+            "dcase22_eval_bearing": dcase22_bearing_groups(config)}
+    results = {}
+    for name, groups in sets.items():
+        per = {}
+        for key, clips in groups.items():
+            log(f"{name} {key}")
+            head, frozen = emb.embed([read_clip(p) for p in clips["normal"] + clips["anomaly"]])
+            per[key] = simulate_windows(pair_distances(head), pair_distances(frozen), len(clips["normal"]),
+                                        len(clips["anomaly"]), sim["repeats"], sim["seed"])
+        names = list(next(iter(per.values())))
+        results[name] = {"per_group": per, "summary": {
+            n: {m: float(np.mean([per[k][n][m] for k in per])) for m in ("auc", "fpr", "recall")}
+            | {"max_fpr": float(max(per[k][n]["fpr"] for k in per))} for n in names}}
+    dev, held = results["develop_bearing"]["summary"], results["dcase22_eval_bearing"]["summary"]
+    ok = lambda r: r["fpr"] <= 0.10 and r["max_fpr"] <= 0.20  # noqa: E731
+    decisions = {}
+    for k in (3, 6):
+        s = next((s for s in WINDOW_SPREADS if ok(dev[f"k{k}s{s:.2f}"])), None)
+        key = f"k{k}s{s:.2f}" if s is not None else None
+        decisions[f"k{k}"] = {"spread": s, "confirmed": bool(key and ok(held[key]) and held[key]["recall"] > held["k1s1.50"]["recall"])}
+    report = {"experiment": "EXP-029", "commit": git_commit(), "results": results, "decisions": decisions}
+    out = Path("artifacts/EXP-029")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "results.json").write_text(json.dumps(report, indent=2))
+    lines = [f"EXP-029 (commit {report['commit']})"]
+    for name, part in results.items():
+        lines.append(f"\n{name}: setting | AUC | FPR | max FPR | recall")
+        for n, v in part["summary"].items():
+            lines.append(f"  {n:9s} {v['auc']:.3f} {v['fpr']:.3f} {v['max_fpr']:.3f} {v['recall']:.3f}")
+    lines.append(f"\ndecisions: {json.dumps(decisions)}")
+    (out / "SUMMARY.txt").write_text("\n".join(lines) + "\n")
+    print("\n".join(lines))
+    return report
 
 
 def run_bearing(config: dict) -> dict:
