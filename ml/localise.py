@@ -31,6 +31,7 @@ PATCH_STRIDE, PATCH_SIZE = 10, 16
 FRAME_SHIFT_S, FRAME_LENGTH_S = 0.010, 0.025
 SAMPLE_RATE = 16_000
 CLIP_SAMPLES = 160_000
+MEL_FRAMES = 998  # Kaldi frames in 10 s (25 ms window, 10 ms shift); AST pads the rest to 1024
 
 
 # --- grid geometry ------------------------------------------------------------------------
@@ -91,13 +92,22 @@ class PatchEncoder:
         self.device = device
 
     @torch.no_grad()
-    def tokens(self, waveforms: np.ndarray | list[np.ndarray]) -> np.ndarray:
+    def tokens(self, waveforms: np.ndarray | list[np.ndarray], layer: int = -1) -> np.ndarray:
+        return self.forward(waveforms, layers=(layer,))[1][0]
+
+    @torch.no_grad()
+    def forward(self, waveforms: np.ndarray | list[np.ndarray], layers: tuple[int, ...] = (-1,)) -> tuple[np.ndarray, list[np.ndarray]]:
+        """The model's log-mel input (n, 998, 128) and token grids (n, 12, 101, 768) for the given layers."""
         inputs = self.extractor(list(waveforms), sampling_rate=SAMPLE_RATE, return_tensors="pt")
-        hidden = self.model(input_values=inputs["input_values"].to(self.device), output_hidden_states=True).hidden_states[-1]
-        patches = hidden[:, FIRST_PATCH_TOKEN:].float().cpu().numpy()
-        if patches.shape[1:] != (FREQ_ROWS * TIME_PATCHES, HIDDEN):
-            raise ValueError(f"unexpected AST token grid {patches.shape}")
-        return patches.reshape(len(patches), FREQ_ROWS, TIME_PATCHES, HIDDEN)
+        values = inputs["input_values"]
+        hidden = self.model(input_values=values.to(self.device), output_hidden_states=True).hidden_states
+        grids = []
+        for layer in layers:
+            patches = hidden[layer][:, FIRST_PATCH_TOKEN:].float().cpu().numpy()
+            if patches.shape[1:] != (FREQ_ROWS * TIME_PATCHES, HIDDEN):
+                raise ValueError(f"unexpected AST token grid {patches.shape}")
+            grids.append(patches.reshape(len(patches), FREQ_ROWS, TIME_PATCHES, HIDDEN))
+        return values[:, :MEL_FRAMES].float().numpy(), grids
 
 
 def pooled_features(tokens: np.ndarray) -> np.ndarray:
@@ -191,3 +201,36 @@ def time_curve(z: np.ndarray) -> np.ndarray:
 def frequency_profile(z: np.ndarray, around_t: int, half_width: int = 2) -> np.ndarray:
     lo, hi = max(0, around_t - half_width), min(TIME_PATCHES, around_t + half_width + 1)
     return z[:, lo:hi].mean(axis=1)
+
+
+# --- spectrogram-level map (EXP-023 L-mel) ---------------------------------------------------------
+
+def mel_frame_centre_s(frame: int | np.ndarray) -> np.ndarray | float:
+    return np.asarray(frame) * FRAME_SHIFT_S + FRAME_LENGTH_S / 2
+
+
+def mel_baseline_stats(baseline_mels: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Per-bin mean and std over all frames of the baseline clips (N, 998, 128) -> (128,), (128,)."""
+    frames = baseline_mels.reshape(-1, baseline_mels.shape[-1])
+    return frames.mean(axis=0), np.maximum(frames.std(axis=0), 1e-3)
+
+
+def mel_z(mel: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.ndarray:
+    """(998, 128) log-mel -> per-bin z-values against the baseline."""
+    return (mel - mean) / std
+
+
+def mel_time_curve(z: np.ndarray, top_bins: int = 8, smooth: int = 10) -> np.ndarray:
+    """Per frame: mean of the largest `top_bins` z-values, smoothed over `smooth` frames ('same' length)."""
+    top = np.sort(z, axis=1)[:, -top_bins:].mean(axis=1)
+    return np.convolve(top, np.ones(smooth) / smooth, mode="same")
+
+
+def mel_frequency_profile(z: np.ndarray, around_frame: int, half_width: int = 25) -> np.ndarray:
+    lo, hi = max(0, around_frame - half_width), min(len(z), around_frame + half_width + 1)
+    return z[lo:hi].mean(axis=0)
+
+
+def mel_bin_hz(bin_index: int) -> float:
+    """Centre frequency (Hz) of a mel bin."""
+    return float(mel_points_hz()[bin_index + 1])
