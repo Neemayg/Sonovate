@@ -1052,3 +1052,43 @@ Status: **Complete: LoRA rejected (worse on fresh data, 0/6 wins); spread 1.5 co
   - Drop the per-machine-type LoRA proposal and keep the ADR-010 model.
   - Propose (for approval) changing the app's threshold spread from 2.0 to 1.5. False alarms are confirmed at about 9% on fresh gearbox data. Bearing is not confirmable on fresh data.
   - Honest product claim: on a new gearbox recording setup, the detector ranks anomalies only modestly (AUC about 0.66, or 0.69 with 30 baselines). Real-machine recordings (goal 4) are the main route to better and verifiable performance.
+
+### EXP-021 — Patch-level (time-frequency) scoring and anomaly localisation (development selection)
+Status: **Planned (pre-registered before any run).** Goal: catch more anomalies, and show *when* in a recording and *in which frequency range* it differs from the machine's baseline.
+- **Date:** 2026-11-09
+- **Research question:**
+  1. Does scoring each AST time-frequency patch against the same frequency row of the baseline recordings rank anomalies better than the shipped clip-level embedding (ADR-010)?
+  2. Does the resulting patch map point to the right time and frequency when a known event is added to a normal clip?
+- **Hypothesis:** Mean-pooling over time dilutes short or narrow-band deviations. Keeping the patch grid and taking the most deviating patches should rank such anomalies higher, and the map should localise injected events.
+- **Dataset/version:** MIMII DG development set (`test` role, sections 00–02, bearing and gearbox, 12 section-domains), as EXP-013 to EXP-019. Fresh data is not touched here.
+- **Encoder:** the shipped bundle `sonovate-ast-head` 0.3.1, unchanged: 4-layer AST, layer-4 patch tokens on the 12 × 101 grid (frequency rows × time patches). Patch t covers about 0.10·t to 0.10·t + 0.16 s; row f covers mel bins 10f to 10f + 15 of 128 (Kaldi mel, 20–8000 Hz).
+- **Systems (fixed now):**
+  - **app:** the shipped head embedding, k = 1 cosine distance (ADR-010/011).
+  - **P-top10-raw:** each patch's cosine distance to the nearest baseline patch in the same frequency row (any time position, any baseline clip); clip score = mean of the top 10% of the 1,212 patch distances.
+  - **P-top10-c, P-mean-c, P-tmax-c:** as above on *centred* tokens: the mean token at each grid position, from 600 MIMII DG `train` clips (100 per machine-section, seed 0, no labels), is subtracted before L2 normalisation. Scores: top-10% mean; mean of all patches; maximum over time of the frequency-averaged distance, smoothed over 5 time patches (0.5 s).
+  - **F:** fusion, z(app) + z(P-top10-c), each standardised by the mean and population standard deviation of its baseline leave-one-out log scores; equal weights, fixed.
+- **Protocol:** own-baseline (EXP-010/020): for each section-domain, 200 draws (seed 0) of N = 10 and N = 30 normal clips as the baseline; the other normals and all anomalies are scored. Each system's threshold = mean + 1.5 × std of its own baseline leave-one-out log scores (ADR-011).
+- **Metrics:** mean own AUC over the 12 section-domains at N = 10 (primary) and N = 30; mean FPR and recall at spread 1.5.
+- **Selection rule:** the candidate with the highest mean own10 AUC is carried to EXP-022 only if it beats **app** by at least +0.010 and its mean FPR at N = 10 is 0.10 or below. Otherwise **app** stays the detector and only the map (from P-top10-c) is used, as an explanation.
+- **Localisation check (synthetic, development normal clips only):** section 00 source of each machine; 10 baseline clips and 20 other normal clips per machine (seed 0). Into each of the 20, add one event at a random time (1–9 s):
+  - a 0.5 s Hann-tapered tone at a random frequency between 300 and 6,000 Hz;
+  - a 20 ms white-noise click.
+  - Event RMS relative to the clip RMS: 0 dB and −10 dB.
+  - Time map = per-row standardised patch map (standardised with the baseline clips' leave-one-out maps), averaged over rows; frequency profile = the same map averaged over ±0.25 s around the time peak.
+  - **Time hit:** the time-curve peak is within ±0.3 s of the event centre. **Frequency hit (tones):** the profile's peak row contains the tone's mel bin.
+  - **Criterion:** time hit ≥ 0.8 and frequency hit ≥ 0.8 at 0 dB. If not met, the map is not shown as a localisation.
+- **Out of scope:** remaining useful life, time-to-failure or degradation rate. MIMII DG, DCASE and MIMII DUE contain independent clips of induced faults, not run-to-failure recordings, so no such model can be trained or validated on them.
+- **Reproduction:** `uv run python -m ml.patch_scores --config configs/patch_scores.json --stage centre`, then `--stage develop` and `--stage localise`.
+- **Artifacts path:** `artifacts/EXP-021/`
+
+### EXP-022 — Fresh confirmation of the EXP-021 candidate and the app model
+Status: **Planned (pre-registered before any MIMII DUE evaluation audio is opened).** Runs once, only if EXP-021 carries a candidate forward; the **app** figures on the new set are reported either way.
+- **Test data:**
+  - **Gearbox, primary:** MIMII DUE gearbox *evaluation* sections 03–05, source and target (DCASE 2021 Task 2 evaluation set, Zenodo 4884786 `eval_data_gearbox_test.zip`, MD5 ee1cd888f44d0d3f865c5701f3b8f002; labels from `y-kawagu/dcase2021_task2_evaluator`, MIT). CC-BY-NC-SA-4.0: evaluation only. **First use.**
+  - **Gearbox, secondary:** MIMII DUE gearbox development sections 00–02 (second use, after EXP-020).
+  - **Bearing, secondary:** DCASE 2022 evaluation sections 03–05 (third use, after EXP-009 and EXP-016), so it is weak evidence. No untouched bearing set exists.
+- **Leakage checks (primary set):** MD5 against MIMII DG and MIMII DUE development clips; 16 kHz mono, 160,000 samples.
+- **Protocol:** as EXP-021 (own-baseline, N = 10 and 30, 200 draws, seed 0, spread 1.5).
+- **Adoption rule (fixed now):** the candidate replaces **app** as the detector only if, on the primary set, its mean own10 AUC is higher, it wins at least 4 of the 6 section-domains, its mean FPR at N = 10 is 0.10 or below with every section-domain at 0.20 or below, **and** on bearing its mean own10 AUC is not lower than app's by more than 0.010. Otherwise **app** stays.
+- **Reproduction:** `uv run python -m ml.patch_scores --config configs/patch_scores.json --stage fresh`.
+- **Artifacts path:** `artifacts/EXP-022/`
