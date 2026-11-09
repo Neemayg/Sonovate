@@ -319,13 +319,49 @@ def run_confirm(config: dict) -> dict:
     return report
 
 
+def run_gearbox_aug(config: dict) -> dict:
+    """EXP-031: H-aug (seed 0) for gearboxes vs the shipped head, on real MIMII DUE gearbox data."""
+    p = prepare(config)
+    candidate = fit(p, "H-aug", 0, config)
+    out = Path("artifacts/EXP-031")
+    out.mkdir(parents=True, exist_ok=True)
+    np.savez(out / "gearbox_head.npz", **candidate)
+    shipped = shipped_arrays(config)
+    encoder = PatchEncoder(Path(config["bundle_dir"]), config["device"])
+    sim = config["simulation"]
+    results = {}
+    for name, groups in (("due_eval_gearbox", due_eval_groups(config)), ("due_dev_gearbox", due_dev_groups(config))):
+        feats = encode_groups(encoder, groups, config["batch_size"])
+        results[name] = {"shipped": evaluate(shipped, feats, sim), "candidate": evaluate(candidate, feats, sim)}
+    ev = results["due_eval_gearbox"]
+    wins = sum(ev["candidate"]["per_group"][k]["auc"] > ev["shipped"]["per_group"][k]["auc"] for k in ev["candidate"]["per_group"])
+    c, s = ev["candidate"]["summary"]["gearbox"], ev["shipped"]["summary"]["gearbox"]
+    dev_gain = results["due_dev_gearbox"]["candidate"]["summary"]["gearbox"]["auc"] - results["due_dev_gearbox"]["shipped"]["summary"]["gearbox"]["auc"]
+    adopt = bool(c["auc"] >= s["auc"] + 0.010 and wins >= 4 and c["fpr"] <= 0.10 and c["max_fpr"] <= 0.20 and dev_gain >= 0)
+    report = {"experiment": "EXP-031", "commit": git_commit(), "results": results,
+              "decision": {"gain": c["auc"] - s["auc"], "wins": wins, "due_dev_gain": dev_gain, "adopt_for_gearbox": adopt}}
+    (out / "results.json").write_text(json.dumps(report, indent=2))
+    lines = [f"EXP-031 (commit {report['commit']}): H-aug seed 0 vs shipped head, gearbox"]
+    for name, r in results.items():
+        for who in ("shipped", "candidate"):
+            a = r[who]["summary"]["gearbox"]
+            lines.append(f"  {name:18s} {who:9s} AUC {a['auc']:.3f} FPR {a['fpr']:.3f} (max {a['max_fpr']:.3f}) recall {a['recall']:.3f}")
+        lines.append("    per section-domain AUC (shipped -> candidate): " + ", ".join(
+            f"{k.split('/', 1)[1]} {r['shipped']['per_group'][k]['auc']:.3f}->{r['candidate']['per_group'][k]['auc']:.3f}"
+            for k in r["candidate"]["per_group"]))
+    lines.append(f"\ndecision: {json.dumps(report['decision'])}")
+    (out / "SUMMARY.txt").write_text("\n".join(lines) + "\n")
+    print("\n".join(lines))
+    return report
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
-    parser.add_argument("--stage", required=True, choices=["generate", "train", "confirm"])
+    parser.add_argument("--stage", required=True, choices=["generate", "train", "confirm", "gearbox_aug"])
     args = parser.parse_args()
     config = json.loads(Path(args.config).read_text())
-    {"generate": run_generate, "train": run_train, "confirm": run_confirm}[args.stage](config)
+    {"generate": run_generate, "train": run_train, "confirm": run_confirm, "gearbox_aug": run_gearbox_aug}[args.stage](config)
 
 
 if __name__ == "__main__":
