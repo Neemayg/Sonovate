@@ -194,10 +194,29 @@ def run_fresh(config: dict) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
-    parser.add_argument("--stage", required=True, choices=["develop", "fresh"])
+    parser.add_argument("--stage", required=True, choices=["develop", "fresh", "bearing"])
     args = parser.parse_args()
     config = json.loads(Path(args.config).read_text())
-    (run_develop if args.stage == "develop" else run_fresh)(config)
+    {"develop": run_develop, "fresh": run_fresh, "bearing": run_bearing}[args.stage](config)
+
+
+def run_bearing(config: dict) -> dict:
+    """EXP-028: G for bearings, checked on DCASE 2022 evaluation bearing (reused set)."""
+    emb = Embedder(config)
+    part = evaluate(config, dcase22_bearing_groups(config), emb, "dcase22_eval_bearing")
+    n10 = part["summary"]["N10"]
+    wins = sum(g["N10"]["G"]["auc"] > g["N10"]["app"]["auc"] for g in part["per_group"].values())
+    adopt = bool(n10["G"]["auc"] - n10["app"]["auc"] >= 0.010 and wins >= 4 and n10["G"]["fpr"] <= 0.10
+                 and n10["G"]["max_fpr"] <= 0.20)
+    report = {"experiment": "EXP-028", "commit": git_commit(), "results": part,
+              "decision": {"gain": n10["G"]["auc"] - n10["app"]["auc"], "wins": wins, "adopt_for_bearing": adopt}}
+    out = Path("artifacts/EXP-028")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "results.json").write_text(json.dumps(report, indent=2))
+    lines = [f"EXP-028 (commit {report['commit']})"] + table("dcase22_eval_bearing", part) + [f"\ndecision: {json.dumps(report['decision'])}"]
+    (out / "SUMMARY.txt").write_text("\n".join(lines) + "\n")
+    print("\n".join(lines))
+    return report
 
 
 if __name__ == "__main__":
