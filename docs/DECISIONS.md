@@ -181,6 +181,21 @@ Only record accepted decisions here. Proposed options belong in an issue or task
   - Implemented in the inference service, the database (`window_count`, `window_log_scores` on predictions) and the app, and in `ml/analyze.py`. Videos and non-WAV formats are accepted by `ml/analyze.py` only; the app still takes WAV.
 - **Evidence:** EXP-025 and EXP-026 in `docs/EXPERIMENT_LOG.md`.
 
+## ADR-013 — Bearings scored with a fusion of the head and frozen embeddings
+- **Status:** Proposed (2026-11-09) after the user asked for a stronger model; integrated on branch `claude/model-localisation` for testing (bundle `sonovate-ast-head` 0.4.0, migration `20261109233000_ast_head_fusion.sql`). Becomes accepted on the user's approval; until then it can be reverted by restoring 0.3.1 in `ALLOWED_BUNDLES`.
+- **Date:** 2026-11-09
+- **Context:**
+  - Bearing is the weak machine type (EXP-009, EXP-016, EXP-018).
+  - On development data, fusing the head embedding with the frozen layer-4 feature raised bearing AUC in 5 of 6 section-domains and lowered gearbox in 5 of 6 (EXP-027).
+  - On held-out DCASE 2022 bearing data (reused) it raised own10 AUC 0.671 → 0.701 in 6 of 6 section-domains, false alarms unchanged at about 7% (EXP-028). At 60 s it caught 43% of anomalies at 8.7% false alarms, against 37% for the head alone (EXP-029, EXP-026).
+- **Decision (proposed):** bearing machines are scored with z(log d_head) + z(log d_frozen), reported as exp(z-sum) so the leave-one-out threshold rule (spread 1.5) and the ADR-012 window rules apply unchanged. Gearbox keeps the head score. Weights are unchanged; bundle 0.4.0 only adds the scoring fields.
+- **Alternatives considered:** fusion for both types (lowers gearbox, EXP-027); shift test-time augmentation (no gain, EXP-027); patch-level scoring (worse, EXP-021); LoRA fine-tuning (overfit, EXP-019/020).
+- **Consequences/trade-offs:**
+  - Bearing baselines store 9,344 values instead of 128 (about 37 KB each); the embedding size limit is raised.
+  - Every machine is re-embedded once under the new model version.
+  - Evidence for bearing rests on a reused held-out set; no untouched bearing data exists.
+- **Evidence:** EXP-027, EXP-028, EXP-029.
+
 ## Pending decisions
 - Feature representation beyond the EXP-002 setup.
 - Recording hardware and context-sensor strategy.

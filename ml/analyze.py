@@ -46,7 +46,7 @@ from ml.localise import (
 )
 
 AUDIO_SUFFIXES = {".wav", ".flac", ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
-DEFAULT_BUNDLE = "artifacts/bundles/sonovate-ast-head-0.3.1"
+DEFAULT_BUNDLE = "artifacts/bundles/sonovate-ast-head-0.4.0"
 MIN_BASELINE_WINDOWS = 10
 # EXP-026: recording-level rule on the mean of the window log scores (selected on development data,
 # confirmed on fresh MIMII DUE gearbox data). 30 s: spread 1.0; 60 s or longer: spread 0.75.
@@ -107,11 +107,25 @@ def expand(paths: list[Path]) -> list[Path]:
 
 @dataclass
 class Baseline:
-    embeddings: np.ndarray  # (N, 128)
-    log_mean: float
+    embeddings: np.ndarray  # (N, 128) head embeddings
+    log_mean: float  # of the baselines' leave-one-out log scores (z-sums for fusion)
     log_std: float
     threshold: float
     mel: MelBaseline
+    frozen: np.ndarray | None = None  # (N, 9216), fusion only
+    parts: tuple[float, float, float, float] | None = None  # head mean/std, frozen mean/std of LOO log distances
+
+
+def _loo(x: np.ndarray) -> np.ndarray:
+    d = 1.0 - x @ x.T
+    np.fill_diagonal(d, np.inf)
+    return np.clip(d.min(axis=1), 1e-12, None)
+
+
+def frozen_embed(head: dict, features: np.ndarray) -> np.ndarray:
+    """ADR-013: the encoder feature standardised with the head's statistics, L2-normalised."""
+    z = (features - head["feature_mean"]) / head["feature_std"]
+    return (z / np.linalg.norm(z, axis=-1, keepdims=True)).astype(np.float32)
 
 
 def band_edges() -> np.ndarray:
@@ -132,8 +146,13 @@ def peaks(curve: np.ndarray, times: np.ndarray, level: float, gap_s: float, limi
 
 
 class Analyzer:
-    def __init__(self, bundle: Path = Path(DEFAULT_BUNDLE), device: str = "cpu") -> None:
+    def __init__(self, bundle: Path = Path(DEFAULT_BUNDLE), device: str = "cpu", machine_type: str = "gearbox") -> None:
         spec = json.loads((bundle / "bundle.json").read_text())
+        if machine_type not in spec["machine_types"]:
+            raise ValueError(f"the model covers {', '.join(spec['machine_types'])}, not {machine_type}")
+        self.machine_type = machine_type
+        # ADR-013: bearing uses the head + frozen fusion when the bundle says so.
+        self.scoring = spec.get("scoring", {}).get(machine_type, "head")
         self.bundle_name = f"{spec['name']} {spec['version']}"
         self.spread = float(spec["threshold"]["spread"])
         self.limitations = spec.get("limitations", [])
@@ -141,27 +160,42 @@ class Analyzer:
         with np.load(bundle / "head.npz", allow_pickle=False) as data:
             self.head = {k: data[k] for k in data.files}
 
-    def _encode(self, waves: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        emb, mels = [], []
+    def _encode(self, waves: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        emb, frozen, mels = [], [], []
         for i in range(0, len(waves), 8):
             mel, (tokens,) = self.encoder.forward(waves[i : i + 8], layers=(-1,))
-            emb.append(apply_head(self.head, pooled_features(tokens)))
+            features = pooled_features(tokens)
+            emb.append(apply_head(self.head, features))
+            frozen.append(frozen_embed(self.head, features))
             mels.append(mel)
-        return np.concatenate(emb), np.concatenate(mels)
+        return np.concatenate(emb), np.concatenate(frozen), np.concatenate(mels)
 
     def baseline(self, waves: np.ndarray) -> Baseline:
         if len(waves) < MIN_BASELINE_WINDOWS:
             raise ValueError(f"need at least {MIN_BASELINE_WINDOWS} baseline windows of 10 s, got {len(waves)}")
-        emb, mels = self._encode(waves)
-        d = 1.0 - emb @ emb.T
-        np.fill_diagonal(d, np.inf)
-        logs = np.log(np.clip(d.min(axis=1), 1e-12, None))
-        mean, std = float(logs.mean()), float(logs.std())
+        emb, frozen, mels = self._encode(waves)
+        lh = np.log(_loo(emb))
+        if self.scoring == "fusion":
+            lf = np.log(_loo(frozen))
+            parts = (float(lh.mean()), max(float(lh.std()), 1e-9), float(lf.mean()), max(float(lf.std()), 1e-9))
+            logs = (lh - parts[0]) / parts[1] + (lf - parts[2]) / parts[3]
+            mean, std = float(logs.mean()), float(logs.std())
+            return Baseline(emb, mean, std, mean + self.spread * std, MelBaseline(mels), frozen, parts)
+        mean, std = float(lh.mean()), float(lh.std())
         return Baseline(emb, mean, std, mean + self.spread * std, MelBaseline(mels))
 
+    def log_scores(self, emb: np.ndarray, frozen: np.ndarray, base: Baseline) -> np.ndarray:
+        """Log score per window: log head distance, or the fusion z-sum (ADR-013)."""
+        lh = np.log(np.clip((1.0 - emb @ base.embeddings.T).min(axis=1), 1e-12, None))
+        if base.parts is None or base.frozen is None:
+            return lh
+        lf = np.log(np.clip((1.0 - frozen @ base.frozen.T).min(axis=1), 1e-12, None))
+        mh, sh, mf, sf = base.parts
+        return (lh - mh) / sh + (lf - mf) / sf
+
     def analyse(self, waves: np.ndarray, base: Baseline) -> list[dict]:
-        emb, mels = self._encode(waves)
-        scores = np.clip((1.0 - emb @ base.embeddings.T).min(axis=1), 1e-12, None)
+        emb, frozen, mels = self._encode(waves)
+        scores = np.exp(self.log_scores(emb, frozen, base))
         edges = band_edges()
         results = []
         for i, (score, mel) in enumerate(zip(scores, mels)):
@@ -282,6 +316,8 @@ def run(recording: Path, baselines: list[Path], analyzer: Analyzer) -> tuple[dic
     report = {
         "recording": recording.name,
         "model": analyzer.bundle_name,
+        "machine_type": analyzer.machine_type,
+        "scoring": analyzer.scoring,
         "baseline": {"files": len(base_files), "windows": len(base_waves), "threshold": base.threshold,
                      "threshold_rule": f"mean + {analyzer.spread} x std of leave-one-out log distances"},
         "summary": summarise(per_window, leftover, base),
@@ -305,8 +341,9 @@ def main() -> None:
     parser.add_argument("--plot", type=Path)
     parser.add_argument("--bundle", type=Path, default=Path(DEFAULT_BUNDLE))
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--machine-type", choices=["bearing", "gearbox"], required=True)
     args = parser.parse_args()
-    analyzer = Analyzer(args.bundle, args.device)
+    analyzer = Analyzer(args.bundle, args.device, args.machine_type)
     report, samples = run(args.recording, args.baseline, analyzer)
     args.out.write_text(json.dumps(report, indent=1))
     if args.plot:

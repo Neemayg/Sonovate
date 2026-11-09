@@ -79,3 +79,22 @@ def test_recording_decision_rules():
     r6 = recording_decision([win(-1.84)] * 6, base)  # threshold -2.0 + 0.75 * 0.2 = -1.85
     assert r6["decision"] == "above_threshold" and r6["threshold"] == pytest.approx(-1.85) and r6["note"] is None
     assert recording_decision([win(-1.84)] * 8, base)["note"]
+
+
+def test_fusion_log_scores_are_the_z_sum():
+    from ml.analyze import Analyzer, Baseline
+
+    rng = np.random.default_rng(3)
+
+    def unit(n, d):
+        v = rng.standard_normal((n, d))
+        return (v / np.linalg.norm(v, axis=1, keepdims=True)).astype(np.float32)
+
+    head_b, frozen_b, head_q, frozen_q = unit(10, 128), unit(10, 64), unit(2, 128), unit(2, 64)
+    base = Baseline(head_b, 0.0, 1.0, 1.5, mel=None, frozen=frozen_b, parts=(-1.0, 0.5, -2.0, 0.25))
+    got = Analyzer.log_scores(None, head_q, frozen_q, base)  # type: ignore[arg-type]
+    lh = np.log((1 - head_q @ head_b.T).min(axis=1))
+    lf = np.log((1 - frozen_q @ frozen_b.T).min(axis=1))
+    assert np.allclose(got, (lh + 1.0) / 0.5 + (lf + 2.0) / 0.25, atol=1e-5)
+    plain = Baseline(head_b, 0.0, 1.0, 1.5, mel=None)
+    assert np.allclose(Analyzer.log_scores(None, head_q, frozen_q, plain), lh, atol=1e-6)  # type: ignore[arg-type]

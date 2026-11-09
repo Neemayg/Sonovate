@@ -1,4 +1,4 @@
-"""AST layer-4 + condition-head bundle (ADR-010, threshold ADR-011): parity with the ML export, integrity, scoring.
+"""AST layer-4 + condition-head bundle (ADR-010, ADR-011, ADR-013 bearing fusion): parity, integrity, scoring.
 
 The bundle is local and git-ignored. Point SONOVATE_BUNDLES_DIR at the directory that
 holds it (by default `<repo>/artifacts/bundles`); tests that need it are skipped, with the
@@ -16,13 +16,23 @@ import pytest
 
 from app.ast_head_bundle import (
     FEATURE_DIM,
+    HEAD_DIM,
     AstHeadBundleModel,
+    FusionModel,
     HeadArrays,
     frequency_pool,
     load_ast_head_bundle,
 )
 from app.audio import validate_wav
-from app.bundle import ALLOWED_BUNDLES, AST_HEAD_BUNDLE, AST_HEAD_BUNDLE_0_3_0, AllowedBundle, BundleError, BundleRegistry
+from app.bundle import (
+    ALLOWED_BUNDLES,
+    AST_HEAD_BUNDLE,
+    AST_HEAD_BUNDLE_0_3_0,
+    AST_HEAD_BUNDLE_0_3_1,
+    AllowedBundle,
+    BundleError,
+    BundleRegistry,
+)
 from app.registry import ContextValue
 from app.thresholds import ThresholdRule
 
@@ -42,8 +52,15 @@ def registry() -> BundleRegistry:
 
 @pytest.fixture(scope="module")
 def model(registry: BundleRegistry) -> AstHeadBundleModel:
-    found = registry.model_for("bearing")
+    found = registry.model_for("gearbox")
     assert isinstance(found, AstHeadBundleModel), f"{AST_HEAD_BUNDLE.directory_name} missing from {BUNDLES_DIR}"
+    return found
+
+
+@pytest.fixture(scope="module")
+def fusion(registry: BundleRegistry) -> FusionModel:
+    found = registry.model_for("bearing")
+    assert isinstance(found, FusionModel)
     return found
 
 
@@ -61,10 +78,11 @@ def parity_embeddings(model: AstHeadBundleModel, parity_audio: list) -> np.ndarr
 
 
 @needs_bundle
-def test_default_allow_list_serves_the_head_model_for_bearing_and_gearbox(registry: BundleRegistry) -> None:
-    assert ALLOWED_BUNDLES == (AST_HEAD_BUNDLE,)
+def test_default_allow_list_serves_head_for_gearbox_and_fusion_for_bearing(registry: BundleRegistry) -> None:
+    assert ALLOWED_BUNDLES == (AST_HEAD_BUNDLE,) and AST_HEAD_BUNDLE.version == "0.4.0"
     bearing, gearbox = registry.model_for("bearing"), registry.model_for("gearbox")
-    assert isinstance(bearing, AstHeadBundleModel) and bearing is gearbox
+    assert isinstance(gearbox, AstHeadBundleModel) and isinstance(bearing, FusionModel)
+    assert bearing.base is gearbox and bearing.info == gearbox.info and bearing.rule == gearbox.rule
     assert registry.model_for("other") is None
     assert gearbox.info.model_version_id == AST_HEAD_BUNDLE.model_version_id
     assert gearbox.rule == ThresholdRule(minimum_baseline_recordings=10, spread=1.5)
@@ -99,7 +117,7 @@ def test_distances_match_bundle(model: AstHeadBundleModel, parity_embeddings: np
 def test_limitations_are_the_bundle_text(model: AstHeadBundleModel) -> None:
     spec = json.loads((model.directory / "bundle.json").read_text())
     assert list(model.limitations) == spec["limitations"]
-    assert any("bearing" in item and "uneven" in item for item in model.limitations)
+    assert any(item.startswith("Bearing") and "fusion" in item for item in model.limitations)
 
 
 @needs_bundle
@@ -120,7 +138,7 @@ def test_unsupported_machine_type_is_refused(model: AstHeadBundleModel, parity_a
 def test_0_3_1_changes_only_the_threshold_and_text_of_0_3_0() -> None:
     """ADR-011: same weights and parity as 0.3.0, spread 1.5 instead of 2.0."""
     old = BundleRegistry(BUNDLES_DIR, (AST_HEAD_BUNDLE_0_3_0,)).model_for("gearbox")
-    new = BundleRegistry(BUNDLES_DIR).model_for("gearbox")
+    new = BundleRegistry(BUNDLES_DIR, (AST_HEAD_BUNDLE_0_3_1,)).model_for("gearbox")
     assert isinstance(old, AstHeadBundleModel) and isinstance(new, AstHeadBundleModel)
     assert old.rule.spread == 2.0 and new.rule.spread == 1.5
     assert old.parity == new.parity
@@ -128,6 +146,25 @@ def test_0_3_1_changes_only_the_threshold_and_text_of_0_3_0() -> None:
     new_spec = json.loads((new.directory / "bundle.json").read_text())
     assert old_spec["sha256"] == new_spec["sha256"]
     assert old.info.model_version_id != new.info.model_version_id
+
+
+@needs_bundle
+def test_0_4_0_keeps_the_0_3_1_weights_and_head_scoring() -> None:
+    """ADR-013: same files and gearbox scoring as 0.3.1; only bearing scoring and text change."""
+    old = BundleRegistry(BUNDLES_DIR, (AST_HEAD_BUNDLE_0_3_1,))
+    new = BundleRegistry(BUNDLES_DIR)
+    assert isinstance(old.model_for("bearing"), AstHeadBundleModel)
+    old_spec = json.loads((old.model_for("gearbox").directory / "bundle.json").read_text())
+    new_spec = json.loads((new.model_for("gearbox").directory / "bundle.json").read_text())
+    assert old_spec["sha256"] == new_spec["sha256"] and new_spec["scoring"] == {"gearbox": "head", "bearing": "fusion"}
+
+
+@needs_bundle
+def test_fusion_embedding_is_head_then_frozen(fusion: FusionModel, model: AstHeadBundleModel, parity_audio: list) -> None:
+    vec = fusion.embed(parity_audio[0], "bearing", {})
+    assert vec.shape == (HEAD_DIM + FEATURE_DIM,)
+    np.testing.assert_allclose(vec[:HEAD_DIM], model.embed(parity_audio[0], "bearing", {}), atol=1e-6)
+    np.testing.assert_allclose(np.linalg.norm(vec[HEAD_DIM:]), 1.0, atol=1e-5)
 
 
 # --- integrity ---------------------------------------------------------------
@@ -212,3 +249,49 @@ def test_head_arrays_compute_the_documented_steps() -> None:
     hid = (z @ a["w1"].T + a["b1"] - a["bn_mean"]) / np.sqrt(a["bn_var"] + 1e-5) * a["bn_weight"] + a["bn_bias"]
     e = np.maximum(hid, 0) @ a["w2"].T + a["b2"]
     np.testing.assert_allclose(HeadArrays(a).embed(x), e / np.linalg.norm(e), atol=1e-5)
+
+
+# --- fusion maths (no bundle needed) ---------------------------------------------
+
+
+class _Base:
+    """Stands in for AstHeadBundleModel; FusionModel only needs these attributes for scoring."""
+
+    info = None
+    rule = None
+    limitations = ()
+
+
+def _unit(rng: np.random.Generator, n: int, d: int) -> np.ndarray:
+    v = rng.normal(size=(n, d))
+    return v / np.linalg.norm(v, axis=1, keepdims=True)
+
+
+def test_fusion_score_is_the_documented_z_sum() -> None:
+    rng = np.random.default_rng(1)
+    head, frozen = _unit(rng, 10, HEAD_DIM), _unit(rng, 10, FEATURE_DIM)
+    baselines = list(np.concatenate([head, frozen], axis=1))
+    query = np.concatenate([_unit(rng, 1, HEAD_DIM)[0], _unit(rng, 1, FEATURE_DIM)[0]])
+    fm = FusionModel(_Base())  # type: ignore[arg-type]
+
+    def loo(x: np.ndarray) -> np.ndarray:
+        d = 1 - x @ x.T
+        np.fill_diagonal(d, np.inf)
+        return d.min(axis=1)
+
+    lh, lf = np.log(loo(head)), np.log(loo(frozen))
+    zh = (np.log(1 - (head @ query[:HEAD_DIM]).max()) - lh.mean()) / lh.std()
+    zf = (np.log(1 - (frozen @ query[HEAD_DIM:]).max()) - lf.mean()) / lf.std()
+    assert np.log(fm.score(query, baselines)) == pytest.approx(zh + zf, rel=1e-6)
+    loo_scores = np.log(fm.baseline_distances(baselines))
+    assert loo_scores.shape == (10,) and abs(loo_scores.mean()) < 1e-6  # z-sums of the baselines average 0
+
+
+def test_fusion_flags_duplicates_with_zero() -> None:
+    rng = np.random.default_rng(2)
+    vecs = np.concatenate([_unit(rng, 10, HEAD_DIM), _unit(rng, 10, FEATURE_DIM)], axis=1)
+    fm = FusionModel(_Base())  # type: ignore[arg-type]
+    assert fm.score(vecs[3].copy(), list(vecs)) == 0.0
+    assert min(fm.baseline_distances(list(vecs) + [vecs[0].copy()])) == 0.0
+    with pytest.raises(ValueError, match="not a fusion embedding"):
+        fm.score(vecs[0, :HEAD_DIM], [v[:HEAD_DIM] for v in vecs])

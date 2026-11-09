@@ -57,9 +57,20 @@ class AllowedBundle:
         return f"{self.name}-{self.version}"
 
 
-# ADR-010 model with the ADR-011 threshold (spread 1.5): AST layer-4 frequency
-# pooling + condition head (app/ast_head_bundle.py). Weights identical to 0.3.0.
+# ADR-013: as 0.3.1, with bearing scored by the head + frozen-feature fusion
+# (EXP-028, EXP-029). Weights identical to 0.3.0 and 0.3.1.
 AST_HEAD_BUNDLE = AllowedBundle(
+    name="sonovate-ast-head",
+    version="0.4.0",
+    kind="ast_head",
+    machine_types=frozenset({"bearing", "gearbox"}),
+    bundle_json_sha256="7cea99e786dc2e3d0899f8718ed706d760d2d17c1e5e714e0971038d566b9c7c",
+    model_version_id=uuid.UUID("5e1d0000-0000-4000-8000-00000000b006"),
+)
+
+# ADR-010 model with the ADR-011 threshold (spread 1.5): AST layer-4 frequency
+# pooling + condition head (app/ast_head_bundle.py). Superseded by 0.4.0 (ADR-013).
+AST_HEAD_BUNDLE_0_3_1 = AllowedBundle(
     name="sonovate-ast-head",
     version="0.3.1",
     kind="ast_head",
@@ -345,7 +356,8 @@ class BundleRegistry:
             else:
                 model = load_bundle(directory, entry)
             for machine_type in entry.machine_types:
-                self._models[machine_type] = model
+                pick = getattr(model, "for_machine_type", None)
+                self._models[machine_type] = pick(machine_type) if pick else model
             logger.info("loaded model bundle %s", entry.directory_name)
 
     def has_any_model(self) -> bool:

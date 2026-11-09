@@ -59,6 +59,12 @@ class HeadArrays:
         e = np.maximum(h, 0.0) @ a["w2"].T + a["b2"]
         return (e / np.linalg.norm(e, axis=1, keepdims=True)).astype(np.float32)
 
+    def frozen(self, features: np.ndarray) -> np.ndarray:
+        """ADR-013: the encoder feature standardised with the head's statistics, L2-normalised (9216 values)."""
+        a = self.a
+        z = (features.astype(np.float32) - a["feature_mean"]) / a["feature_std"]
+        return (z / np.linalg.norm(z, axis=1, keepdims=True)).astype(np.float32)
+
 
 def load_head(path: Path, name: str) -> HeadArrays:
     with np.load(path, allow_pickle=False) as data:
@@ -80,7 +86,9 @@ def load_head(path: Path, name: str) -> HeadArrays:
 
 class AstHeadBundleModel:
     def __init__(self, info: ModelInfo, extractor: object, encoder: torch.nn.Module, head: HeadArrays,
-                 rule: ThresholdRule, limitations: tuple[str, ...], parity: dict, directory: Path) -> None:
+                 rule: ThresholdRule, limitations: tuple[str, ...], parity: dict, directory: Path,
+                 scoring: dict[str, str] | None = None) -> None:
+        self.scoring = dict(scoring or {})
         self.info = info
         self.extractor = extractor
         self.encoder = encoder
@@ -115,6 +123,72 @@ class AstHeadBundleModel:
             raise ValueError("leave-one-out needs at least two baselines")
         return [float(d) for d in leave_one_out(np.stack(baselines))]
 
+    def for_machine_type(self, machine_type: str) -> "AstHeadBundleModel | FusionModel":
+        """The scorer bundle.json names for this machine type (ADR-013): head, or fusion."""
+        return FusionModel(self) if self.scoring.get(machine_type) == "fusion" else self
+
+
+HEAD_DIM = 128
+# Distances at or below this mean the same audio (matches app.main.SAME_AUDIO_DISTANCE).
+_SAME = 1e-6
+
+
+def _log_stats(distances: np.ndarray) -> tuple[float, float]:
+    logs = np.log(distances)
+    return float(logs.mean()), max(float(logs.std()), 1e-9)
+
+
+class FusionModel:
+    """ADR-013 / EXP-028: bearing score = z(log d_head) + z(log d_frozen), reported as exp(z-sum).
+
+    The stored vector is the 128-value head embedding followed by the 9216-value frozen embedding
+    (the encoder feature standardised with head.npz statistics, L2-normalised). Each part's z uses
+    the mean and std of its own baseline leave-one-out log distances, so the score and the
+    threshold (mean + spread * std of the baselines' leave-one-out log scores) match EXP-028/029.
+    A duplicate of a baseline (head distance <= 1e-6) scores 0, which the service rejects.
+    """
+
+    def __init__(self, base: AstHeadBundleModel) -> None:
+        self.base = base
+        self.info = base.info
+        self.rule = base.rule
+        self.limitations = base.limitations
+
+    def embed(self, audio: ValidatedAudio, machine_type: MachineType, context: Mapping[str, ContextValue]) -> np.ndarray:
+        if machine_type not in self.info.machine_types:
+            raise ValueError("bundle used for an unsupported machine type")
+        if audio.sample_rate_hz != SAMPLE_RATE or audio.channels != 1:
+            raise ValueError("audio does not match the bundle's input contract")
+        features = self.base.features([decode_samples(audio)])
+        return np.concatenate([self.base.head.embed(features)[0], self.base.head.frozen(features)[0]])
+
+    @staticmethod
+    def _parts(baselines: Sequence[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
+        b = np.stack(baselines)
+        if b.shape[1] != HEAD_DIM + FEATURE_DIM:
+            raise ValueError("stored baseline vector is not a fusion embedding")
+        return b[:, :HEAD_DIM], b[:, HEAD_DIM:]
+
+    def score(self, query: np.ndarray, baselines: Sequence[np.ndarray]) -> float:
+        head_b, frozen_b = self._parts(baselines)
+        d_head = nearest_distance(query[:HEAD_DIM], head_b)
+        if d_head <= _SAME:
+            return 0.0
+        d_frozen = max(nearest_distance(query[HEAD_DIM:], frozen_b), _SAME)
+        (mh, sh), (mf, sf) = _log_stats(leave_one_out(head_b)), _log_stats(np.maximum(leave_one_out(frozen_b), _SAME))
+        return math.exp((math.log(d_head) - mh) / sh + (math.log(d_frozen) - mf) / sf)
+
+    def baseline_distances(self, baselines: Sequence[np.ndarray]) -> list[float]:
+        if len(baselines) < 2:
+            raise ValueError("leave-one-out needs at least two baselines")
+        head_b, frozen_b = self._parts(baselines)
+        lh, lf = leave_one_out(head_b), np.maximum(leave_one_out(frozen_b), _SAME)
+        if float(np.min(lh)) <= _SAME:
+            return [0.0] * len(baselines)  # duplicates: the service reports baseline_invalid
+        (mh, sh), (mf, sf) = _log_stats(lh), _log_stats(lf)
+        z = (np.log(lh) - mh) / sh + (np.log(lf) - mf) / sf
+        return [float(v) for v in np.exp(z)]
+
 
 def load_ast_head_bundle(directory: Path, allowed: AllowedBundle) -> AstHeadBundleModel:
     from transformers import ASTConfig, ASTFeatureExtractor, ASTModel
@@ -129,6 +203,9 @@ def load_ast_head_bundle(directory: Path, allowed: AllowedBundle) -> AstHeadBund
              f"{name}: unsupported feature")
     _require("nearest" in spec["score"] and "cosine distance" in spec["score"], f"{name}: unsupported score")
     _require("leave-one-out" in rule_spec["method"], f"{name}: unsupported threshold method")
+    scoring = spec.get("scoring", {})
+    _require(isinstance(scoring, dict) and set(scoring) <= set(allowed.machine_types)
+             and set(scoring.values()) <= {"head", "fusion"}, f"{name}: unsupported scoring")
 
     rule = ThresholdRule(
         minimum_baseline_recordings=int(rule_spec["minimum_baseline_recordings"]), spread=float(rule_spec["spread"])
@@ -154,5 +231,5 @@ def load_ast_head_bundle(directory: Path, allowed: AllowedBundle) -> AstHeadBund
     return AstHeadBundleModel(
         info=info, extractor=extractor, encoder=encoder, head=head, rule=rule,
         limitations=tuple(str(item) for item in spec.get("limitations", [])),
-        parity=dict(spec.get("parity", {})), directory=directory,
+        parity=dict(spec.get("parity", {})), directory=directory, scoring=scoring,
     )

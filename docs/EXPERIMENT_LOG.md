@@ -1209,7 +1209,7 @@ Status: **Complete: 30 s → spread 1.0 and 60 s → spread 0.75 selected on dev
 - **Conclusion:** propose (ADR-012) that a recording of 60 s or more is judged on the mean of its window log scores with spread 0.75 (30–59 s: spread 1.0), next to the per-window results. At about 9% false alarms this catches roughly 1.7× as many anomalies as a single 10 s clip on fresh gearbox data. Implemented in `ml/analyze.py`; not yet in the web app.
 
 ### EXP-027 — Shift test-time augmentation and embedding fusion (development selection, fresh confirmation)
-Status: **Planned (pre-registered before any run).** Goal: rank anomalies better without changing the encoder weights (LoRA fine-tuning overfit in EXP-019/020).
+Status: **Complete: no candidate met the development rule (best TG +0.005); fresh stage not run.** Pre-registered at `0c337fb`; run on `5e75c38`.
 - **Date:** 2026-11-09
 - **Base system (app):** ADR-010/011, the shipped bundle 0.3.1 head embedding, k = 1 cosine distance.
 - **Candidates (fixed now):**
@@ -1226,9 +1226,21 @@ Status: **Planned (pre-registered before any run).** Goal: rank anomalies better
 - **Note on evidence:** the fresh sets have been used several times; a pass here is supporting evidence, not a clean first-use result.
 - **Reproduction:** `uv run python -m ml.robust_scores --config configs/patch_scores.json`
 - **Artifacts path:** `artifacts/EXP-027/`
+- **Results (development, means over 12 section-domains):**
+
+  | System | own10 AUC | FPR (max) | recall | own30 AUC | recall N30 |
+  |---|---|---|---|---|---|
+  | app | 0.803 | 0.089 (0.115) | 0.330 | 0.879 | 0.502 |
+  | T | 0.805 | 0.089 (0.114) | 0.333 | 0.882 | 0.512 |
+  | G | 0.807 | 0.092 (0.120) | 0.347 | 0.874 | 0.515 |
+  | TG | 0.808 | 0.092 (0.124) | 0.347 | 0.875 | 0.518 |
+
+  - **Shift TTA (T) adds almost nothing** (+0.002): shifted views of a stationary clip carry little new information for the clip-level embedding.
+  - **Fusion (G) splits by machine:** bearing up in 5 of 6 section-domains (for example 01 source 0.688 → 0.750, 01 target 0.706 → 0.783), gearbox down in 5 of 6 (for example 01 target 0.757 → 0.700).
+- **Conclusion:** no overall change. The bearing pattern was tested separately (EXP-028).
 
 ### EXP-028 — Fusion (G) for bearings only (held-out bearing check)
-Status: **Planned (pre-registered after EXP-027's development run, before any held-out run).**
+Status: **Complete: G adopted for bearings (+0.030 own10 AUC, 6 of 6 wins).** Pre-registered at `6d4c97c`; run on `4d7b7e9`.
 - **Date:** 2026-11-09
 - **Why:** In EXP-027 no candidate met the overall development rule (best TG +0.005). Per machine, G (head + frozen feature fusion) raised bearing development own10 AUC in 5 of 6 section-domains (mean about 0.825 → 0.859) and lowered gearbox in 5 of 6. Choosing G for bearings comes from looking at development results, so it must be checked on held-out bearing data.
 - **Candidate:** G exactly as EXP-027, used for **bearing** machines only. Gearbox keeps app.
@@ -1237,9 +1249,18 @@ Status: **Planned (pre-registered after EXP-027's development run, before any he
 - **Adopt for bearings** if mean own10 AUC is at least 0.010 higher than app, with ≥ 4 of 6 section-domain wins, mean FPR ≤ 0.10 and every section-domain ≤ 0.20. Otherwise bearings keep app.
 - **Reproduction:** `uv run python -m ml.robust_scores --config configs/patch_scores.json --stage bearing`
 - **Artifacts path:** `artifacts/EXP-028/`
+- **Results (DCASE 2022 evaluation bearing, own-baseline):**
+
+  | System | own10 AUC | FPR (max) | recall | own30 AUC | FPR N30 | recall N30 |
+  |---|---|---|---|---|---|---|
+  | app | 0.671 | 0.073 (0.089) | 0.148 | 0.721 | 0.052 | 0.179 |
+  | **G** | **0.701** | 0.074 (0.096) | 0.157 | **0.752** | 0.047 | 0.184 |
+
+  - Per section-domain (own10 AUC, app → G): 03 source 0.697 → 0.773, 03 target 0.770 → 0.786, 04 source 0.630 → 0.672, 04 target 0.636 → 0.660, 05 source 0.611 → 0.614, 05 target 0.684 → 0.703.
+- **Limitations:** fifth use of this set; the per-machine choice came from development results; recall per 10 s clip barely changes (0.148 → 0.157), the gain is mostly in ranking.
 
 ### EXP-029 — 30 s / 60 s spreads for the bearing fusion score
-Status: **Planned (pre-registered after EXP-028, before any run).**
+Status: **Complete: same spreads as gearbox (30 s: 1.00, 60 s: 0.75), selected on development and confirmed on held-out bearing.** Pre-registered at `ca9e5b8`; run on `ae46f88`.
 - **Date:** 2026-11-09
 - **Why:** EXP-028 adopts G for bearings. The ADR-012 spreads (0.75 at 60 s, 1.0 at 30 s) were selected for the app log score (EXP-026), not for G's fused z-sums.
 - **Method:** as EXP-026, for G on bearing only: N = 10 baselines, 200 draws, seed 0; pseudo-recordings of k = 3 and 6 clips; recording score = mean of the clips' fused z-sums; threshold = mean + s × std of the baselines' leave-one-out fused z-sums, s ∈ {0.50, 0.75, 1.00, 1.25, 1.50}.
@@ -1247,3 +1268,13 @@ Status: **Planned (pre-registered after EXP-028, before any run).**
 - **Confirmation (DCASE 2022 evaluation bearing, sixth use, weak evidence):** the selected s must give mean FPR ≤ 0.10, every section-domain ≤ 0.20, and recall above G's single-window setting (k = 1, s = 1.5). If not confirmed for a k, bearing recordings of that length use the single-window spread 1.5 on the mean (stricter).
 - **Reproduction:** `uv run python -m ml.robust_scores --config configs/patch_scores.json --stage bearing_windows`
 - **Artifacts path:** `artifacts/EXP-029/`
+- **Results (G on bearing, N = 10):**
+
+  | Setting | Dev AUC | Dev FPR (max) | Dev recall | Held-out AUC | Held-out FPR (max) | Held-out recall |
+  |---|---|---|---|---|---|---|
+  | 10 s (s 1.5) | 0.857 | 0.099 (0.111) | 0.448 | 0.699 | 0.085 (0.118) | 0.177 |
+  | **30 s, s 1.00** | 0.949 | 0.093 (0.101) | 0.642 | 0.812 | **0.079 (0.111)** | **0.301** |
+  | **60 s, s 0.75** | 0.983 | 0.097 (0.114) | 0.778 | 0.889 | **0.087 (0.128)** | **0.433** |
+
+  - For comparison, the app score on the same held-out bearing set at 60 s (EXP-026): AUC 0.855, recall 0.367.
+- **Conclusion:** bearing recordings use the ADR-012 spreads unchanged. Integrated as bundle `sonovate-ast-head` 0.4.0 (ADR-013).

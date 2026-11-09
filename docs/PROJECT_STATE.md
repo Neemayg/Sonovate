@@ -54,6 +54,7 @@ Phase 8 deployment: cloud Supabase project, frontend hosting, backend hosting fo
 6. **ADR-011:** decided (2026-11-08) and integrated — threshold spread 1.5 (bundle 0.3.1) and a recommendation of 30 baselines.
 5. **ADR-010:** decided (2026-11-07) and integrated — AST layer 4 with frequency pooling plus the condition head.
 4. **Proposed (EXP-012):** the app recommends 20–30 baseline recordings and keeps the minimum of 10. Awaiting approval.
+8. **Proposed (ADR-013, EXP-027 to EXP-029):** bearing fusion scoring, integrated locally as bundle 0.4.0. Awaiting approval.
 7. **ADR-012:** decided (2026-11-09) and integrated locally — recordings of 10–60 s, judged on the mean of their 10 s window scores (60 s: spread 0.75; 30 s: 1.0); the app recommends 60 s per check. Local end-to-end check passed.
 
 ## Next action
@@ -65,6 +66,7 @@ The app runs `sonovate-ast-head` 0.3.1 (ADR-010 model, ADR-011 threshold) from `
 - Phase 5 timestamped data.
 
 ## Latest verified results
+- **EXP-028 / EXP-029 (bearing fusion, held-out DCASE 2022 bearing, reused):** own10 AUC 0.671 → 0.701 (6/6 wins); 60 s recordings AUC 0.889, FPR 0.087, recall 0.433 (head alone 0.367). Integrated as bundle 0.4.0 (proposed ADR-013). Shift TTA gave no gain (EXP-027).
 - **EXP-026 (recording-level rule; fresh MIMII DUE gearbox evaluation, third use):** at about 9% false alarms, recall 0.254 (10 s) → 0.328 (30 s, spread 1.0) → 0.423 (60 s, spread 0.75); AUC 0.667 → 0.763 → 0.837. Pseudo-recordings from independent clips, so possibly optimistic.
 - **EXP-022 (fresh MIMII DUE gearbox evaluation sections 03–05, first use; no leakage):** app model own10 AUC 0.667, FPR 0.085 (max 0.097), recall 0.256. Patch-level candidates lower.
 - **EXP-021, EXP-023, EXP-024:** patch-level scoring does not beat the app model (development 0.783 vs 0.803). No anomaly map met the synthetic localisation criterion; the spectrogram map (L-mel2) finds 0.5 s tones about 90% of the time but 20 ms clicks only 70%, so it is reported as a descriptive view, not a fault locator.

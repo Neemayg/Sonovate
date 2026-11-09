@@ -36,8 +36,15 @@ def derive(source: Path, target: Path, changes: dict) -> dict:
     derived["evidence"] = changes["evidence"]
     derived["limitations"] = changes["limitations"]
     derived["threshold"]["spread"] = changes["threshold_spread"]
+    changed = ["version", "status", "evidence", "limitations", "threshold.spread"]
+    # Optional new top-level fields (e.g. per-machine-type scoring, ADR-013); weights stay identical.
+    for key, value in changes.get("add", {}).items():
+        if key in derived:
+            raise ValueError(f"'add' may only introduce new fields, and {key} already exists")
+        derived[key] = value
+        changed.append(key)
     derived["derived_from"] = {"bundle": f"{spec['name']}-{spec['version']}", "bundle_json_sha256": file_sha256(source / "bundle.json"),
-                               "changed": ["version", "status", "evidence", "limitations", "threshold.spread"]}
+                               "changed": changed}
     derived["source"] = {"git_commit": git_commit()}
     derived["sha256"] = {name: file_sha256(target / name) for name in sorted(spec["sha256"])}
     if derived["sha256"] != spec["sha256"]:

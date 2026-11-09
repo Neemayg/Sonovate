@@ -1,11 +1,11 @@
 # Analysing a recording (audio or video)
 
-`ml/analyze.py` runs the shipped model (`sonovate-ast-head` 0.3.1, ADR-010/011) on one recording
+`ml/analyze.py` runs the shipped model (`sonovate-ast-head` 0.4.0: ADR-010/011, with bearings scored by the head + frozen fusion, proposed ADR-013) on one recording
 against a machine's baseline recordings, outside the web app. It is the reference for what the app
 will show per recording.
 
 ```bash
-uv run python -m ml.analyze --recording check.mp4 --baseline baselines/ --out report.json --plot report.png
+uv run python -m ml.analyze --machine-type gearbox --recording check.mp4 --baseline baselines/ --out report.json --plot report.png
 ```
 
 - `--recording`: WAV, FLAC, MP3, M4A/AAC, OGG/Opus, or a video (MP4, MOV, MKV, WebM, AVI); a video's
