@@ -1107,3 +1107,16 @@ Status: **Planned (pre-registered after EXP-021's localisation check failed, bef
 - **What this shows and does not:** that the map points to where the sound *changed* relative to the baseline, for added events. It does not show that it locates real machine faults, which in these datasets have no time or frequency labels.
 - **Reproduction:** `uv run python -m ml.localise_check --config configs/patch_scores.json`
 - **Artifacts path:** `artifacts/EXP-023/`
+
+### EXP-024 — Spectrogram map with a broadband channel (synthetic localisation, new clips)
+Status: **Planned (pre-registered after EXP-023, before any run of this method).**
+- **Date:** 2026-11-09
+- **Why:** In EXP-023, L-mel localised tones well at 0 dB (time 0.95 / 0.80, frequency 0.95 / 0.75 for bearing / gearbox) but missed clicks (0.55 / 0.40). Its time curve uses only the 8 most deviating bins and 0.1 s smoothing, which suits narrow-band events and dilutes a 20 ms broadband click. Token maps (L-tok0, L-tok4max) localised poorly and are dropped.
+- **Candidate L-mel2 (fixed now):** per-bin z-values against the baseline as L-mel, and two time curves:
+  - narrow-band: mean of the 8 largest bin z-values per frame, smoothed over 10 frames (as L-mel);
+  - broadband: mean of all 128 bin z-values per frame, smoothed over 3 frames.
+  - Each curve is standardised by the mean and std of the same curve over all frames of the baseline clips. Time curve = the larger of the two standardised curves at each frame. Frequency profile as L-mel.
+- **Data:** development normal clips of **section 02 source** of each machine (unused by EXP-021/023 checks), seed 2, 10 baseline and 20 test clips per machine; the same event generator and hit definitions as EXP-023 (L-mel frequency hit: peak bin within ±2 bins).
+- **Rule:** as EXP-023: at 0 dB, time hit ≥ 0.8 for tones and clicks of both machines, and frequency hit ≥ 0.8 for tones of both machines. If met, L-mel2 is the "where" display; otherwise no localisation is shown. L-mel is reported for reference.
+- **Reproduction:** `uv run python -m ml.localise_check --config configs/patch_scores.json --exp 24`
+- **Artifacts path:** `artifacts/EXP-024/`
