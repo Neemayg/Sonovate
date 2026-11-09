@@ -66,6 +66,7 @@ The app runs `sonovate-ast-head` 0.3.1 (ADR-010 model, ADR-011 threshold) from `
 - Phase 5 timestamped data.
 
 ## Latest verified results
+- **EXP-030 / EXP-031 (synthetic training data):** physically modelled pseudo-faults lowered real gearbox AUC (about −0.03, rejected). Setup-augmented normals helped gearbox on development (+0.020) and on MIMII DUE evaluation (+0.016) but fell on MIMII DUE development (−0.069), so not adopted. Bundle 0.4.0 unchanged.
 - **EXP-028 / EXP-029 (bearing fusion, held-out DCASE 2022 bearing, reused):** own10 AUC 0.671 → 0.701 (6/6 wins); 60 s recordings AUC 0.889, FPR 0.087, recall 0.433 (head alone 0.367). Integrated as bundle 0.4.0 (proposed ADR-013). Shift TTA gave no gain (EXP-027).
 - **EXP-026 (recording-level rule; fresh MIMII DUE gearbox evaluation, third use):** at about 9% false alarms, recall 0.254 (10 s) → 0.328 (30 s, spread 1.0) → 0.423 (60 s, spread 0.75); AUC 0.667 → 0.763 → 0.837. Pseudo-recordings from independent clips, so possibly optimistic.
 - **EXP-022 (fresh MIMII DUE gearbox evaluation sections 03–05, first use; no leakage):** app model own10 AUC 0.667, FPR 0.085 (max 0.097), recall 0.256. Patch-level candidates lower.

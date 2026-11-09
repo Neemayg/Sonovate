@@ -1280,7 +1280,7 @@ Status: **Complete: same spreads as gearbox (30 s: 1.00, 60 s: 0.75), selected o
 - **Conclusion:** bearing recordings use the ADR-012 spreads unchanged. Integrated as bundle `sonovate-ast-head` 0.4.0 (ADR-013).
 
 ### EXP-030 — Synthetic training data: nuisance-augmented normals and physically modelled pseudo-faults
-Status: **Planned (pre-registered before any synthetic data is generated).**
+Status: **Complete: no candidate carried (best H-aug +0.007 vs H-real); synthetic pseudo-faults lowered gearbox AUC and are rejected.** Pre-registered at `85beff5`; data generated on `4e4635f`, trained on `4e4635f`.
 - **Date:** 2026-11-09
 - **Research question:** Does training the condition head (ADR-010) with synthetic data improve anomaly ranking on *real* held-out recordings? (a) Normal clips with realistic recording-setup variation, labelled as their normal condition, to make the embedding ignore setup changes (the train/test session shift seen in EXP-001, EXP-005 and the ADR-012 end-to-end check). (b) Synthetic fault sounds used as outlier exposure, to push "not normal" away from every normal condition.
 - **Principle:** synthetic data is used **only for training**. All selection and confirmation use real recordings with real labels. Synthetic-fault detection rates are reported only as a sanity check, never as accuracy.
@@ -1313,9 +1313,24 @@ Status: **Planned (pre-registered before any synthetic data is generated).**
   - **No-regression rule:** the new head replaces the shipped one only if at least one machine type passes **and** the other is not lower than shipped by more than 0.005. Otherwise bundle 0.4.0 stays unchanged.
 - **Reproduction:** `uv run python -m ml.synth_head --config configs/synth_head.json --stage generate`, then `--stage train`, then `--stage confirm`.
 - **Artifacts path:** `artifacts/EXP-030/`
+- **Generated:** 5,404 S1 and 5,404 S2 clips (S2: rubbing 1,084, looseness 1,104, bearing impulses 1,079, gear whine 1,022, imbalance 1,115; S1 nuisances applied about 3,300 times each). Bundle-encoder features match the cached real features to 2.6e-4 relative.
+- **Results (real development data, own10 AUC, mean over seeds 0–2; all / bearing fusion / gearbox head):**
+
+  | Candidate | All | Bearing | Gearbox | Mean FPR (seed range) |
+  |---|---|---|---|---|
+  | shipped 0.4.0 | 0.820 | 0.859 | 0.780 | 0.093 |
+  | H-real | 0.821 | 0.858 | 0.784 | 0.091–0.093 |
+  | H-aug | 0.828 | 0.853 | 0.804 | 0.097–0.098 |
+  | H-oe | 0.805 | 0.857 | 0.754 | 0.097–0.102 |
+  | H-both | 0.802 | 0.852 | 0.752 | 0.102–0.105 |
+
+- **Error analysis:**
+  - **Synthetic pseudo-faults hurt.** Outlier exposure taught the head to separate the generators' additive signals from normal sound, and that did not match real faults: gearbox fell by about 0.03.
+  - **Setup-augmented normals helped gearbox on development** (+0.020 over H-real, every seed) and slightly lowered bearing.
+- **Conclusion:** no general change. The gearbox pattern was checked separately (EXP-031).
 
 ### EXP-031 — Setup-augmented head (H-aug) for gearboxes only (real fresh gearbox check)
-Status: **Planned (pre-registered after EXP-030's development run, before any held-out run).**
+Status: **Complete: not adopted. Gain on MIMII DUE evaluation (+0.016, 4/6) but a large loss on MIMII DUE development (−0.069, 0/6).** Pre-registered at `0931008`; run on `d74f4db`.
 - **Date:** 2026-11-09
 - **Why:** In EXP-030 no synthetic candidate met the overall rule (H-aug +0.007 vs H-real). Per machine type, H-aug raised gearbox development AUC from 0.784 (H-real) and 0.780 (shipped) to 0.804, consistently over seeds (0.802 to 0.806), and lowered bearing slightly (0.858 → 0.853). Pseudo-fault outlier exposure (H-oe, H-both) lowered gearbox to about 0.75 and is rejected. Choosing H-aug for gearboxes comes from development results, so it needs a real held-out check.
 - **Candidate:** the EXP-030 H-aug head, seed 0 (deterministic retrain), for **gearbox** machines only, scored as the head (k = 1 cosine). Bearing keeps the shipped 0.4.0 scoring (shipped head + fusion).
@@ -1324,3 +1339,14 @@ Status: **Planned (pre-registered after EXP-030's development run, before any he
 - **Adopt for gearboxes** if, on MIMII DUE evaluation, own10 AUC ≥ shipped + 0.010, ≥ 4 of 6 section-domain wins, mean FPR ≤ 0.10 and every section-domain ≤ 0.20, **and** MIMII DUE development own10 AUC is not lower than shipped. Otherwise gearboxes keep the shipped head.
 - **Reproduction:** `uv run python -m ml.synth_head --config configs/synth_head.json --stage gearbox_aug`
 - **Artifacts path:** `artifacts/EXP-031/`
+- **Results (real recordings, gearbox, N = 10):**
+
+  | Set | Shipped AUC | H-aug AUC | Shipped FPR / recall | H-aug FPR / recall |
+  |---|---|---|---|---|
+  | MIMII DUE evaluation 03–05 | 0.667 | 0.683 | 0.085 / 0.256 | 0.088 / 0.280 |
+  | MIMII DUE development 00–02 | 0.655 | 0.586 | 0.088 / 0.154 | 0.088 / 0.090 |
+
+  - Evaluation per section-domain (shipped → H-aug): 03 source 0.624 → 0.686, 04 source 0.732 → 0.731, 05 source 0.735 → 0.771, 03 target 0.669 → 0.672, 04 target 0.667 → 0.648, 05 target 0.576 → 0.589.
+  - Development: lower in all 6 (for example 01 target 0.756 → 0.656).
+- **Error analysis:** as with LoRA (EXP-020), reshaping the embedding on MIMII DG training data, here with synthetic setup variation, does not transfer reliably to another recording campaign. The two MIMII DUE sets disagree in direction, so the development gain is not robust.
+- **Conclusion:** the shipped bundle 0.4.0 stays. Synthetic training data built from MIMII DG did not improve real-world ranking. The generators (`ml/synthetic.py`) are kept for future use with real own-machine recordings, where setup augmentation can be checked against that machine's real data.
