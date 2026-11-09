@@ -1278,3 +1278,38 @@ Status: **Complete: same spreads as gearbox (30 s: 1.00, 60 s: 0.75), selected o
 
   - For comparison, the app score on the same held-out bearing set at 60 s (EXP-026): AUC 0.855, recall 0.367.
 - **Conclusion:** bearing recordings use the ADR-012 spreads unchanged. Integrated as bundle `sonovate-ast-head` 0.4.0 (ADR-013).
+
+### EXP-030 — Synthetic training data: nuisance-augmented normals and physically modelled pseudo-faults
+Status: **Planned (pre-registered before any synthetic data is generated).**
+- **Date:** 2026-11-09
+- **Research question:** Does training the condition head (ADR-010) with synthetic data improve anomaly ranking on *real* held-out recordings? (a) Normal clips with realistic recording-setup variation, labelled as their normal condition, to make the embedding ignore setup changes (the train/test session shift seen in EXP-001, EXP-005 and the ADR-012 end-to-end check). (b) Synthetic fault sounds used as outlier exposure, to push "not normal" away from every normal condition.
+- **Principle:** synthetic data is used **only for training**. All selection and confirmation use real recordings with real labels. Synthetic-fault detection rates are reported only as a sanity check, never as accuracy.
+- **Source audio:** MIMII DG `train` and `adaptation` normal clips only (5,404 clips, CC-BY-4.0). No test, validation, DCASE evaluation or MIMII DUE audio is used to generate data.
+- **S1, nuisance-augmented normals (one per training clip, label = the clip's condition class, seed = clip index):** a random subset (each with probability 0.6, at least one) of:
+  - gain change, uniform −6 to +6 dB;
+  - spectral tilt (microphone/placement EQ): a first-order shelving-like tilt of −6 to +6 dB across 100 Hz to 8 kHz, applied in the frequency domain;
+  - background noise: pink or brown noise at SNR 15 to 30 dB relative to the clip;
+  - room reverberation: exponentially decaying noise impulse response, RT60 0.1 to 0.6 s, wet mix 10 to 40%.
+  - Not used: pitch or speed changes, which are operating-condition changes the model must keep seeing.
+- **S2, physically modelled pseudo-faults (one per training clip, generator chosen uniformly, seed = clip index), added to the clip at the stated level relative to clip RMS:**
+  - *bearing defect impulses:* an impulse train at 30 to 250 Hz repetition (1% jitter), each impulse a damped sinusoid at a 1 to 6 kHz resonance with 1 to 5 ms decay, optionally amplitude-modulated at 5 to 30 Hz; −15 to −3 dB;
+  - *gear-mesh whine:* a harmonic series (fundamental 150 to 1,500 Hz, 3 harmonics at −6 dB steps) with sideband modulation at 5 to 40 Hz; −20 to −6 dB;
+  - *looseness rattle:* broadband knocks (5 to 20 ms, Hann-shaped noise) at Poisson rate 2 to 15 per second; −10 to 0 dB;
+  - *rubbing / friction:* band-limited noise centred at 2 to 6 kHz, bandwidth 0.5 to 2 kHz, slowly modulated at 0.5 to 3 Hz; −20 to −8 dB;
+  - *imbalance modulation:* the clip multiplied by 1 + m·sin(2πft), f 5 to 30 Hz, m 0.2 to 0.6.
+- **Features:** the shipped bundle's 4-layer AST, layer-4 frequency pooling (as ADR-010). Real clips use the EXP-013 cached layer-4 features (same computation).
+- **Candidates (head architecture and settings exactly as EXP-014; seeds 0, 1, 2):**
+  - **H-real:** retrained on real clips only (control for retraining noise).
+  - **H-aug:** real + S1.
+  - **H-oe:** real + outlier-exposure loss on S2: cross-entropy of S2 logits to the uniform distribution over classes, weight 0.5.
+  - **H-both:** real + S1 + S2 (OE).
+  - Feature standardisation uses real training clips only, for every candidate.
+- **Scoring in product terms:** gearbox = head embedding, k = 1 cosine; bearing = fusion of the head with the frozen feature (ADR-013).
+- **Development selection (MIMII DG `test`, own-baseline N = 10, 200 draws, seed 0, spread 1.5):** mean over seeds of the mean own10 AUC over the 12 section-domains. The best synthetic candidate is carried forward if it beats H-real by ≥ 0.010 and its mean FPR ≤ 0.10 with every section-domain ≤ 0.20.
+- **Real held-out confirmation (seed-0 model of the carried candidate against the shipped bundle 0.4.0):**
+  - gearbox: MIMII DUE gearbox evaluation 03–05 (fifth use) is decisive; MIMII DUE development 00–02 (fifth use) must not be lower;
+  - bearing: DCASE 2022 evaluation bearing (seventh use).
+  - **Per machine type, "pass"** = own10 AUC ≥ shipped + 0.010, ≥ 4 of 6 section-domain wins, mean FPR ≤ 0.10 and every section-domain ≤ 0.20.
+  - **No-regression rule:** the new head replaces the shipped one only if at least one machine type passes **and** the other is not lower than shipped by more than 0.005. Otherwise bundle 0.4.0 stays unchanged.
+- **Reproduction:** `uv run python -m ml.synth_head --config configs/synth_head.json --stage generate`, then `--stage train`, then `--stage confirm`.
+- **Artifacts path:** `artifacts/EXP-030/`
