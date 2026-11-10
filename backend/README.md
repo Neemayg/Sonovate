@@ -3,7 +3,7 @@
 FastAPI service with its own environment (separate from the root ML project).
 With `SONOVATE_BUNDLES_DIR` unset it has **no model**: `POST /v1/analyses` validates
 the request and the audio, then answers `503 no_validated_model` and stores nothing.
-With the bundles configured it serves `sonovate-ast-head` 0.3.1 (ADR-010 model, ADR-011 threshold spread 1.5) as a labelled
+With the bundles configured it serves `sonovate-ast-head` 0.4.0 (ADR-010 model, ADR-011 threshold spread 1.5, ADR-012 windows, ADR-013 bearing fusion) as a labelled
 research prototype (ADR-007): the first 4 layers of frozen AST, frequency-preserving pooling
 and a condition-classifier head give a 128-value embedding. A recording's score is its cosine
 distance to the nearest of the machine's own baseline embeddings, judged against a threshold

@@ -3,7 +3,7 @@
 import { useId, useState, type FormEvent } from "react";
 import { createRecording, type ContextInput, type Recording, type RecordingKind } from "@/lib/api";
 import { MODEL_INPUTS, RESERVED_INPUT_NAMES, rangeNotice, type MachineType } from "@/lib/modelInputs";
-import { checkWav } from "@/lib/wav";
+import { prepareRecording } from "@/lib/convert";
 import { ErrorMessage } from "./Status";
 
 type ContextRow = { key: number; name: string; value: string; unit: string };
@@ -59,6 +59,7 @@ export function UploadForm({ machineId, machineType, defaultKind = "analysis", o
   const [rows, setRows] = useState<ContextRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const uid = useId();
 
   function updateRow(key: number, patch: Partial<ContextRow>) {
@@ -71,7 +72,7 @@ export function UploadForm({ machineId, machineType, defaultKind = "analysis", o
     const form = new FormData(formEl);
     const file = form.get("file");
     if (!(file instanceof File) || file.size === 0) {
-      setError("Choose a WAV file to upload.");
+      setError("Choose a recording or video to upload.");
       return;
     }
     const typed = parseModelInputs(machineType, modelValues);
@@ -83,26 +84,27 @@ export function UploadForm({ machineId, machineType, defaultKind = "analysis", o
     const context = [...typed, ...other];
     setBusy(true);
     setError(null);
+    setStatus(null);
     try {
-      const wav = await checkWav(file);
-      if (!wav.ok) {
-        setError(wav.message);
-        return;
-      }
+      setStatus("Checking the recording…");
+      const prepared = await prepareRecording(file);
+      setStatus(prepared.note ? `${prepared.note} Uploading…` : "Uploading…");
       const recordedAtRaw = String(form.get("recorded_at") ?? "");
       const recording = await createRecording({
         machineId,
-        file,
-        wav: wav.info,
+        file: prepared.file,
+        wav: prepared.info,
         kind: String(form.get("kind")) as RecordingKind,
         recordedAt: recordedAtRaw ? new Date(recordedAtRaw).toISOString() : null,
         context,
       });
       formEl.reset();
+      setStatus(prepared.note);
       setRows([]);
       setModelValues({});
       onUploaded(recording);
     } catch (err) {
+      setStatus(null);
       setError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
       setBusy(false);
@@ -112,13 +114,26 @@ export function UploadForm({ machineId, machineType, defaultKind = "analysis", o
   return (
     <form className="form" onSubmit={handleSubmit} noValidate aria-describedby={`${uid}-help`}>
       <p id={`${uid}-help`} className="muted small">
-        WAV, 16 kHz, mono, 10 to 60 seconds, up to 2 MiB. Record 60 s per check: the result then uses six 10 s
-        windows and catches more problems. Baseline recordings use their first 10 s.
+        A recording or video of at least 10 s: WAV, MP3, M4A, or an MP4/MOV video with sound. Other formats are
+        converted to 16 kHz mono in your browser (the first 60 s are used) and only that audio is uploaded. Record
+        60 s per check: the result then uses six 10 s windows and catches more problems. Baseline recordings use
+        their first 10 s.
       </p>
       {error && <ErrorMessage>{error}</ErrorMessage>}
+      {status && !error && (
+        <p className="muted small" role="status">
+          {status}
+        </p>
+      )}
       <div className="field">
         <label htmlFor={`${uid}-file`}>Recording file</label>
-        <input id={`${uid}-file`} name="file" type="file" accept=".wav,audio/wav,audio/x-wav" required />
+        <input
+          id={`${uid}-file`}
+          name="file"
+          type="file"
+          accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.ogg,.opus,.mp4,.mov,.webm"
+          required
+        />
       </div>
       <div className="field-row">
         <div className="field">

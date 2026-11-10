@@ -15,6 +15,9 @@ Implemented so far:
 
 ```
 Browser (Next.js, publishable key + user session)
+  ├── Upload preparation  any audio or video the browser can decode (MP3, M4A, MP4/MOV, ...) is
+  │                       converted on the device to 16 kHz mono 16-bit WAV, first 60 s
+  │                       (src/lib/convert.ts); only that WAV is uploaded
   ├── Supabase Auth      email/password sign-in; Google OAuth when enabled
   ├── Supabase REST      machines, recordings, context readings (RLS)
   ├── Supabase Storage   private "recordings" bucket (RLS on objects)
@@ -30,9 +33,11 @@ Browser (Next.js, publishable key + user session)
         │   are embedded once from the audio and stored (secret key)
         ├── this machine's threshold: reused if the baseline set is unchanged,
         │   else recomputed from the baselines' leave-one-out distances (EXP-010)
-        └── embed recording -> cosine distance to nearest baseline -> log
-            -> decision; prediction stored (secret key)
-Model bundle (git-ignored, SONOVATE_BUNDLES_DIR) -> allow-list + sha256 checks -> AstBundleModel
+        └── embed each 10 s window -> distance to nearest baseline (bearing: head +
+            frozen fusion, ADR-013) -> log -> mean over windows -> decision against
+            the threshold for that many windows (ADR-012); prediction stored (secret key)
+Model bundle (git-ignored, SONOVATE_BUNDLES_DIR) -> allow-list + sha256 checks -> AstHeadBundleModel
+(gearbox) / FusionModel (bearing), bundle sonovate-ast-head 0.4.0
 ```
 
 ### Database (`supabase/migrations/`)

@@ -65,6 +65,13 @@ The app runs `sonovate-ast-head` 0.3.1 (ADR-010 model, ADR-011 threshold) from `
 - improve bearing, where ADR-010's gain is small;
 - Phase 5 timestamped data.
 
+## Integration status (2026-11-09)
+- Branch `claude/model-localisation` now also contains the UI branch (`claude/ui-landing-login-main-278b73`, PR #10): landing page, sign-in, dashboard, guide, machine insights, Listen & compare. It is the single complete branch; nothing is pushed or deployed.
+- Uploads accept audio and video: the browser converts them to 16 kHz mono WAV (first 60 s) before upload. Checked in the browser with a 44.1 kHz stereo WAV and an MP4 video.
+- `npm run seed:demo` now uses same-session baselines (30 per machine, MIMII DG test split) and adds 60 s checks; the earlier version used training-session baselines, which inflated false alarms.
+- Deployment files point at bundle 0.4.0; the Space staging script and the Linux test image were run (155 backend tests passed in the container).
+- Not done (needs the user): cloud deployment (accounts), recordings of real machines, choosing between the two demo seeders (`npm run seed:demo` for the app demo account, `ml/demo_seed.py` for `docs/DEMO.md`).
+
 ## Latest verified results
 - **EXP-030 / EXP-031 (synthetic training data):** physically modelled pseudo-faults lowered real gearbox AUC (about −0.03, rejected). Setup-augmented normals helped gearbox on development (+0.020) and on MIMII DUE evaluation (+0.016) but fell on MIMII DUE development (−0.069), so not adopted. Bundle 0.4.0 unchanged.
 - **EXP-028 / EXP-029 (bearing fusion, held-out DCASE 2022 bearing, reused):** own10 AUC 0.671 → 0.701 (6/6 wins); 60 s recordings AUC 0.889, FPR 0.087, recall 0.433 (head alone 0.367). Integrated as bundle 0.4.0 (proposed ADR-013). Shift TTA gave no gain (EXP-027).
