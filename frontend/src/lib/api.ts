@@ -30,6 +30,9 @@ export type Prediction = Tables["predictions"]["Row"] & {
 
 // Minimum baseline recordings before results are shown (ADR-007, EXP-005).
 export const BASELINE_REQUIRED = 10;
+// Recommended baseline recordings: more baselines catch more anomalies at the
+// same false-alarm level (ADR-011; EXP-012, EXP-017, EXP-020). Not enforced.
+export const BASELINE_RECOMMENDED = 30;
 
 export type RecordingDetail = Recording & {
   machines: Pick<Machine, "id" | "name" | "machine_type"> | null;
@@ -147,8 +150,12 @@ export type MachineOverview = Machine & {
   lastUploadAt: string | null;
   // The most recent stored result across the machine's recordings, if any.
   latest: { decision: string; created_at: string; recording_id: string } | null;
+  // Latest stored decision of each analysis recording, newest last, at most RECENT_RESULTS.
+  recent: { above: boolean; created_at: string; recording_id: string }[];
   alert: MachineAlert | null;
 };
+
+export const RECENT_RESULTS = 6;
 
 // ADR-009: machine alert when at least 2 of the last 3 analysed recordings
 // are above the machine's baseline threshold. Computed by the
@@ -209,7 +216,12 @@ export function summarise(row: Machine & Partial<Pick<OverviewRow, "recordings">
   const { recordings = [], ...machine } = row;
   let latest: MachineOverview["latest"] = null;
   let lastUploadAt: string | null = null;
+  const recent: MachineOverview["recent"] = [];
   for (const r of recordings) {
+    if (r.kind === "analysis" && r.predictions.length > 0) {
+      const p = r.predictions.reduce((a, b) => (b.created_at > a.created_at ? b : a));
+      recent.push({ above: p.decision === "above_threshold", created_at: p.created_at, recording_id: r.id });
+    }
     if (!lastUploadAt || r.created_at > lastUploadAt) lastUploadAt = r.created_at;
     for (const p of r.predictions) {
       if (!latest || p.created_at > latest.created_at) latest = { ...p, recording_id: r.id };
@@ -221,6 +233,7 @@ export function summarise(row: Machine & Partial<Pick<OverviewRow, "recordings">
     baselineCount: recordings.filter((r) => r.kind === "baseline").length,
     lastUploadAt,
     latest,
+    recent: recent.sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-RECENT_RESULTS),
     alert: null,
   };
 }
@@ -405,6 +418,89 @@ export async function listPredictions(recordingId: string): Promise<Prediction[]
     .order("created_at", { ascending: false });
   if (error) fail("Could not load analysis results.", error);
   return data as Prediction[];
+}
+
+// --- dashboard ----------------------------------------------------------------
+
+export type RecentAnalysis = {
+  id: string;
+  created_at: string;
+  decision: string;
+  score: number;
+  log_score: number | null;
+  threshold: number;
+  baseline_count: number | null;
+  recording_id: string;
+  machine: Pick<Machine, "id" | "name" | "machine_type"> | null;
+  model: { name: string; version: string } | null;
+};
+
+type RecentAnalysisRow = Omit<RecentAnalysis, "machine" | "model"> & {
+  recordings: { machines: Pick<Machine, "id" | "name" | "machine_type"> | null } | null;
+  model_versions: { name: string; version: string } | null;
+};
+
+// The most recent stored results across all of the user's machines, and how
+// many results there are in total. Read-only; RLS limits rows to the owner.
+export async function listRecentAnalyses(limit = 5): Promise<{ items: RecentAnalysis[]; total: number }> {
+  const { data, error, count } = await supabase()
+    .from("predictions")
+    .select(
+      "id, created_at, decision, score, log_score, threshold, baseline_count, recording_id, recordings(machines(id, name, machine_type)), model_versions(name, version)",
+      { count: "exact" },
+    )
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) fail("Could not load recent analyses.", error);
+  const rows = data as unknown as RecentAnalysisRow[];
+  return {
+    total: count ?? rows.length,
+    items: rows.map(({ recordings, model_versions, ...p }) => ({
+      ...p,
+      machine: recordings?.machines ?? null,
+      model: model_versions,
+    })),
+  };
+}
+
+export type ModelVersionInfo = Pick<
+  Tables["model_versions"]["Row"],
+  "name" | "version" | "preprocessing_version" | "evidence_ref" | "limitations" | "machine_type"
+>;
+
+// The product model (ADR-010 to ADR-013: 4-layer AST, frequency pooling, condition head;
+// bearings use the head + frozen-feature fusion), as registered in public.model_versions.
+// Its limitations are copied verbatim from the model bundle.
+export const PRODUCT_MODEL_NAME = "sonovate-ast-head";
+
+export async function getProductModel(): Promise<ModelVersionInfo | null> {
+  const { data, error } = await supabase()
+    .from("model_versions")
+    .select("name, version, preprocessing_version, evidence_ref, limitations, machine_type")
+    .eq("name", PRODUCT_MODEL_NAME)
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) fail("Could not load the model details.", error);
+  return data;
+}
+
+export type ServiceStatus = "online" | "unreachable" | "not_configured";
+
+// Pings the inference service's public health endpoint. It says only whether
+// analysis requests can currently reach the service.
+export async function checkAnalysisService(timeoutMs = 4000): Promise<ServiceStatus> {
+  if (!INFERENCE_API_URL) return "not_configured";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${INFERENCE_API_URL}/v1/health`, { signal: controller.signal });
+    return res.ok ? "online" : "unreachable";
+  } catch {
+    return "unreachable";
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // --- inference service ------------------------------------------------------

@@ -1,0 +1,15 @@
+{
+  "data_config": "configs/mimii_dg.json",
+  "backend_url": "http://localhost:8020",
+  "output": "artifacts/demo",
+  "seed": 0,
+  "baselines": 30,
+  "normal_tests": 10,
+  "anomaly_tests": 10,
+  "notes": "DEMO DATA. Recordings are from the public MIMII DG dataset (Dohi et al., 2022; Zenodo 6529888; CC-BY-4.0), test split, which the model was not trained on. Clips were chosen at random (seed 0). File names show the true label (normal_ / anomaly_). Test recordings were uploaded normal first, then anomalous, to simulate a fault starting part-way.",
+  "machines": [
+    {"name": "Demo · Bearing A (MIMII DG bearing 02, new conditions)", "machine": "bearing", "section": "02", "domain": "target"},
+    {"name": "Demo · Gearbox (MIMII DG gearbox 00, familiar conditions)", "machine": "gearbox", "section": "00", "domain": "source"},
+    {"name": "Demo · Bearing B (MIMII DG bearing 01, hard case)", "machine": "bearing", "section": "01", "domain": "source"}
+  ]
+}

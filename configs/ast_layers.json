@@ -1,0 +1,23 @@
+{
+  "experiment": "EXP-013",
+  "data_config": "configs/mimii_dg.json",
+  "output": "artifacts/EXP-013",
+  "machines": ["bearing", "gearbox"],
+  "encoder": {
+    "model_id": "MIT/ast-finetuned-audioset-10-10-0.4593",
+    "device": "mps",
+    "batch_size": 8,
+    "layers": 13,
+    "dim": 768
+  },
+  "freq_layers": [4, 6, 8, 10, 12],
+  "baseline": {
+    "clips": 10,
+    "spread": 2.0,
+    "repeats": 200,
+    "seed": 0
+  },
+  "max_fpr": 0.1,
+  "incumbent": "mean/L12/raw",
+  "min_gain": 0.01
+}

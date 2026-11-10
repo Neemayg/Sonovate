@@ -1,4 +1,4 @@
-"""Versioned model bundles (ADR-007, ADR-008).
+"""Versioned model bundles (ADR-007, ADR-008, ADR-010, ADR-011).
 
 A bundle is a directory exported by the ML side holding `bundle.json` (the
 spec), the model files and parity WAVs. This service reimplements each
@@ -9,11 +9,14 @@ of `bundle.json`, and `bundle.json` in turn pins the sha256 of every other
 file, so changing any byte of a bundle stops it loading. The environment may
 only say which directory holds the bundles.
 
-Two kinds exist:
-* ``ast``: frozen AST with nearest-neighbour scoring (app/ast_bundle.py),
-  the product model since ADR-008 and the only one allow-listed.
-* ``autoencoder``: the earlier per-type autoencoders (this module). Their
-  code is kept and tested, but they are not on the default allow-list.
+Three kinds exist:
+* ``ast_head``: AST layer-4 frequency pooling with a condition-classifier
+  head (app/ast_head_bundle.py), the product model since ADR-010 and the
+  only one allow-listed.
+* ``ast``: frozen last-layer AST (app/ast_bundle.py), the ADR-008 model.
+* ``autoencoder``: the earlier per-type autoencoders (this module).
+The superseded kinds keep their code and tests but are not on the default
+allow-list.
 """
 
 from __future__ import annotations
@@ -43,7 +46,7 @@ logger = logging.getLogger("sonovate.inference")
 class AllowedBundle:
     name: str
     version: str
-    kind: Literal["ast", "autoencoder"]
+    kind: Literal["ast_head", "ast", "autoencoder"]
     machine_types: frozenset[str]
     bundle_json_sha256: str
     # Must match the row seeded in public.model_versions (supabase/seed.sql).
@@ -54,6 +57,42 @@ class AllowedBundle:
         return f"{self.name}-{self.version}"
 
 
+# ADR-013: as 0.3.1, with bearing scored by the head + frozen-feature fusion
+# (EXP-028, EXP-029). Weights identical to 0.3.0 and 0.3.1.
+AST_HEAD_BUNDLE = AllowedBundle(
+    name="sonovate-ast-head",
+    version="0.4.0",
+    kind="ast_head",
+    machine_types=frozenset({"bearing", "gearbox"}),
+    bundle_json_sha256="7cea99e786dc2e3d0899f8718ed706d760d2d17c1e5e714e0971038d566b9c7c",
+    model_version_id=uuid.UUID("5e1d0000-0000-4000-8000-00000000b006"),
+)
+
+# ADR-010 model with the ADR-011 threshold (spread 1.5): AST layer-4 frequency
+# pooling + condition head (app/ast_head_bundle.py). Superseded by 0.4.0 (ADR-013).
+AST_HEAD_BUNDLE_0_3_1 = AllowedBundle(
+    name="sonovate-ast-head",
+    version="0.3.1",
+    kind="ast_head",
+    machine_types=frozenset({"bearing", "gearbox"}),
+    bundle_json_sha256="675e414533e29626d2ae8b1c76ae5a4bddf790aff89a5024282bd6477e14c88a",
+    model_version_id=uuid.UUID("5e1d0000-0000-4000-8000-00000000b005"),
+)
+
+# Superseded by 0.3.1 (ADR-011, threshold spread 2.0 -> 1.5); kept so it stays
+# loadable for comparison. Never loaded unless passed to BundleRegistry explicitly.
+AST_HEAD_BUNDLE_0_3_0 = AllowedBundle(
+    name="sonovate-ast-head",
+    version="0.3.0",
+    kind="ast_head",
+    machine_types=frozenset({"bearing", "gearbox"}),
+    bundle_json_sha256="5957de2ffbe5d10ac3e2352573d332ec4b6ed907fcdb7d5780370b30765e3779",
+    model_version_id=uuid.UUID("5e1d0000-0000-4000-8000-00000000b004"),
+)
+
+# Superseded by AST_HEAD_BUNDLE (ADR-010). Kept so the code and its parity tests
+# stay usable and older predictions keep their meaning; never loaded unless passed
+# to BundleRegistry explicitly.
 AST_BUNDLE = AllowedBundle(
     name="sonovate-ast-knn",
     version="0.2.0",
@@ -84,7 +123,7 @@ AUTOENCODER_BUNDLES: tuple[AllowedBundle, ...] = (
     ),
 )
 
-ALLOWED_BUNDLES: tuple[AllowedBundle, ...] = (AST_BUNDLE,)
+ALLOWED_BUNDLES: tuple[AllowedBundle, ...] = (AST_HEAD_BUNDLE,)
 
 # The only preprocessing this module implements. A bundle declaring anything
 # else is refused rather than scored with the wrong features.
@@ -205,10 +244,11 @@ def _require(condition: bool, message: str) -> None:
         raise BundleError(message)
 
 
-# Experiments each kind of bundle must cite (ADR-007, ADR-008).
+# Experiments each kind of bundle must cite (ADR-007, ADR-008, ADR-010).
 REQUIRED_EVIDENCE = {
     "autoencoder": {"EXP-002", "EXP-005"},
     "ast": {"EXP-007", "EXP-009", "EXP-010"},
+    "ast_head": {"EXP-013", "EXP-014", "EXP-016"},
 }
 
 
@@ -305,14 +345,19 @@ class BundleRegistry:
                 logger.warning("model bundle %s not found; %s have no model", entry.directory_name,
                                ", ".join(sorted(entry.machine_types)))
                 continue
-            if entry.kind == "ast":
+            if entry.kind == "ast_head":
+                from app.ast_head_bundle import load_ast_head_bundle  # imports transformers; only when needed
+
+                model: AnomalyModel = load_ast_head_bundle(directory, entry)
+            elif entry.kind == "ast":
                 from app.ast_bundle import load_ast_bundle  # imports transformers; only when needed
 
-                model: AnomalyModel = load_ast_bundle(directory, entry)
+                model = load_ast_bundle(directory, entry)
             else:
                 model = load_bundle(directory, entry)
             for machine_type in entry.machine_types:
-                self._models[machine_type] = model
+                pick = getattr(model, "for_machine_type", None)
+                self._models[machine_type] = pick(machine_type) if pick else model
             logger.info("loaded model bundle %s", entry.directory_name)
 
     def has_any_model(self) -> bool:

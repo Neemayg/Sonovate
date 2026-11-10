@@ -1,0 +1,30 @@
+{
+  "bundles_dir": "artifacts/bundles",
+  "source": "sonovate-ast-head-0.3.1",
+  "name": "sonovate-ast-head",
+  "changes": {
+    "version": "0.4.0",
+    "status": "research prototype (ADR-007, ADR-010, ADR-011, ADR-012, ADR-013)",
+    "evidence": ["EXP-013", "EXP-014", "EXP-016", "EXP-017", "EXP-020", "EXP-022", "EXP-026", "EXP-028", "EXP-029"],
+    "threshold_spread": 1.5,
+    "add": {
+      "scoring": {
+        "gearbox": "head",
+        "bearing": "fusion"
+      },
+      "fusion": {
+        "evidence": ["EXP-027", "EXP-028", "EXP-029"],
+        "frozen_embedding": "the encoder feature (9216 values) standardised with head.npz feature_mean / feature_std, then L2-normalised",
+        "embedding": "concatenation of the 128-value head embedding and the 9216-value frozen embedding",
+        "score": "z(log d_head) + z(log d_frozen), each d the cosine distance to the nearest baseline and each z standardised by the mean and population std of that part's baseline leave-one-out log distances; reported as exp(z-sum) so the threshold rule applies unchanged"
+      }
+    },
+    "limitations": [
+      "Validated only on lab bearings and gearboxes with induced faults (MIMII DG, DCASE 2022, MIMII DUE); other machines are out of scope.",
+      "Gearbox: on a fresh recording setup (MIMII DUE evaluation data) with 10 baselines it ranked anomalies at AUC 0.67 and caught about 26% of anomalies in single 10 s clips at about 9% false alarms; 60 s recordings caught about 42% (EXP-022, EXP-026).",
+      "Bearing: scored with a fusion of two embeddings, AUC 0.70 vs 0.67 before on held-out DCASE 2022 bearing data; 60 s recordings caught about 43% at about 9% false alarms (EXP-028, EXP-029). That bearing set had been used before, and no untouched bearing test exists.",
+      "Most anomalies in a single 10 s clip are missed. Recording 60 s per check and 30 baselines catches more (EXP-017, EXP-026).",
+      "Below threshold does not mean healthy."
+    ]
+  }
+}

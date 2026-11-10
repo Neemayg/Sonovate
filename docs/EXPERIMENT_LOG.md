@@ -573,3 +573,780 @@ Status: **Complete: R3 (2 of the last 3) selected; false alerts controllable, de
   - Use R3 for any over-time machine alert in the app; never R1. Label it as based on simulation.
   - With the current detector, over-time alerts will miss most faults, and the app must say so.
   - Real value here depends on a stronger detector (Phase 9 fine-tuning) and on real timestamped recordings to validate the rule.
+
+### EXP-012 — Number of baseline recordings and the sensitivity curve (development)
+Status: **Complete: rule met (more baselines rank better); recall at the app threshold does not rise.** The plan below was written into the log before the run, but it was not committed separately. The run used `ec3d130` plus the uncommitted EXP-012 files. It checks the app setup (ADR-008); it is not a new model comparison.
+- **Date:** 2026-11-07
+- **Research question:** In the app, AST compares a new recording with a machine's own baseline recordings. Does using more baselines (5, 10, 20, 30) improve detection? And what does the trade-off between false alarms and recall look like as the threshold setting changes?
+- **Hypothesis:** AUC rises with more baselines, with smaller gains after 20. The spread of false-positive rates across draws narrows. At the app's threshold (spread 2.0), recall changes little, because the threshold rises along with ranking quality.
+- **Dataset/version:** MIMII DG development set (`test` role), using the EXP-007 AST embeddings (`artifacts/EXP-007/embeddings_ast.npz`). The DCASE 2022 evaluation data is not reused.
+- **Split protocol:** For each section, domain and draw (200 draws, seed 0), shuffle that pool's 50 normal clips once:
+  - The first 20 are evaluation normals, the same for every baseline size in that draw.
+  - Baselines of 5, 10, 20 and 30 are nested, taken in order from the other 30 clips, so baseline and evaluation clips never overlap.
+  - All 50 anomaly clips are scored.
+  - A 50-clip baseline is not possible: each pool has only 50 normal clips, and some must be left for evaluation.
+- **Model and configuration:** As EXP-010: score = k = 1 cosine distance to the baseline. The threshold is mean + spread × standard deviation of the baseline clips' leave-one-out log scores.
+- **Threshold sweep:** spread ∈ {0, 0.5, 1, 1.5, 2, 2.5, 3}; the app uses 2.0.
+- **Metrics:**
+  - Per section-domain and size: mean AUC, pAUC (FPR 0–0.1), and FPR and recall at spread 2.0 with 5th–95th percentile ranges.
+  - Paired AUC gain against 10 baselines, per draw.
+  - Sensitivity curve: mean FPR and recall at each spread, averaged over the 12 section-domains.
+- **Decision rule (fixed in advance):** If the mean AUC gain over 10 baselines is 0.02 or more at 20 or 30 baselines, propose that the app recommend more baselines. Any app change remains a proposal needing approval. No threshold setting is selected from this run.
+- **Reproduction command/config path:** `uv run python -m ml.baseline_size --config configs/baseline_size.json`
+- **Artifacts path:** `artifacts/EXP-012/`
+- **Results:** Means over 200 draws per section-domain. Full per-section table: `artifacts/EXP-012/SUMMARY.txt`.
+
+  | Baselines | Mean AUC | ΔAUC vs 10 (paired) | Mean pAUC | FPR at spread 2.0 | Recall at spread 2.0 |
+  |---|---|---|---|---|---|
+  | 5 | 0.671 | −0.044 | 0.157 | 0.082 | 0.134 |
+  | 10 | 0.716 | — | 0.180 | 0.047 | 0.097 |
+  | 20 | 0.753 | +0.037 | 0.206 | 0.035 | 0.079 |
+  | 30 | 0.770 | +0.054 | 0.220 | 0.033 | 0.074 |
+
+  Sensitivity curve, mean FPR / recall over the 12 section-domains:
+
+  | Spread | 5 | 10 | 20 | 30 |
+  |---|---|---|---|---|
+  | 0.0 | 0.455 / 0.677 | 0.492 / 0.807 | 0.496 / 0.870 | 0.494 / 0.890 |
+  | 0.5 | 0.326 / 0.518 | 0.326 / 0.615 | 0.323 / 0.702 | 0.321 / 0.742 |
+  | 1.0 | 0.206 / 0.339 | 0.183 / 0.370 | 0.173 / 0.417 | 0.172 / 0.458 |
+  | 1.5 | 0.127 / 0.209 | 0.093 / 0.191 | 0.081 / 0.194 | 0.081 / 0.201 |
+  | 2.0 | 0.082 / 0.134 | 0.047 / 0.097 | 0.035 / 0.079 | 0.033 / 0.074 |
+  | 2.5 | 0.057 / 0.093 | 0.025 / 0.048 | 0.014 / 0.029 | 0.011 / 0.022 |
+  | 3.0 | 0.041 / 0.066 | 0.013 / 0.026 | 0.006 / 0.010 | 0.004 / 0.006 |
+
+- **Error analysis:**
+  - **Ranking improves with more baselines everywhere.** Mean AUC rose from 10 to 30 baselines in all 12 section-domains:
+    - The largest gain was bearing 00 target, 0.687 → 0.801.
+    - The smallest was gearbox 01 target, 0.634 → 0.658.
+    - Per draw the gain is noisy: the 5th percentile is below zero in 11 of 12 section-domains at 30 baselines, so a single machine's baseline set can be unlucky.
+  - **False alarms become steadier.** The 95th-percentile FPR at spread 2.0 in gearbox 00 target fell from 0.25 (10 baselines) to 0.10 (30). With 5 baselines, single draws reach 0.30–0.40.
+  - **At the app's threshold, recall falls rather than rises** (0.097 → 0.074). With more baselines the leave-one-out threshold becomes stricter, which cancels the better ranking. At a given FPR, the curve for 30 baselines is above the one for 10. For example, 30 baselines at spread 1.5 give FPR 0.081 / recall 0.201, against 10 baselines at spread 2.0 with 0.047 / 0.097. That is a different operating point, not a free gain.
+  - **5 baselines is clearly worse** on every measure. That supports keeping at least 10.
+- **Limitations:**
+  - Development data, used before for selection. Baseline, evaluation normals and anomalies come from the same pool, which favours same-domain baselines (as in EXP-010).
+  - Only 20 evaluation normals per draw, so each FPR estimate moves in steps of 0.05.
+  - 50 baselines could not be tested.
+  - The spread values on the curve were not selected; choosing one from this run would be tuning on development data.
+- **Conclusion / next experiment:**
+  - Rule met: propose that the app *recommend* 20–30 baseline recordings while keeping the minimum of 10. This is a proposal, not yet a decision.
+  - More baselines alone do not raise recall at the current threshold rule. A rule that adapts the spread to the baseline count, for example one targeting a fixed FPR, would need its own pre-registered experiment and a fresh held-out check before any claim.
+
+### EXP-013 — Frozen AST layer and pooling sweep (development selection)
+Status: **Complete: layer 4 with frequency-preserving pooling selected (own10 AUC +0.069 over the incumbent).** This plan was written into the log before the run, but not committed separately. The run used `0f03cbd` plus the uncommitted EXP-013 files. Phase 9, step 1: cheap, frozen improvements before any fine-tuning.
+- **Date:** 2026-11-07
+- **Research question:** The app uses AST's last-layer patch-token mean. Do other layers, the class tokens, a frequency-preserving pooling, or centring the embeddings rank anomalies better in the app setup?
+- **Hypothesis:** A middle layer, or frequency-preserving pooling, beats the last-layer mean. Last-layer AudioSet features are tuned to sound-event classes, while machine faults show up as fine spectral changes. Centring helps cosine kNN, because transformer embeddings share a large common direction.
+- **Dataset/version:** MIMII DG bearing and gearbox (development `test` role; `train` and `adaptation` roles as references). The DCASE 2022 evaluation data is not used.
+- **Features (AST `MIT/ast-finetuned-audioset-10-10-0.4593`, frozen):**
+  - For each of the 13 hidden states (embedding output plus 12 layers): the mean of patch tokens, and the mean of the 2 class tokens.
+  - For layers 4, 6, 8, 10 and 12: frequency-preserving pooling, the mean over time for each of the 12 rows of frequency patches (12 × 768 = 9,216 values).
+  - The average of all 13 layers' patch means.
+  - Each feature is used raw, or centred by subtracting the machine's mean over its `train`-role clips only. Then L2-normalized.
+- **Protocols:**
+  - own10 (primary): as EXP-010. 10 baseline normals from the same section-domain, k = 1 cosine distance, leave-one-out threshold at spread 2.0, 200 draws, seed 0.
+  - full (secondary): as EXP-007. References are the section's training clips; score = smaller of source and target k = 1 distances.
+- **Metrics:** Mean own10 AUC, FPR and recall over the 12 section-domains; mean full AUC and pAUC (FPR ≤ 0.1).
+- **Selection rule (fixed in advance):** Pick the candidate with the highest mean own10 AUC. It replaces the incumbent (`mean/L12/raw`, the current app feature) only if it gains 0.01 or more; otherwise keep the incumbent.
+  - The incumbent must reproduce EXP-007 AST k1 (full mean AUC 0.673) as a sanity check.
+  - About 60 candidates are compared on a development set used many times before. The winner's development figure is therefore optimistic, and only a held-out check can support a claim.
+- **Reproduction command/config path:** `uv run python -m ml.ast_layers --config configs/ast_layers.json --stage embed`, then `--stage develop`.
+- **Artifacts path:** `artifacts/EXP-013/`
+- **Results:** Development set, means over the 12 section-domains. own10 FPR and recall are at spread 2.0. Top 5, the incumbent and selected others; all 61 candidates are in `artifacts/EXP-013/DEVELOP_SUMMARY.txt`.
+
+  | Candidate | own10 AUC | own10 FPR | own10 recall | full AUC | full pAUC |
+  |---|---|---|---|---|---|
+  | **freq/L4/raw (selected)** | **0.789** | **0.040** | **0.213** | 0.682 | 0.243 |
+  | freq/L4/centered | 0.785 | 0.039 | 0.210 | 0.681 | 0.205 |
+  | freq/L12/centered | 0.777 | 0.037 | 0.171 | 0.665 | 0.185 |
+  | freq/L6/centered | 0.772 | 0.039 | 0.190 | 0.676 | 0.182 |
+  | freq/L12/raw | 0.772 | 0.043 | 0.161 | 0.664 | 0.168 |
+  | mean/L4/raw | 0.760 | 0.048 | 0.185 | 0.701 | 0.240 |
+  | mean/L12/raw (incumbent) | 0.719 | 0.048 | 0.103 | 0.675 | 0.142 |
+  | cls/L12/raw | 0.671 | 0.047 | 0.080 | 0.630 | 0.117 |
+
+  own10 AUC per section-domain, incumbent → selected:
+
+  | Section | Source | Target |
+  |---|---|---|
+  | bearing 00 | 0.745 → 0.885 | 0.681 → 0.805 |
+  | bearing 01 | 0.648 → 0.777 | 0.646 → 0.814 |
+  | bearing 02 | 0.764 → 0.965 | 0.858 → 0.997 |
+  | gearbox 00 | 0.846 → 0.845 | 0.689 → 0.702 |
+  | gearbox 01 | 0.686 → 0.663 | 0.624 → 0.589 |
+  | gearbox 02 | 0.776 → 0.718 | 0.670 → 0.701 |
+
+- **Sanity check:** the incumbent's full mean AUC is 0.675, against 0.673 in EXP-007. The small difference comes from float16 storage and a separate embedding pass, so this counts as reproduced. Layer-0 class tokens are fixed parameters, identical for every clip, so they were skipped.
+- **Error analysis:**
+  - **Frequency-preserving pooling beats patch averaging at every layer tested.** Averaging over frequency throws away where the energy sits, and that matters for machine sounds.
+  - **Earlier layers beat the last one.** For patch means, ranking peaks at layer 4 (0.760) and falls towards layer 12 (0.719). Last-layer AudioSet features are tuned to event classes.
+  - **The gain is in bearing.** Every bearing section-domain improves by 0.12–0.20 AUC. Gearbox is mixed: it improves on 00 target and 02 target, and gets worse on 01 (−0.02 / −0.04) and 02 source (−0.06).
+  - **Recall at the app threshold doubles** (0.103 → 0.213) at a similar FPR (0.048 → 0.040).
+  - **Centring does not help** the selected feature.
+  - **Class tokens are worst at every layer.**
+- **Limitations:**
+  - Best of 61 candidates on a development set used many times, so the 0.789 is optimistic.
+  - Frequency pooling was tested only at layers 4–12, not below layer 4.
+  - Gearbox does not benefit on average.
+  - A held-out check is required before any claim.
+- **Reproduction command/config path:** `uv run python -m ml.ast_layers --config configs/ast_layers.json --stage embed`, then `--stage develop`.
+- **Conclusion / next experiment:** Carry `freq/L4/raw` forward. As a bonus, it needs only AST's first 4 layers, which makes the app's inference about 3 times cheaper. Next: EXP-014 trains a condition-classifier head on this feature.
+
+### EXP-014 — Condition-classifier head on the selected frozen feature (development)
+Status: **Complete: rule met (own10 AUC +0.017), but the head and the frozen feature are strong on different machines.** This plan was written into the log before the run, but not committed separately. The run used `0f03cbd` plus the uncommitted files. Phase 9, step 2 (`docs/TRAINING_PLAN.md` step 4, using a trained head instead of LoRA).
+- **Date:** 2026-11-07
+- **Research question:** Does training a small head to classify machine, section and operating condition, using normal training clips only, give an embedding that ranks anomalies better than the frozen feature?
+- **Hypothesis:** It helps where condition changes hide faults (gearbox, target domains), because the head learns which parts of the sound vary with the operating setting.
+- **Dataset/version:** MIMII DG bearing and gearbox.
+  - Training: the `train` and `adaptation` roles (46 classes = machine × section × attribute values).
+  - Monitoring: the `validation` role.
+  - Scoring: the development `test` role. Test clips are never used in training.
+- **Inputs:** `freq/L4/raw` from EXP-013 (9,216 values), standardized with statistics from training clips only.
+- **Model and configuration:**
+  - Linear(9216→512), BatchNorm, ReLU, Dropout 0.2, Linear(512→128), L2-normalized.
+  - A cosine classifier with scale 16 and additive margin 0.2 (CosFace).
+  - Cross-entropy weighted by inverse-square-root class frequency.
+- **Training details / random seed:** AdamW (lr 1e-3, weight decay 1e-3), batch 128, 60 epochs, seeds 0, 1 and 2. All settings are fixed in advance and not tuned.
+- **Metrics:** As EXP-013 (own10 primary, full secondary), averaged over the 3 seeds.
+- **Selection rule (fixed in advance):** Adopt the head only if its 3-seed mean own10 AUC beats the frozen `freq/L4/raw` (0.789) by 0.01 or more. Otherwise keep the frozen feature, which needs no training.
+- **Reproduction command/config path:** `uv run python -m ml.attribute_head --config configs/attribute_head.json`
+- **Artifacts path:** `artifacts/EXP-014/`
+- **Results:** Development set, 3-seed means. Validation accuracy at the last epoch: 0.966, 0.992, 0.973.
+
+  | Section / domain | Frozen own10 | Head own10 | Frozen full | Head full |
+  |---|---|---|---|---|
+  | bearing 00 source | 0.885 | 0.800 | 0.628 | 0.500 |
+  | bearing 00 target | 0.805 | 0.791 | 0.680 | 0.736 |
+  | bearing 01 source | 0.777 | 0.683 | 0.576 | 0.474 |
+  | bearing 01 target | 0.814 | 0.728 | 0.858 | 0.822 |
+  | bearing 02 source | 0.965 | 0.968 | 0.482 | 0.844 |
+  | bearing 02 target | 0.997 | 0.987 | 0.492 | 0.463 |
+  | gearbox 00 source | 0.845 | 0.826 | 0.895 | 0.705 |
+  | gearbox 00 target | 0.702 | 0.730 | 0.676 | 0.727 |
+  | gearbox 01 source | 0.663 | 0.761 | 0.781 | 0.577 |
+  | gearbox 01 target | 0.589 | 0.771 | 0.589 | 0.536 |
+  | gearbox 02 source | 0.718 | 0.808 | 0.799 | 0.852 |
+  | gearbox 02 target | 0.701 | 0.810 | 0.726 | 0.696 |
+  | **Mean** | 0.789 | **0.805** | **0.682** | 0.661 |
+
+  own10 at spread 2.0: FPR 0.039, recall 0.217 (frozen: 0.040 and 0.213).
+- **Error analysis:**
+  - **The two systems are complementary.**
+    - The head gains on every gearbox section-domain except 00 source, by up to +0.18 (01 target).
+    - It loses on bearing 00 and 01, by up to −0.09.
+    - Learning to separate operating settings helps where the setting changes the sound strongly (gearbox voltage and weight). It hurts where bearing faults resemble a speed change.
+  - **With full references the head is worse** (0.661 vs 0.682). That protocol is not the product setup.
+- **Limitations:** Development set, used before; three seeds; settings not tuned.
+- **Conclusion / next experiment:** The head is adopted by the rule. Because the two systems are strong in different places, EXP-015 tests fusing their scores in the app setup.
+
+### EXP-015 — Fused frozen + head scores in the app setup (development)
+Status: **Complete: rule not met (+0.008); the head (EXP-014) stays selected.** This plan was written into the log before the run, but not committed separately.
+- **Date:** 2026-11-07
+- **Research question:** Does adding the standardized scores of the frozen `freq/L4/raw` feature and the EXP-014 head beat either one alone?
+- **Method:**
+  - Each system's baseline is the same 10 clips, with the same 200 draws and seed 0 as own10.
+  - Each system's log score is standardized by the mean and standard deviation of that system's baseline leave-one-out log scores, and the two are summed.
+  - Threshold = mean + 2 standard deviations of the fused leave-one-out scores. It uses only the baseline, so the app can do this.
+  - The head is retrained with seeds 0–2, as in EXP-014.
+- **Selection rule (fixed in advance):** Adopt fusion if its 3-seed mean own10 AUC beats the best single system (0.805, the head) by 0.01 or more. Otherwise keep the head.
+- **Reproduction command/config path:** `uv run python -m ml.fusion --config configs/fusion.json`
+- **Artifacts path:** `artifacts/EXP-015/`
+- **Results:** 3-seed means, own10 protocol.
+
+  | Section / domain | Frozen | Head | Fused | Fused FPR | Fused recall |
+  |---|---|---|---|---|---|
+  | bearing 00 source | 0.885 | 0.800 | 0.864 | 0.049 | 0.102 |
+  | bearing 00 target | 0.805 | 0.791 | 0.807 | 0.039 | 0.061 |
+  | bearing 01 source | 0.777 | 0.683 | 0.741 | 0.015 | 0.037 |
+  | bearing 01 target | 0.814 | 0.728 | 0.792 | 0.037 | 0.100 |
+  | bearing 02 source | 0.965 | 0.968 | 0.979 | 0.041 | 0.605 |
+  | bearing 02 target | 0.997 | 0.987 | 0.996 | 0.083 | 0.983 |
+  | gearbox 00 source | 0.845 | 0.826 | 0.851 | 0.052 | 0.206 |
+  | gearbox 00 target | 0.702 | 0.730 | 0.734 | 0.038 | 0.052 |
+  | gearbox 01 source | 0.663 | 0.761 | 0.730 | 0.043 | 0.141 |
+  | gearbox 01 target | 0.589 | 0.771 | 0.711 | 0.058 | 0.135 |
+  | gearbox 02 source | 0.718 | 0.808 | 0.768 | 0.026 | 0.308 |
+  | gearbox 02 target | 0.701 | 0.810 | 0.788 | 0.032 | 0.080 |
+  | **Mean** | 0.789 | 0.805 | 0.813 | 0.043 | 0.234 |
+
+- **Error analysis:** Fusion lands between the two systems in most section-domains instead of taking the better one, so its average gain is small (+0.008). By the rule set in advance, the head stays selected.
+- **Conclusion / next experiment:** Do not adopt fusion. The development choice is the EXP-014 head. EXP-016 checks it on held-out data.
+
+### EXP-016 — Held-out check: incumbent vs layer-4 frozen feature vs condition head
+Status: **Complete: the head is better than the incumbent on held-out data (own10 AUC +0.121, 11/12 wins; official +0.090, 95% +0.071 to +0.121).** This plan was written into the log before the evaluation clips were embedded, but not committed separately. The run used `0f03cbd` plus the uncommitted Phase 9 files.
+- **Date:** 2026-11-07
+- **Test data:** DCASE 2022 evaluation sections 03–05 of bearing and gearbox (`data/raw/dcase2022_eval/`; non-commercial, evaluation only).
+  - **This is the second use of this set.** The first was EXP-009, which compared AST with the autoencoder.
+  - None of EXP-012 to EXP-015 looked at this set.
+  - Its training clips serve only as references in the official protocol, never as training data.
+- **Systems, all fixed before this run:**
+  - incumbent: `mean/L12/raw`, the current app feature.
+  - frozen: `freq/L4/raw`, the EXP-013 selection.
+  - head: the EXP-014 head, trained on MIMII DG `train`/`adaptation` clips with the same settings and seeds 0–2. The head never saw sections 03–05, so this also tests whether it generalizes to new sections.
+- **Protocols:**
+  - own10 (primary): as EXP-010, using the test normals of each section-domain.
+  - official (secondary): DCASE 2022 domain AUC with the sections' training clips as references, as EXP-009, plus a 95% bootstrap interval for the mean difference (2,000 samples, seed 0).
+- **Decision rule (fixed in advance), separately for head and frozen against the incumbent:**
+  - "Better" requires mean own10 AUC above the incumbent's and a higher AUC in at least 8 of the 12 section-domains.
+  - The official interval is reported alongside.
+  - Primary comparison: head vs incumbent, which follows the development selection chain. Frozen vs incumbent is secondary.
+  - This run selects nothing further. The result decides what can be proposed for the app.
+- **Sanity check:** the incumbent's official mean AUC should be about 0.678, as in EXP-009.
+- **Reproduction command/config path:** `uv run python -m ml.heldout_eval --config configs/heldout_eval.json --stage embed`, then `--stage evaluate`.
+- **Artifacts path:** `artifacts/EXP-016/`
+- **Results:** DCASE 2022 evaluation sections 03–05. Head figures are 3-seed means.
+
+  | Section / domain | own10: incumbent | own10: frozen | own10: head | official: incumbent | official: frozen | official: head |
+  |---|---|---|---|---|---|---|
+  | bearing 03 source | 0.801 | 0.837 | 0.760 | 0.765 | 0.763 | 0.638 |
+  | bearing 03 target | 0.742 | 0.784 | 0.782 | 0.651 | 0.633 | 0.530 |
+  | bearing 04 source | 0.614 | 0.699 | 0.644 | 0.692 | 0.812 | 0.800 |
+  | bearing 04 target | 0.509 | 0.697 | 0.667 | 0.566 | 0.709 | 0.724 |
+  | bearing 05 source | 0.568 | 0.611 | 0.612 | 0.785 | 0.790 | 0.720 |
+  | bearing 05 target | 0.523 | 0.702 | 0.645 | 0.330 | 0.446 | 0.524 |
+  | gearbox 03 source | 0.715 | 0.743 | 0.881 | 0.741 | 0.805 | 0.842 |
+  | gearbox 03 target | 0.631 | 0.669 | 0.815 | 0.647 | 0.737 | 0.836 |
+  | gearbox 04 source | 0.784 | 0.744 | 0.966 | 0.728 | 0.887 | 0.988 |
+  | gearbox 04 target | 0.788 | 0.691 | 0.988 | 0.729 | 0.912 | 0.988 |
+  | gearbox 05 source | 0.735 | 0.703 | 0.791 | 0.831 | 0.865 | 0.871 |
+  | gearbox 05 target | 0.630 | 0.754 | 0.941 | 0.709 | 0.634 | 0.791 |
+
+  | System | own10 AUC | own10 FPR | own10 recall | official AUC | official pAUC |
+  |---|---|---|---|---|---|
+  | incumbent (`mean/L12/raw`) | 0.670 | 0.043 | 0.065 | 0.681 | 0.179 |
+  | frozen (`freq/L4/raw`) | 0.719 | 0.032 | 0.079 | 0.749 | 0.319 |
+  | **head (EXP-014)** | **0.791** | 0.041 | **0.266** | **0.771** | **0.446** |
+
+  Decisions under the rule:
+  - **Head vs incumbent: better.** own10 ΔAUC +0.121, higher in 11 of 12 section-domains. Official ΔAUC +0.090 (95% +0.071 to +0.121).
+  - **Frozen vs incumbent: better.** own10 ΔAUC +0.050, 9 of 12. Official ΔAUC +0.068 (95% +0.048 to +0.088).
+- **Sanity check:** the incumbent's official mean AUC is 0.681, against 0.678 in EXP-009 (separate embedding pass). Reproduced.
+- **Error analysis:**
+  - **The head generalizes to new sections.** It was trained only on sections 00–02, yet it is best overall on 03–05. The development gain (+0.016 over frozen) grows on held-out data (+0.072 over frozen).
+  - **Gearbox gains are large.** own10 AUC is 0.94–0.99 on gearbox 04 and 05 target, against 0.63–0.79 for the incumbent.
+  - **Bearing gains are modest and uneven.** The head is worse than the incumbent on bearing 03 source (0.801 → 0.760), and below the frozen feature on most bearing section-domains, as on development. Bearing 05 target stays weak (official 0.524).
+  - **Recall at the app threshold quadruples** (0.065 → 0.266) at a similar FPR (0.043 → 0.041). It is still low: most anomalies are not flagged at the current threshold.
+- **Limitations:**
+  - Second use of this test set. Any further selection on it would make it development data.
+  - Induced faults in lab recordings, and two machine types.
+  - In own10, baseline and scored clips come from the same pool.
+  - Recall at about 4% FPR is 27%, which is still a low-sensitivity detector.
+  - The head adds a training step and model weights to the product. Its training data is MIMII DG (CC-BY-4.0), so it is usable commercially. The evaluation data was not used for training.
+- **Conclusion / next experiment:**
+  - Propose (not yet decided) ADR-010: the app switches to AST layer 4 with frequency-preserving pooling and the EXP-014 condition head, keeping the leave-one-out threshold and the prototype labelling.
+  - Bearing results must say the gain there is small and uneven.
+  - Any further model change needs a new untouched test set (for example DCASE 2023/2024 bearing and gearbox, after a licence check).
+
+### EXP-017 — Threshold setting for the ADR-010 model (development selection)
+Status: **Complete: spread 1.5 selected on development data; not yet confirmed on a fresh test set, so not in the app.** This plan was written into the log before the run, but not committed separately. The run used `26fb5c0` plus the uncommitted EXP-017 files. Goal 1 of the improvement plan: catch more anomalies at an agreed false-alarm limit.
+- **Date:** 2026-11-07
+- **Research question:** The app flags a recording when its log score exceeds mean + 2.0 standard deviations of the baseline's leave-one-out log scores. A smaller spread catches more anomalies but raises more false alarms. Which spread maximizes recall while keeping false alarms at about 10% or below?
+- **Model:** the ADR-010 product model, rebuilt as in the bundle export: the `freq/L4/raw` feature plus the EXP-014 head, seed 0. Seeds 1 and 2 are reported for robustness only.
+- **Data and protocol:** MIMII DG development `test` role. As EXP-012: per section-domain, 200 draws (seed 0) with 20 shared evaluation normals, nested baselines of 10, 20 and 30, and all 50 anomalies scored. Spreads −1.0 to 3.0.
+- **Selection rule (fixed in advance):**
+  - At 10 baselines (the app minimum), pick the smallest spread whose mean FPR over the 12 section-domains is 0.10 or below, with every section-domain's mean FPR at 0.20 or below.
+  - The 10% target is the default suggested in the session; the user did not name a different one.
+  - The same spread is then reported at 20 and 30 baselines.
+- **What this run cannot show:** the selected spread is tuned on development data. The rule allows no app change until a fresh untouched test set (goal 3) confirms the FPR and recall. Any change to ADR-010's threshold also needs approval.
+- **Reproduction command/config path:** `uv run python -m ml.threshold_select --config configs/threshold_select.json`
+- **Artifacts path:** `artifacts/EXP-017/`
+- **Results:** Product seed 0, means over the 12 section-domains. Full tables: `artifacts/EXP-017/SUMMARY.txt`.
+
+  | Spread | FPR, N=10 | Recall, N=10 | FPR, N=20 | Recall, N=20 | FPR, N=30 | Recall, N=30 |
+  |---|---|---|---|---|---|---|
+  | 1.00 | 0.187 | 0.541 | 0.169 | 0.681 | 0.167 | 0.730 |
+  | 1.25 | 0.132 | 0.426 | 0.114 | 0.560 | 0.109 | 0.624 |
+  | **1.50 (selected)** | **0.089** | **0.328** | 0.076 | 0.432 | 0.067 | 0.506 |
+  | 1.75 | 0.060 | 0.250 | 0.048 | 0.321 | 0.040 | 0.385 |
+  | 2.00 (current app) | 0.039 | 0.191 | 0.030 | 0.237 | 0.024 | 0.279 |
+
+  - At N=10 and spread 1.5, the highest section-domain FPR is 0.121 (gearbox 00 source).
+  - Recall by section-domain ranges from 0.11 (bearing 01 source) to 0.86 (bearing 02 target).
+  - Seeds 1 and 2 at N=10, spread 1.5: FPR 0.088 / 0.086, recall 0.357 / 0.337.
+- **Error analysis:**
+  - **Loosening the threshold from 2.0 to 1.5 raises recall from 0.19 to 0.33** at 10 baselines, while mean FPR rises from 0.039 to 0.089.
+  - **Recording more baselines adds recall at the same setting.** With 30 baselines, spread 1.5 catches half of the anomalies (0.506) with 6.7% false alarms. This matches EXP-012: more baselines make the threshold stricter, so a lower spread pays off more with more baselines.
+  - **Bearing 00 and 01 stay weak** (recall 0.11–0.20) whatever the setting. That is a model limit (goal 2), not a threshold one.
+- **Limitations:**
+  - Tuned on development data.
+  - FPR per draw is estimated from only 20 evaluation normals.
+  - The 10% limit is a suggested default, not a user requirement.
+- **Conclusion / next experiment:**
+  - Proposal (not adopted): spread 1.5 and a recommendation of 30 baselines.
+  - Before any app change, confirm on a fresh untouched test set (goal 3) that mean FPR stays at about 0.10 or below.
+  - Any model change from goal 2 needs this threshold re-selected, because a spread belongs to a specific model.
+
+### EXP-018 — Bearing-focused feature candidates (development selection)
+Status: **Complete: rule not met (best +0.007); bearing keeps `freq/L4/raw`.** This plan was written into the log before the run, but not committed separately. The run used `b891000` plus the uncommitted EXP-018 files. Goal 2 of the improvement plan: improve bearing, where ADR-010's gain is small.
+- **Date:** 2026-11-07
+- **Research question:** Does a feature that keeps more time or fine-frequency detail beat the frozen `freq/L4/raw` feature on bearing in the app setup?
+- **Hypothesis:** Bearing faults are often impulsive or narrow-band. Pooling the variation over time (standard deviation), earlier AST layers, or linear-frequency spectra without mel compression of high frequencies should help.
+- **Dataset/version:** MIMII DG development `test` role. Training-role clips are used only for standardization statistics and full-protocol references.
+- **Candidates:**
+  - AST layers 1–4 (a 4-layer AST from the same checkpoint): per frequency row, the mean over time, the standard deviation over time, and both concatenated (each half L2-normalized).
+  - Log power spectra at n_fft 1024 and 4096 (Hann window, 50% hop): the mean over frames, and the mean plus the standard deviation.
+  - Each candidate raw, or standardized per machine with `train`-role statistics only.
+- **Protocol:** own10 (primary) and full, as EXP-013. Bearing and gearbox are both reported.
+- **Selection rule (fixed in advance):**
+  - Pick the candidate with the highest mean own10 AUC over the 6 bearing section-domains.
+  - It is selected for bearing only if it beats the current best for bearing, frozen `freq/L4/raw` (0.874 on development), by 0.01 or more. Otherwise bearing keeps `freq/L4/raw`.
+  - Gearbox is not selected here: the head (0.784 on gearbox) stays the gearbox reference.
+- **Note:** a per-machine-type model (bearing on its best feature, gearbox on the head) is the implied proposal. Any app change needs the fresh test set (goal 3) and approval.
+- **Reproduction command/config path:** `uv run python -m ml.bearing_features --config configs/bearing_features.json --stage embed`, then `--stage develop`.
+- **Artifacts path:** `artifacts/EXP-018/`
+
+- **Results:** Development set, own10 AUC means. Top candidates plus the pooling families; all 32 are in `artifacts/EXP-018/DEVELOP_SUMMARY.txt`.
+
+  | Candidate | Bearing own10 | Gearbox own10 | Full AUC |
+  |---|---|---|---|
+  | spec_mean/n4096/standardized | **0.881** | 0.591 | 0.630 |
+  | spec_mean/n1024/standardized | 0.877 | 0.592 | 0.636 |
+  | ast_mean/L4/raw (= reference `freq/L4/raw`) | 0.874 | 0.703 | 0.682 |
+  | ast_meanstd/L4/raw | 0.872 | 0.703 | 0.680 |
+  | ast_mean/L3/raw | 0.872 | 0.673 | 0.680 |
+  | ast_mean/L1/raw | 0.848 | 0.639 | 0.690 |
+  | ast_std/L1/raw (best std-only) | 0.770 | 0.680 | 0.636 |
+
+  Bearing per section-domain for the best candidate, against the reference `freq/L4/raw` (EXP-013):
+  - 00 source 0.953 vs 0.885; 00 target 0.898 vs 0.805.
+  - 01 source 0.806 vs 0.777; 01 target 0.788 vs 0.814.
+  - 02 source 0.868 vs 0.965; 02 target 0.976 vs 0.997.
+- **Sanity check:** `ast_mean/L4/raw` from the 4-layer model gives exactly the EXP-013 reference (0.874), so the truncated model reproduces the shipped feature.
+- **Error analysis:**
+  - **No candidate clears the bar.** The best gain is +0.007.
+  - **Linear spectra are complementary, not better.** They are much stronger on bearing 00, the section with speed changes (0.953 vs 0.885 source, 0.898 vs 0.805 target). They are weaker on bearing 02 and poor on gearbox (0.59).
+  - **Pooling the variation over time hurts** in every layer (bearing 0.72–0.77). The time variation is dominated by normal fluctuation, not fault impulses.
+  - **Layer 4 stays best among AST layers** for bearing; earlier layers do not help.
+- **Limitations:** Development set, used many times; 32 candidates compared.
+- **Conclusion / next experiment:**
+  - Bearing keeps `freq/L4/raw`.
+  - The bearing-00 strength of linear spectra is a lead for a later, pre-registered fusion test; it is not adopted.
+  - Next: EXP-019 (LoRA fine-tuning). EXP-019's bearing reference stays 0.874.
+
+### EXP-019 — LoRA fine-tuning of the 4-layer AST with the condition head (development)
+Status: **Complete: adopted for gearbox only (+0.035); bearing worse (−0.079); overall +0.002 (not adopted).** This plan was written into the log before the run, but not committed separately. The run used `b891000` plus the uncommitted EXP-019 files. Goal 2, step 2.
+- **Date:** 2026-11-07
+- **Research question:** EXP-014 trained a head on frozen features. Does adapting the AST layers themselves, with LoRA, to the same condition-classification task give better anomaly embeddings, especially for bearing?
+- **Model:**
+  - The 4-layer AST from the AudioSet checkpoint, frozen, with LoRA adapters (rank 8, alpha 16, B initialized to zero) on the query, key and value projections of all 4 layers.
+  - Feature: the layer-4 frequency pooling, standardized with the frozen feature's `train`-role statistics.
+  - Head: the EXP-014 architecture, trained jointly.
+- **Training:**
+  - Data: MIMII DG `train`/`adaptation` clips only (46 classes); `validation` monitors accuracy. Test clips are never used in training.
+  - Settings: AdamW (LoRA lr 2e-4, head lr 1e-3, weight decay 1e-3), batch 16, 4 epochs, seed 0, class-weighted cross-entropy with a CosFace margin (as EXP-014).
+  - One seed because of cost.
+- **Evaluation:** own10 and full (as EXP-013) after epochs 1, 2 and 4. **The decision uses epoch 4 only**; the earlier epochs are diagnostics, not a choice.
+- **Decision rule (fixed in advance):** each gain must be 0.01 or more, measured against EXP-014 and EXP-013 figures on development data.
+  - Overall own10 AUC over the head (0.805).
+  - Bearing own10 AUC over the best bearing system so far (0.874, or the EXP-018 winner if it is higher).
+  - Gearbox own10 AUC over the head (0.784).
+  - Each machine type can be adopted separately.
+- **Reproduction command/config path:** `uv run python -m ml.lora_ast --config configs/lora_ast.json --stage features`, then `--stage train`.
+- **Artifacts path:** `artifacts/EXP-019/`
+- **Results:** Development set, seed 0. Validation accuracy after epochs 1–4: 0.958, 0.968, 0.971, 0.982. Each epoch took about 6.3 minutes on the M4 Pro GPU.
+
+  | Epoch | own10 AUC | Bearing | Gearbox | own10 FPR | own10 recall | Full AUC |
+  |---|---|---|---|---|---|---|
+  | 1 | 0.799 | 0.813 | 0.786 | 0.042 | 0.212 | 0.681 |
+  | 2 | 0.808 | 0.820 | 0.796 | 0.042 | 0.210 | 0.705 |
+  | **4 (decision)** | **0.807** | **0.795** | **0.819** | 0.042 | 0.232 | 0.709 |
+
+  own10 AUC per section-domain at epoch 4, against the EXP-014 head (3-seed mean):
+
+  | Section | Source | Target |
+  |---|---|---|
+  | bearing 00 | 0.791 (head 0.800) | 0.750 (0.791) |
+  | bearing 01 | 0.646 (0.683) | 0.658 (0.728) |
+  | bearing 02 | 0.937 (0.968) | 0.989 (0.987) |
+  | gearbox 00 | 0.844 (0.826) | 0.712 (0.730) |
+  | gearbox 01 | 0.795 (0.761) | 0.865 (0.771) |
+  | gearbox 02 | 0.910 (0.808) | 0.786 (0.810) |
+
+  Decisions under the rule:
+  - Overall: +0.002, not adopted.
+  - Bearing: −0.079 against 0.874, not adopted.
+  - **Gearbox: +0.035 against 0.784, adopted for gearbox.**
+- **Error analysis:**
+  - **Adapting AST to condition labels sharpens gearbox but blurs bearing**, the same direction as the EXP-014 head, only stronger. Bearing degrades further with more training (0.820 at epoch 2, 0.795 at epoch 4).
+  - Learning to tell bearing speeds apart seems to suppress the cues that separate faulty from normal bearings.
+  - The best gearbox gains are at new conditions and in gearbox 02 (01 target +0.094, 02 source +0.102).
+- **Limitations:**
+  - One seed. The gearbox reference is the head's 3-seed mean, so part of the +0.035 may be seed noise.
+  - Development set, used many times.
+  - Adopting it would require shipping the LoRA adapter weights.
+- **Conclusion / next experiment:**
+  - The goal 2 proposal (not adopted) is a per-machine-type model:
+    - bearing: frozen `freq/L4/raw` (development own10 0.874);
+    - gearbox: LoRA AST + head (0.819).
+  - Development figures assembled from selections across several experiments are optimistic. This proposal must be confirmed on fresh held-out data (goal 3), with its threshold re-selected as in EXP-017, before any app change.
+  - Bearing remains the open problem.
+
+### EXP-020 — Fresh held-out gearbox test on MIMII DUE
+Status: **Complete: LoRA rejected (worse on fresh data, 0/6 wins); spread 1.5 confirmed for gearbox false alarms; the app model's advantage largely does not transfer to MIMII DUE.** This plan was written into the log before any MIMII DUE audio was opened, but not committed separately. The run used `883e182` plus the uncommitted EXP-020 files. Goal 3: confirm EXP-017 and EXP-019 on data no model or selection has seen.
+- **Date:** 2026-11-07
+- **Test data:** MIMII DUE gearbox development archive (Zenodo 4740355 v1.01, `dev_data_gearbox.zip`, MD5 checked against Zenodo; CC-BY-NC-SA-4.0, **evaluation only**).
+  - Test clips: sections 00–02, source and target.
+  - Training clips: references for the full protocol only.
+  - First use of this set.
+- **Leakage checks:**
+  - MD5 of every MIMII DUE clip against the MIMII DG manifest.
+  - Duplicates within MIMII DUE.
+  - The nearest MIMII DG gearbox clip for each test clip in the frozen layer-4 feature space; any distance below 1e-4 counts as a near-duplicate.
+  - Audio must be 16 kHz mono with 160,000 samples.
+- **Systems (all fixed earlier):**
+  - **app:** the shipped ADR-010 bundle (`sonovate-ast-head` 0.3.0: 4-layer AST, layer-4 frequency pooling, `head.npz`).
+  - **lora:** the EXP-019 epoch-4 checkpoint (seed 0).
+  - frozen: layer-4 frequency pooling without the head (context).
+  - adr008: last-layer AST mean (context).
+- **Protocols:**
+  - own-baseline: N = 10 and 30 baselines from each section-domain's normal test clips, with the remaining normals for evaluation. 200 draws, seed 0. Spreads 1.5 and 2.0.
+  - full: the section's training clips as references, official DCASE domain AUC, and a 2,000-sample bootstrap for the LoRA-vs-app difference.
+- **Decision rules (fixed in advance):**
+  1. **Gearbox model:** LoRA is better than app if its mean own AUC at N=10 over the 6 section-domains is higher and it wins in at least 4 of 6. The full-protocol interval is reported alongside.
+  2. **Threshold (EXP-017):** spread 1.5 is confirmed for gearbox if, with the gearbox model chosen by rule 1, mean FPR at N=10 is 0.10 or below and every section-domain is 0.20 or below. Spread 2.0 is reported alongside.
+  - Neither rule covers bearing: no fresh bearing set exists (Dataset Register, goal 3 audit).
+  - This run selects nothing else.
+- **Reproduction command/config path:** `uv run python -m ml.fresh_gearbox_eval --config configs/fresh_gearbox_eval.json --stage embed`, then `--stage evaluate`.
+- **Artifacts path:** `artifacts/EXP-020/`
+- **Leakage checks (all passed):**
+  - 0 exact MD5 matches with MIMII DG; 0 duplicates within MIMII DUE.
+  - Nearest MIMII DG gearbox clip for each test clip: minimum distance 0.018, median 0.083. For comparison, the median nearest MIMII DUE neighbour is at 0.032.
+  - 0 near-duplicates.
+  - All clips are 16 kHz mono with 160,000 samples.
+- **Counts (normal/anomaly):** 00 source 195/105, 00 target 96/108, 01 source 108/108, 01 target 108/108, 02 source 108/138, 02 target 105/120.
+- **Results:** own AUC per section-domain at N=10.
+
+  | Section / domain | app | lora | frozen | adr008 |
+  |---|---|---|---|---|
+  | gearbox 00 source | 0.632 | 0.581 | 0.599 | 0.588 |
+  | gearbox 00 target | 0.650 | 0.544 | 0.669 | 0.597 |
+  | gearbox 01 source | 0.757 | 0.664 | 0.696 | 0.763 |
+  | gearbox 01 target | 0.761 | 0.639 | 0.683 | 0.757 |
+  | gearbox 02 source | 0.568 | 0.562 | 0.584 | 0.584 |
+  | gearbox 02 target | 0.562 | 0.545 | 0.594 | 0.560 |
+
+  | System | own AUC N=10 | own AUC N=30 | full AUC | FPR / recall N=10, s1.5 | N=10, s2.0 | N=30, s1.5 | N=30, s2.0 |
+  |---|---|---|---|---|---|---|---|
+  | **app (ADR-010)** | **0.655** | **0.690** | 0.759 | 0.087 / 0.162 | 0.042 / 0.078 | 0.061 / 0.144 | 0.020 / 0.049 |
+  | lora (EXP-019) | 0.589 | 0.623 | 0.648 | 0.090 / 0.115 | 0.043 / 0.055 | 0.069 / 0.098 | 0.024 / 0.030 |
+  | frozen | 0.637 | 0.675 | 0.764 | 0.080 / 0.132 | 0.029 / 0.049 | 0.073 / 0.143 | 0.018 / 0.039 |
+  | adr008 | 0.642 | 0.675 | 0.758 | 0.098 / 0.136 | 0.046 / 0.061 | 0.089 / 0.130 | 0.036 / 0.044 |
+
+  Decisions under the rules:
+  1. **LoRA vs app: not better.** own AUC Δ −0.066, 0 of 6 wins. Full AUC Δ −0.111 (95% −0.132 to −0.092), so LoRA is clearly worse.
+  2. **Spread 1.5 on the app model: confirmed for gearbox.** Mean FPR 0.087 at N=10, with a maximum section-domain FPR of 0.098. Recall is 0.162, against 0.078 at spread 2.0.
+- **Error analysis:**
+  - **The EXP-019 development gain was overfitting.** Fine-tuning to MIMII DG gearbox conditions (+0.035 on development) made the embedding worse on a different gearbox recording campaign (−0.066). Adapting the encoder to one dataset's operating conditions does not transfer.
+  - **MIMII DUE gearbox is much harder for every system:**
+    - The app model's own AUC is 0.655, against 0.791 on DCASE 2022 sections 03–05 (EXP-016).
+    - Its advantage over the pre-ADR-010 model nearly vanishes: 0.655 vs 0.642 own AUC; 0.759 vs 0.758 full AUC.
+    - The head still ranks better than the frozen feature in the app setup (0.655 vs 0.637).
+  - **The app threshold rule transfers well.** False alarms stay close to the development figures (0.087 vs 0.089 on development at spread 1.5), so the leave-one-out threshold is robust across datasets.
+  - **Recall on this data is low at any setting** (0.08–0.16). That is a ranking limit.
+  - **More baselines help on fresh data too** (N=30: +0.035 AUC for the app model).
+- **Limitations:**
+  - One fresh gearbox dataset, and no fresh bearing data.
+  - MIMII DUE's anomalies and machines differ from MIMII DG's, which makes it a harder, more realistic shift.
+  - In the own-baseline protocol, baselines and scored clips come from the same pool.
+- **Conclusion / next experiment:**
+  - Drop the per-machine-type LoRA proposal and keep the ADR-010 model.
+  - Propose (for approval) changing the app's threshold spread from 2.0 to 1.5. False alarms are confirmed at about 9% on fresh gearbox data. Bearing is not confirmable on fresh data.
+  - Honest product claim: on a new gearbox recording setup, the detector ranks anomalies only modestly (AUC about 0.66, or 0.69 with 30 baselines). Real-machine recordings (goal 4) are the main route to better and verifiable performance.
+
+### EXP-021 — Patch-level (time-frequency) scoring and anomaly localisation (development selection)
+Status: **Complete: no patch candidate carried forward (best F 0.783 vs app 0.803 own10 AUC); the layer-4 map failed the localisation criterion.** Pre-registered at `53ec1dd`; run on `e7f344d`.
+- **Date:** 2026-11-09
+- **Research question:**
+  1. Does scoring each AST time-frequency patch against the same frequency row of the baseline recordings rank anomalies better than the shipped clip-level embedding (ADR-010)?
+  2. Does the resulting patch map point to the right time and frequency when a known event is added to a normal clip?
+- **Hypothesis:** Mean-pooling over time dilutes short or narrow-band deviations. Keeping the patch grid and taking the most deviating patches should rank such anomalies higher, and the map should localise injected events.
+- **Dataset/version:** MIMII DG development set (`test` role, sections 00–02, bearing and gearbox, 12 section-domains), as EXP-013 to EXP-019. Fresh data is not touched here.
+- **Encoder:** the shipped bundle `sonovate-ast-head` 0.3.1, unchanged: 4-layer AST, layer-4 patch tokens on the 12 × 101 grid (frequency rows × time patches). Patch t covers about 0.10·t to 0.10·t + 0.16 s; row f covers mel bins 10f to 10f + 15 of 128 (Kaldi mel, 20–8000 Hz).
+- **Systems (fixed now):**
+  - **app:** the shipped head embedding, k = 1 cosine distance (ADR-010/011).
+  - **P-top10-raw:** each patch's cosine distance to the nearest baseline patch in the same frequency row (any time position, any baseline clip); clip score = mean of the top 10% of the 1,212 patch distances.
+  - **P-top10-c, P-mean-c, P-tmax-c:** as above on *centred* tokens: the mean token at each grid position, from 600 MIMII DG `train` clips (100 per machine-section, seed 0, no labels), is subtracted before L2 normalisation. Scores: top-10% mean; mean of all patches; maximum over time of the frequency-averaged distance, smoothed over 5 time patches (0.5 s).
+  - **F:** fusion, z(app) + z(P-top10-c), each standardised by the mean and population standard deviation of its baseline leave-one-out log scores; equal weights, fixed.
+- **Protocol:** own-baseline (EXP-010/020): for each section-domain, 200 draws (seed 0) of N = 10 and N = 30 normal clips as the baseline; the other normals and all anomalies are scored. Each system's threshold = mean + 1.5 × std of its own baseline leave-one-out log scores (ADR-011).
+- **Metrics:** mean own AUC over the 12 section-domains at N = 10 (primary) and N = 30; mean FPR and recall at spread 1.5.
+- **Selection rule:** the candidate with the highest mean own10 AUC is carried to EXP-022 only if it beats **app** by at least +0.010 and its mean FPR at N = 10 is 0.10 or below. Otherwise **app** stays the detector and only the map (from P-top10-c) is used, as an explanation.
+- **Localisation check (synthetic, development normal clips only):** section 00 source of each machine; 10 baseline clips and 20 other normal clips per machine (seed 0). Into each of the 20, add one event at a random time (1–9 s):
+  - a 0.5 s Hann-tapered tone at a random frequency between 300 and 6,000 Hz;
+  - a 20 ms white-noise click.
+  - Event RMS relative to the clip RMS: 0 dB and −10 dB.
+  - Time map = per-row standardised patch map (standardised with the baseline clips' leave-one-out maps), averaged over rows; frequency profile = the same map averaged over ±0.25 s around the time peak.
+  - **Time hit:** the time-curve peak is within ±0.3 s of the event centre. **Frequency hit (tones):** the profile's peak row contains the tone's mel bin.
+  - **Criterion:** time hit ≥ 0.8 and frequency hit ≥ 0.8 at 0 dB. If not met, the map is not shown as a localisation.
+- **Out of scope:** remaining useful life, time-to-failure or degradation rate. MIMII DG, DCASE and MIMII DUE contain independent clips of induced faults, not run-to-failure recordings, so no such model can be trained or validated on them.
+- **Reproduction:** `uv run python -m ml.patch_scores --config configs/patch_scores.json --stage centre`, then `--stage develop` and `--stage localise`.
+- **Artifacts path:** `artifacts/EXP-021/`
+- **Results (development, means over 12 section-domains, spread 1.5):**
+
+  | System | own10 AUC | FPR | recall | own30 AUC | recall N30 |
+  |---|---|---|---|---|---|
+  | **app** | **0.803** | 0.089 | 0.330 | **0.879** | 0.502 |
+  | P-top10-raw | 0.693 | 0.105 | 0.197 | 0.729 | 0.196 |
+  | P-top10-c | 0.716 | 0.087 | 0.290 | 0.765 | 0.366 |
+  | P-mean-c | 0.780 | 0.088 | 0.356 | 0.822 | 0.448 |
+  | P-tmax-c | 0.754 | 0.088 | 0.282 | 0.796 | 0.372 |
+  | F | 0.783 | 0.091 | 0.348 | 0.844 | 0.467 |
+
+  - Selection: best candidate F, −0.020 against app, so **app stays the detector**.
+  - Patch scores led only on bearing 01 (P-mean-c 0.861/0.854 vs app 0.688/0.706); choosing per section from this would be tuning on development data.
+- **Localisation check (section 00 source, 0 dB):** time hits 0.45 (bearing tone), 0.90 (bearing click), 0.45 (gearbox tone), 0.55 (gearbox click); frequency hits 0.70 and 0.40. **Criterion not met.**
+- **Error analysis:** layer-4 tokens mix the whole clip through self-attention, so patch distances are not local, and the per-patch nearest-neighbour score is noisier than the head's clip embedding, which was trained on condition labels.
+- **Artifacts:** `artifacts/EXP-021/` (`develop.json`, `DEVELOP_SUMMARY.txt`, `localise.json`, `centre.npy`).
+
+### EXP-022 — Fresh confirmation of the EXP-021 candidate and the app model
+Status: **Complete: no candidate (EXP-021 carried none); first fresh figures for the app model on MIMII DUE gearbox evaluation data.** Pre-registered at `53ec1dd`; run on `5105735`. First use of the MIMII DUE evaluation set.
+- **Test data:**
+  - **Gearbox, primary:** MIMII DUE gearbox *evaluation* sections 03–05, source and target (DCASE 2021 Task 2 evaluation set, Zenodo 4884786 `eval_data_gearbox_test.zip`, MD5 ee1cd888f44d0d3f865c5701f3b8f002; labels from `y-kawagu/dcase2021_task2_evaluator`, MIT). CC-BY-NC-SA-4.0: evaluation only. **First use.**
+  - **Gearbox, secondary:** MIMII DUE gearbox development sections 00–02 (second use, after EXP-020).
+  - **Bearing, secondary:** DCASE 2022 evaluation sections 03–05 (third use, after EXP-009 and EXP-016), so it is weak evidence. No untouched bearing set exists.
+- **Leakage checks (primary set):** MD5 against MIMII DG and MIMII DUE development clips; 16 kHz mono, 160,000 samples.
+- **Protocol:** as EXP-021 (own-baseline, N = 10 and 30, 200 draws, seed 0, spread 1.5).
+- **Adoption rule (fixed now):** the candidate replaces **app** as the detector only if, on the primary set, its mean own10 AUC is higher, it wins at least 4 of the 6 section-domains, its mean FPR at N = 10 is 0.10 or below with every section-domain at 0.20 or below, **and** on bearing its mean own10 AUC is not lower than app's by more than 0.010. Otherwise **app** stays.
+- **Reproduction:** `uv run python -m ml.patch_scores --config configs/patch_scores.json --stage fresh`.
+- **Artifacts path:** `artifacts/EXP-022/`
+- **Leakage checks:** 1,428 clips; 0 MD5 matches with MIMII DG or MIMII DUE development; 0 duplicates; all 16 kHz mono, 160,000 samples.
+- **Results, app model (spread 1.5):**
+
+  | Set | own10 AUC | FPR (max) | recall | own30 AUC | FPR N30 | recall N30 |
+  |---|---|---|---|---|---|---|
+  | **MIMII DUE gearbox eval 03–05 (first use)** | **0.667** | **0.085 (0.097)** | **0.256** | 0.678 | 0.059 | 0.253 |
+  | MIMII DUE gearbox dev 00–02 (second use) | 0.655 | 0.088 (0.097) | 0.154 | 0.691 | 0.063 | 0.146 |
+  | DCASE 2022 eval bearing 03–05 (third use) | 0.671 | 0.073 (0.089) | 0.148 | 0.721 | 0.052 | 0.179 |
+
+  - Per section-domain on the primary set (own10 AUC): 03 source 0.624, 04 source 0.732, 05 source 0.735, 03 target 0.669, 04 target 0.667, 05 target 0.576.
+  - The patch candidates were lower on both gearbox sets (best P-top10-raw 0.640 on the primary set). On bearing, F was 0.690 vs 0.671, on a set used for the third time and not decisive.
+- **Conclusion:** the app model's false-alarm control transfers to a second fresh gearbox set (8.5%, every section-domain under 10%); per-clip detection stays modest (AUC 0.67, about a quarter of anomalies caught).
+
+### EXP-023 — More local anomaly maps (synthetic localisation, new clips)
+Status: **Complete: no candidate qualified; L-mel closest (tones met on bearing, clicks missed).** Pre-registered at `d333c2d`; run on `1d72d39`.
+- **Date:** 2026-11-09
+- **Why:** In EXP-021 the layer-4 patch map missed the 0.8 criterion (time hits 0.45–0.90, frequency hits 0.40–0.70 at 0 dB). Layer-4 tokens have passed through self-attention, which mixes the whole clip, and averaging over 12 rows dilutes narrow-band events.
+- **Candidates (fixed now):**
+  - **L-mel:** the AST input log-mel spectrogram itself (128 bins, 10 ms frames; first 998 frames). Each bin is standardised by the mean and std of that bin over all frames of the baseline clips. Time curve: per frame, the mean of the 8 largest bin z-values, smoothed over 10 frames (0.1 s). Frequency profile: bin z-values averaged over ±0.25 s around the time peak.
+  - **L-tok0:** layer-0 patch tokens (patch embedding plus position, before any attention), minus the baseline clips' mean token at each grid position, L2-normalised; row-wise nearest-patch map as EXP-021; rows standardised with the baseline leave-one-out maps; time curve = maximum over rows.
+  - **L-tok4max:** the EXP-021 centred layer-4 map, with the time curve as the maximum over rows instead of the mean.
+- **Data:** development normal clips of **section 01 source** of each machine (not used for EXP-021's check), seed 1, 10 baseline and 20 test clips per machine; the EXP-021 event generator (0.5 s tones at 300–6,000 Hz, 20 ms clicks; 0 dB and −10 dB).
+- **Hits:** time hit as EXP-021 (±0.3 s). Frequency hit: for L-mel, the peak bin is within ±2 bins of the tone's mel bin; for the token maps, the peak row contains the tone's bin (as EXP-021).
+- **Rule:** a candidate qualifies if, at 0 dB, time hit ≥ 0.8 for tones and clicks of both machines and frequency hit ≥ 0.8 for tones of both machines. Among qualifying candidates, the one with the highest mean 0 dB hit rate is used for the "where" display. If none qualifies, no localisation is shown.
+- **What this shows and does not:** that the map points to where the sound *changed* relative to the baseline, for added events. It does not show that it locates real machine faults, which in these datasets have no time or frequency labels.
+- **Reproduction:** `uv run python -m ml.localise_check --config configs/patch_scores.json`
+- **Artifacts path:** `artifacts/EXP-023/`
+- **Results (section 01 source, 0 dB; time hit / frequency hit):**
+  - L-mel: bearing tone 0.95 / 0.95, bearing click 0.55; gearbox tone 0.80 / 0.75, gearbox click 0.40.
+  - L-tok0: 0.20 / 0.35, 0.00; 0.15 / 0.10, 0.20.
+  - L-tok4max: 0.35 / 0.40, 0.80; 0.20 / 0.15, 0.40.
+  - At −10 dB all hit rates fall (L-mel tones 0.80 / 0.65 and 0.65 / 0.55; clicks 0.15 or below).
+- **Conclusion:** the spectrogram itself localises tonal changes; token maps do not. Clicks are missed because the curve uses the 8 most deviating bins and 0.1 s smoothing.
+
+### EXP-024 — Spectrogram map with a broadband channel (synthetic localisation, new clips)
+Status: **Complete: criterion not met (tones pass, clicks 0.70); L-mel2 is kept only as a descriptive view, not a validated localisation.** Pre-registered at `0aa1972`; run on `e747c61`.
+- **Date:** 2026-11-09
+- **Why:** In EXP-023, L-mel localised tones well at 0 dB (time 0.95 / 0.80, frequency 0.95 / 0.75 for bearing / gearbox) but missed clicks (0.55 / 0.40). Its time curve uses only the 8 most deviating bins and 0.1 s smoothing, which suits narrow-band events and dilutes a 20 ms broadband click. Token maps (L-tok0, L-tok4max) localised poorly and are dropped.
+- **Candidate L-mel2 (fixed now):** per-bin z-values against the baseline as L-mel, and two time curves:
+  - narrow-band: mean of the 8 largest bin z-values per frame, smoothed over 10 frames (as L-mel);
+  - broadband: mean of all 128 bin z-values per frame, smoothed over 3 frames.
+  - Each curve is standardised by the mean and std of the same curve over all frames of the baseline clips. Time curve = the larger of the two standardised curves at each frame. Frequency profile as L-mel.
+- **Data:** development normal clips of **section 02 source** of each machine (unused by EXP-021/023 checks), seed 2, 10 baseline and 20 test clips per machine; the same event generator and hit definitions as EXP-023 (L-mel frequency hit: peak bin within ±2 bins).
+- **Rule:** as EXP-023: at 0 dB, time hit ≥ 0.8 for tones and clicks of both machines, and frequency hit ≥ 0.8 for tones of both machines. If met, L-mel2 is the "where" display; otherwise no localisation is shown. L-mel is reported for reference.
+- **Reproduction:** `uv run python -m ml.localise_check --config configs/patch_scores.json --exp 24`
+- **Artifacts path:** `artifacts/EXP-024/`
+- **Results (section 02 source; time hit / frequency hit):**
+  - L-mel2, 0 dB: bearing tone 0.90 / 0.95, bearing click 0.70; gearbox tone 0.90 / 0.90, gearbox click 0.70.
+  - L-mel2, −10 dB: bearing tone 0.50 / 0.55, click 0.20; gearbox tone 0.70 / 0.40, click 0.25.
+  - L-mel (reference), 0 dB: tones as L-mel2, clicks 0.60 and 0.45.
+- **Real-recording observation (demo clips, not an evaluation):** with baselines spanning 1.0–3.0 V, the map's strongest deviation on a 34 s test recording was a tone near 0.8 kHz in a *normal* clip, whose pitch follows motor voltage, while the model flagged only the fault clip. The map reacts to operating-condition changes as well as to faults.
+- **Conclusion:** no further localisation rounds on synthetic data (more would be tuning to pass). The analysis tool reports L-mel2 as a spectrogram-difference view with these hit rates and states it is not a fault locator.
+
+### EXP-025 — Longer recordings: averaging over several 10 s windows
+Status: **Complete: neither fixed variant met the rule; recording-level AUC rose sharply.** Pre-registered at `39094ba`; run on `4f64222`. Second use of the MIMII DUE evaluation set.
+- **Date:** 2026-11-09
+- **System:** the shipped model (ADR-010/011) only; no model change.
+- **Simulated recordings:** within each section-domain and draw (own-baseline, N = 10, 200 draws, seed 0), the non-baseline normal clips and the anomaly clips are each shuffled and grouped into pseudo-recordings of k clips (k = 1, 3, 6, i.e. 10, 30, 60 s); leftover clips are dropped. A recording's score is the mean of its clips' log scores. **Limitation:** clips are independent recordings of the same machine and condition, not consecutive windows of one recording, so this is optimistic about how much averaging helps.
+- **Threshold variants (fixed now):** **A**, the single-window threshold unchanged (mean + 1.5 × std of the baseline leave-one-out log scores); **B**, the spread scaled by 1/√k (mean + 1.5 × std / √k).
+- **Data:** development set (MIMII DG `test`, 12 section-domains); then MIMII DUE gearbox evaluation sections 03–05 (second use, after EXP-022).
+- **Metrics:** recording-level AUC, FPR and recall, means over section-domains, and the maximum section-domain FPR.
+- **Rule:** on development, among (k ∈ {3, 6}) × (A, B), the setting with the highest recall whose mean FPR is ≤ 0.10 and maximum section FPR ≤ 0.20 is selected, if its recall beats k = 1. It is **confirmed** if, on the MIMII DUE evaluation set, the same setting also has mean FPR ≤ 0.10, maximum section FPR ≤ 0.20 and higher recall than k = 1. If confirmed, the tool reports the window-averaged decision for recordings of at least k × 10 s, next to the per-window results.
+- **Reproduction:** `uv run python -m ml.window_aggregate --config configs/patch_scores.json`
+- **Artifacts path:** `artifacts/EXP-025/`
+- **Results (N = 10, means over section-domains):**
+
+  | Setting | Dev AUC | Dev FPR (max) | Dev recall | Fresh AUC | Fresh FPR (max) | Fresh recall |
+  |---|---|---|---|---|---|---|
+  | k1 | 0.803 | 0.093 (0.112) | 0.341 | 0.667 | 0.086 (0.098) | 0.254 |
+  | k3 A | 0.921 | 0.027 (0.037) | 0.304 | 0.763 | 0.024 (0.028) | 0.157 |
+  | k3 B | 0.921 | 0.112 (0.130) | 0.623 | 0.763 | 0.108 (0.121) | 0.389 |
+  | k6 A | 0.967 | 0.013 (0.020) | 0.287 | 0.837 | 0.010 (0.014) | 0.119 |
+  | k6 B | 0.967 | 0.131 (0.161) | 0.780 | 0.837 | 0.127 (0.145) | 0.503 |
+
+- **Conclusion:** averaging ranks much better, but the threshold must be set for the averaged score: A is too strict, B too loose. Followed by EXP-026.
+
+### EXP-026 — Threshold spread for 30 s and 60 s recordings
+Status: **Complete: 30 s → spread 1.0 and 60 s → spread 0.75 selected on development and confirmed on fresh gearbox data.** Pre-registered at `66bfb04`; run on `f85a093`. Third use of the MIMII DUE evaluation set.
+- **Date:** 2026-11-09
+- **Why:** In EXP-025, averaging log scores over windows raised recording-level AUC sharply (fresh gearbox 0.667 → 0.763 at 30 s and 0.837 at 60 s), but neither fixed threshold variant met the rule: the single-window threshold was too strict (recall fell) and the 1/√k spread too loose (FPR 0.11–0.13).
+- **Method:** as EXP-025 (N = 10 baselines, 200 draws, seed 0, recording score = mean of k window log scores, k = 3 and 6), with threshold = mean + s × std of the baseline leave-one-out log scores, for s ∈ {0.50, 0.75, 1.00, 1.25, 1.50}.
+- **Selection (development, ADR-011's rule):** for each k, the smallest s with mean FPR ≤ 0.10 and every section-domain FPR ≤ 0.20.
+- **Confirmation:** on MIMII DUE gearbox evaluation sections 03–05 (third use: EXP-022, EXP-025) the selected s must give mean FPR ≤ 0.10, every section-domain ≤ 0.20, and recall above the single-window setting (k = 1, s = 1.5). MIMII DUE development (third use) and DCASE 2022 evaluation bearing (fourth use) are reported alongside, not decisive.
+- **Limitation:** pseudo-recordings are built from independent clips (EXP-025), so real continuous recordings may gain less.
+- **Reproduction:** `uv run python -m ml.window_aggregate --config configs/patch_scores.json --exp 26`
+- **Artifacts path:** `artifacts/EXP-026/`
+- **Selection (development):** k = 3: smallest qualifying spread 1.00 (FPR 0.084, max 0.097, recall 0.544); k = 6: 0.75 (FPR 0.095, max 0.118, recall 0.699).
+- **Confirmation, MIMII DUE gearbox evaluation (decisive):**
+
+  | Setting | AUC | FPR (max) | recall |
+  |---|---|---|---|
+  | 10 s (single window, spread 1.5) | 0.667 | 0.086 (0.098) | 0.254 |
+  | **30 s, spread 1.00** | 0.763 | **0.080 (0.089)** | **0.328** |
+  | **60 s, spread 0.75** | 0.837 | **0.088 (0.100)** | **0.423** |
+
+  Both confirmed.
+- **Alongside (not decisive):** MIMII DUE gearbox dev: 10 s 0.094 / 0.164; 30 s 0.086 / 0.256; 60 s 0.098 / 0.370 (FPR / recall). DCASE 2022 bearing: 10 s 0.086 / 0.168; 30 s 0.081 / 0.259; 60 s 0.087 / 0.367 (max FPR 0.126).
+- **Limitations:** pseudo-recordings built from independent clips; real continuous recordings share more within-recording variation, so the gain may be smaller. Validated for exactly 30 s and 60 s.
+- **Conclusion:** propose (ADR-012) that a recording of 60 s or more is judged on the mean of its window log scores with spread 0.75 (30–59 s: spread 1.0), next to the per-window results. At about 9% false alarms this catches roughly 1.7× as many anomalies as a single 10 s clip on fresh gearbox data. Implemented in `ml/analyze.py`; not yet in the web app.
+
+### EXP-027 — Shift test-time augmentation and embedding fusion (development selection, fresh confirmation)
+Status: **Complete: no candidate met the development rule (best TG +0.005); fresh stage not run.** Pre-registered at `0c337fb`; run on `5e75c38`.
+- **Date:** 2026-11-09
+- **Base system (app):** ADR-010/011, the shipped bundle 0.3.1 head embedding, k = 1 cosine distance.
+- **Candidates (fixed now):**
+  - **T (shift TTA):** every clip (baseline and query) is embedded K = 4 times, circularly shifted by 0, 2.5, 5 and 7.5 s. The baseline bank holds all N × 4 embeddings. Query score = mean over its 4 versions of the nearest-bank distance. A baseline clip's leave-one-out score excludes all 4 versions of itself. Rationale: machine sound is close to stationary, so shifted copies are extra views of the same recording; this enlarges a small baseline and averages out frame-position noise.
+  - **G (fusion with the frozen feature):** z(app) + z(frozen), where frozen = the layer-4 frequency-pooled feature standardised with the head's `feature_mean` / `feature_std` (MIMII DG training statistics) and L2-normalised, k = 1 cosine distance. Each z uses the mean and std of that system's own baseline leave-one-out log scores.
+  - **TG:** T applied to both embeddings, then fused as G.
+- **Protocol:** own-baseline (EXP-010/020), N = 10 and 30, 200 draws, seed 0; each system's threshold = mean + 1.5 × std of its own baseline leave-one-out scores (log scores; fused z-sums for G and TG).
+- **Development data:** MIMII DG `test` role, 12 section-domains.
+- **Development rule:** the candidate with the highest mean own10 AUC is carried forward if it beats app by ≥ 0.010 and has mean FPR ≤ 0.10 with every section-domain ≤ 0.20 at N = 10.
+- **Fresh confirmation (run once, only for a carried candidate; app figures reported alongside):**
+  - Primary: MIMII DUE gearbox evaluation 03–05 (fourth use: EXP-022, 025, 026). Decisive.
+  - Also: MIMII DUE gearbox development 00–02 (fourth use) and DCASE 2022 evaluation bearing (fifth use).
+  - **Adopt** if, on the primary set, mean own10 AUC is higher than app with ≥ 4 of 6 section-domain wins, mean FPR ≤ 0.10 and every section-domain ≤ 0.20; **and** own10 AUC is not lower than app on MIMII DUE development; **and** on bearing it is not lower by more than 0.010.
+- **Note on evidence:** the fresh sets have been used several times; a pass here is supporting evidence, not a clean first-use result.
+- **Reproduction:** `uv run python -m ml.robust_scores --config configs/patch_scores.json`
+- **Artifacts path:** `artifacts/EXP-027/`
+- **Results (development, means over 12 section-domains):**
+
+  | System | own10 AUC | FPR (max) | recall | own30 AUC | recall N30 |
+  |---|---|---|---|---|---|
+  | app | 0.803 | 0.089 (0.115) | 0.330 | 0.879 | 0.502 |
+  | T | 0.805 | 0.089 (0.114) | 0.333 | 0.882 | 0.512 |
+  | G | 0.807 | 0.092 (0.120) | 0.347 | 0.874 | 0.515 |
+  | TG | 0.808 | 0.092 (0.124) | 0.347 | 0.875 | 0.518 |
+
+  - **Shift TTA (T) adds almost nothing** (+0.002): shifted views of a stationary clip carry little new information for the clip-level embedding.
+  - **Fusion (G) splits by machine:** bearing up in 5 of 6 section-domains (for example 01 source 0.688 → 0.750, 01 target 0.706 → 0.783), gearbox down in 5 of 6 (for example 01 target 0.757 → 0.700).
+- **Conclusion:** no overall change. The bearing pattern was tested separately (EXP-028).
+
+### EXP-028 — Fusion (G) for bearings only (held-out bearing check)
+Status: **Complete: G adopted for bearings (+0.030 own10 AUC, 6 of 6 wins).** Pre-registered at `6d4c97c`; run on `4d7b7e9`.
+- **Date:** 2026-11-09
+- **Why:** In EXP-027 no candidate met the overall development rule (best TG +0.005). Per machine, G (head + frozen feature fusion) raised bearing development own10 AUC in 5 of 6 section-domains (mean about 0.825 → 0.859) and lowered gearbox in 5 of 6. Choosing G for bearings comes from looking at development results, so it must be checked on held-out bearing data.
+- **Candidate:** G exactly as EXP-027, used for **bearing** machines only. Gearbox keeps app.
+- **Held-out data:** DCASE 2022 evaluation bearing sections 03–05, 6 section-domains (fifth use: EXP-009, 016, 022, 026, now 028). No untouched bearing set exists, so this is weak evidence.
+- **Protocol:** as EXP-027 (own-baseline, N = 10 and 30, 200 draws, seed 0, spread 1.5 on each system's own leave-one-out scores).
+- **Adopt for bearings** if mean own10 AUC is at least 0.010 higher than app, with ≥ 4 of 6 section-domain wins, mean FPR ≤ 0.10 and every section-domain ≤ 0.20. Otherwise bearings keep app.
+- **Reproduction:** `uv run python -m ml.robust_scores --config configs/patch_scores.json --stage bearing`
+- **Artifacts path:** `artifacts/EXP-028/`
+- **Results (DCASE 2022 evaluation bearing, own-baseline):**
+
+  | System | own10 AUC | FPR (max) | recall | own30 AUC | FPR N30 | recall N30 |
+  |---|---|---|---|---|---|---|
+  | app | 0.671 | 0.073 (0.089) | 0.148 | 0.721 | 0.052 | 0.179 |
+  | **G** | **0.701** | 0.074 (0.096) | 0.157 | **0.752** | 0.047 | 0.184 |
+
+  - Per section-domain (own10 AUC, app → G): 03 source 0.697 → 0.773, 03 target 0.770 → 0.786, 04 source 0.630 → 0.672, 04 target 0.636 → 0.660, 05 source 0.611 → 0.614, 05 target 0.684 → 0.703.
+- **Limitations:** fifth use of this set; the per-machine choice came from development results; recall per 10 s clip barely changes (0.148 → 0.157), the gain is mostly in ranking.
+
+### EXP-029 — 30 s / 60 s spreads for the bearing fusion score
+Status: **Complete: same spreads as gearbox (30 s: 1.00, 60 s: 0.75), selected on development and confirmed on held-out bearing.** Pre-registered at `ca9e5b8`; run on `ae46f88`.
+- **Date:** 2026-11-09
+- **Why:** EXP-028 adopts G for bearings. The ADR-012 spreads (0.75 at 60 s, 1.0 at 30 s) were selected for the app log score (EXP-026), not for G's fused z-sums.
+- **Method:** as EXP-026, for G on bearing only: N = 10 baselines, 200 draws, seed 0; pseudo-recordings of k = 3 and 6 clips; recording score = mean of the clips' fused z-sums; threshold = mean + s × std of the baselines' leave-one-out fused z-sums, s ∈ {0.50, 0.75, 1.00, 1.25, 1.50}.
+- **Selection (development, MIMII DG bearing `test`, 6 section-domains):** for each k, the smallest s with mean FPR ≤ 0.10 and every section-domain ≤ 0.20.
+- **Confirmation (DCASE 2022 evaluation bearing, sixth use, weak evidence):** the selected s must give mean FPR ≤ 0.10, every section-domain ≤ 0.20, and recall above G's single-window setting (k = 1, s = 1.5). If not confirmed for a k, bearing recordings of that length use the single-window spread 1.5 on the mean (stricter).
+- **Reproduction:** `uv run python -m ml.robust_scores --config configs/patch_scores.json --stage bearing_windows`
+- **Artifacts path:** `artifacts/EXP-029/`
+- **Results (G on bearing, N = 10):**
+
+  | Setting | Dev AUC | Dev FPR (max) | Dev recall | Held-out AUC | Held-out FPR (max) | Held-out recall |
+  |---|---|---|---|---|---|---|
+  | 10 s (s 1.5) | 0.857 | 0.099 (0.111) | 0.448 | 0.699 | 0.085 (0.118) | 0.177 |
+  | **30 s, s 1.00** | 0.949 | 0.093 (0.101) | 0.642 | 0.812 | **0.079 (0.111)** | **0.301** |
+  | **60 s, s 0.75** | 0.983 | 0.097 (0.114) | 0.778 | 0.889 | **0.087 (0.128)** | **0.433** |
+
+  - For comparison, the app score on the same held-out bearing set at 60 s (EXP-026): AUC 0.855, recall 0.367.
+- **Conclusion:** bearing recordings use the ADR-012 spreads unchanged. Integrated as bundle `sonovate-ast-head` 0.4.0 (ADR-013).
+
+### EXP-030 — Synthetic training data: nuisance-augmented normals and physically modelled pseudo-faults
+Status: **Complete: no candidate carried (best H-aug +0.007 vs H-real); synthetic pseudo-faults lowered gearbox AUC and are rejected.** Pre-registered at `85beff5`; data generated on `4e4635f`, trained on `4e4635f`.
+- **Date:** 2026-11-09
+- **Research question:** Does training the condition head (ADR-010) with synthetic data improve anomaly ranking on *real* held-out recordings? (a) Normal clips with realistic recording-setup variation, labelled as their normal condition, to make the embedding ignore setup changes (the train/test session shift seen in EXP-001, EXP-005 and the ADR-012 end-to-end check). (b) Synthetic fault sounds used as outlier exposure, to push "not normal" away from every normal condition.
+- **Principle:** synthetic data is used **only for training**. All selection and confirmation use real recordings with real labels. Synthetic-fault detection rates are reported only as a sanity check, never as accuracy.
+- **Source audio:** MIMII DG `train` and `adaptation` normal clips only (5,404 clips, CC-BY-4.0). No test, validation, DCASE evaluation or MIMII DUE audio is used to generate data.
+- **S1, nuisance-augmented normals (one per training clip, label = the clip's condition class, seed = clip index):** a random subset (each with probability 0.6, at least one) of:
+  - gain change, uniform −6 to +6 dB;
+  - spectral tilt (microphone/placement EQ): a first-order shelving-like tilt of −6 to +6 dB across 100 Hz to 8 kHz, applied in the frequency domain;
+  - background noise: pink or brown noise at SNR 15 to 30 dB relative to the clip;
+  - room reverberation: exponentially decaying noise impulse response, RT60 0.1 to 0.6 s, wet mix 10 to 40%.
+  - Not used: pitch or speed changes, which are operating-condition changes the model must keep seeing.
+- **S2, physically modelled pseudo-faults (one per training clip, generator chosen uniformly, seed = clip index), added to the clip at the stated level relative to clip RMS:**
+  - *bearing defect impulses:* an impulse train at 30 to 250 Hz repetition (1% jitter), each impulse a damped sinusoid at a 1 to 6 kHz resonance with 1 to 5 ms decay, optionally amplitude-modulated at 5 to 30 Hz; −15 to −3 dB;
+  - *gear-mesh whine:* a harmonic series (fundamental 150 to 1,500 Hz, 3 harmonics at −6 dB steps) with sideband modulation at 5 to 40 Hz; −20 to −6 dB;
+  - *looseness rattle:* broadband knocks (5 to 20 ms, Hann-shaped noise) at Poisson rate 2 to 15 per second; −10 to 0 dB;
+  - *rubbing / friction:* band-limited noise centred at 2 to 6 kHz, bandwidth 0.5 to 2 kHz, slowly modulated at 0.5 to 3 Hz; −20 to −8 dB;
+  - *imbalance modulation:* the clip multiplied by 1 + m·sin(2πft), f 5 to 30 Hz, m 0.2 to 0.6.
+- **Features:** the shipped bundle's 4-layer AST, layer-4 frequency pooling (as ADR-010). Real clips use the EXP-013 cached layer-4 features (same computation).
+- **Candidates (head architecture and settings exactly as EXP-014; seeds 0, 1, 2):**
+  - **H-real:** retrained on real clips only (control for retraining noise).
+  - **H-aug:** real + S1.
+  - **H-oe:** real + outlier-exposure loss on S2: cross-entropy of S2 logits to the uniform distribution over classes, weight 0.5.
+  - **H-both:** real + S1 + S2 (OE).
+  - Feature standardisation uses real training clips only, for every candidate.
+- **Scoring in product terms:** gearbox = head embedding, k = 1 cosine; bearing = fusion of the head with the frozen feature (ADR-013).
+- **Development selection (MIMII DG `test`, own-baseline N = 10, 200 draws, seed 0, spread 1.5):** mean over seeds of the mean own10 AUC over the 12 section-domains. The best synthetic candidate is carried forward if it beats H-real by ≥ 0.010 and its mean FPR ≤ 0.10 with every section-domain ≤ 0.20.
+- **Real held-out confirmation (seed-0 model of the carried candidate against the shipped bundle 0.4.0):**
+  - gearbox: MIMII DUE gearbox evaluation 03–05 (fifth use) is decisive; MIMII DUE development 00–02 (fifth use) must not be lower;
+  - bearing: DCASE 2022 evaluation bearing (seventh use).
+  - **Per machine type, "pass"** = own10 AUC ≥ shipped + 0.010, ≥ 4 of 6 section-domain wins, mean FPR ≤ 0.10 and every section-domain ≤ 0.20.
+  - **No-regression rule:** the new head replaces the shipped one only if at least one machine type passes **and** the other is not lower than shipped by more than 0.005. Otherwise bundle 0.4.0 stays unchanged.
+- **Reproduction:** `uv run python -m ml.synth_head --config configs/synth_head.json --stage generate`, then `--stage train`, then `--stage confirm`.
+- **Artifacts path:** `artifacts/EXP-030/`
+- **Generated:** 5,404 S1 and 5,404 S2 clips (S2: rubbing 1,084, looseness 1,104, bearing impulses 1,079, gear whine 1,022, imbalance 1,115; S1 nuisances applied about 3,300 times each). Bundle-encoder features match the cached real features to 2.6e-4 relative.
+- **Results (real development data, own10 AUC, mean over seeds 0–2; all / bearing fusion / gearbox head):**
+
+  | Candidate | All | Bearing | Gearbox | Mean FPR (seed range) |
+  |---|---|---|---|---|
+  | shipped 0.4.0 | 0.820 | 0.859 | 0.780 | 0.093 |
+  | H-real | 0.821 | 0.858 | 0.784 | 0.091–0.093 |
+  | H-aug | 0.828 | 0.853 | 0.804 | 0.097–0.098 |
+  | H-oe | 0.805 | 0.857 | 0.754 | 0.097–0.102 |
+  | H-both | 0.802 | 0.852 | 0.752 | 0.102–0.105 |
+
+- **Error analysis:**
+  - **Synthetic pseudo-faults hurt.** Outlier exposure taught the head to separate the generators' additive signals from normal sound, and that did not match real faults: gearbox fell by about 0.03.
+  - **Setup-augmented normals helped gearbox on development** (+0.020 over H-real, every seed) and slightly lowered bearing.
+- **Conclusion:** no general change. The gearbox pattern was checked separately (EXP-031).
+
+### EXP-031 — Setup-augmented head (H-aug) for gearboxes only (real fresh gearbox check)
+Status: **Complete: not adopted. Gain on MIMII DUE evaluation (+0.016, 4/6) but a large loss on MIMII DUE development (−0.069, 0/6).** Pre-registered at `0931008`; run on `d74f4db`.
+- **Date:** 2026-11-09
+- **Why:** In EXP-030 no synthetic candidate met the overall rule (H-aug +0.007 vs H-real). Per machine type, H-aug raised gearbox development AUC from 0.784 (H-real) and 0.780 (shipped) to 0.804, consistently over seeds (0.802 to 0.806), and lowered bearing slightly (0.858 → 0.853). Pseudo-fault outlier exposure (H-oe, H-both) lowered gearbox to about 0.75 and is rejected. Choosing H-aug for gearboxes comes from development results, so it needs a real held-out check.
+- **Candidate:** the EXP-030 H-aug head, seed 0 (deterministic retrain), for **gearbox** machines only, scored as the head (k = 1 cosine). Bearing keeps the shipped 0.4.0 scoring (shipped head + fusion).
+- **Held-out data (real recordings only):** MIMII DUE gearbox evaluation 03–05 (fifth use) is decisive; MIMII DUE gearbox development 00–02 (fifth use) must not be lower.
+- **Protocol:** own-baseline N = 10, 200 draws, seed 0, spread 1.5 (as EXP-030).
+- **Adopt for gearboxes** if, on MIMII DUE evaluation, own10 AUC ≥ shipped + 0.010, ≥ 4 of 6 section-domain wins, mean FPR ≤ 0.10 and every section-domain ≤ 0.20, **and** MIMII DUE development own10 AUC is not lower than shipped. Otherwise gearboxes keep the shipped head.
+- **Reproduction:** `uv run python -m ml.synth_head --config configs/synth_head.json --stage gearbox_aug`
+- **Artifacts path:** `artifacts/EXP-031/`
+- **Results (real recordings, gearbox, N = 10):**
+
+  | Set | Shipped AUC | H-aug AUC | Shipped FPR / recall | H-aug FPR / recall |
+  |---|---|---|---|---|
+  | MIMII DUE evaluation 03–05 | 0.667 | 0.683 | 0.085 / 0.256 | 0.088 / 0.280 |
+  | MIMII DUE development 00–02 | 0.655 | 0.586 | 0.088 / 0.154 | 0.088 / 0.090 |
+
+  - Evaluation per section-domain (shipped → H-aug): 03 source 0.624 → 0.686, 04 source 0.732 → 0.731, 05 source 0.735 → 0.771, 03 target 0.669 → 0.672, 04 target 0.667 → 0.648, 05 target 0.576 → 0.589.
+  - Development: lower in all 6 (for example 01 target 0.756 → 0.656).
+- **Error analysis:** as with LoRA (EXP-020), reshaping the embedding on MIMII DG training data, here with synthetic setup variation, does not transfer reliably to another recording campaign. The two MIMII DUE sets disagree in direction, so the development gain is not robust.
+- **Conclusion:** the shipped bundle 0.4.0 stays. Synthetic training data built from MIMII DG did not improve real-world ranking. The generators (`ml/synthetic.py`) are kept for future use with real own-machine recordings, where setup augmentation can be checked against that machine's real data.

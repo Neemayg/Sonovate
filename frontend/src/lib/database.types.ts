@@ -113,14 +113,14 @@ isOneToOne: false
                   ]
                 },"predictions": {
                   Row: {
-                    "baseline_count": number | null,"created_at": string,"decision": string,"id": string,"log_score": number | null,"model_version_id": string,"owner_id": string,"recording_id": string,"score": number,"threshold": number
+                    "baseline_count": number | null,"created_at": string,"decision": string,"id": string,"log_score": number | null,"model_version_id": string,"owner_id": string,"recording_id": string,"score": number,"threshold": number,"window_count": number,"window_log_scores": number[] | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "baseline_count"?: number | null,"created_at"?: string,"decision": string,"id"?: string,"log_score"?: number | null,"model_version_id": string,"owner_id": string,"recording_id": string,"score": number,"threshold": number
+                    "baseline_count"?: number | null,"created_at"?: string,"decision": string,"id"?: string,"log_score"?: number | null,"model_version_id": string,"owner_id": string,"recording_id": string,"score": number,"threshold": number,"window_count"?: number,"window_log_scores"?: number[] | null
                   }
                   Update: {
-                    "baseline_count"?: number | null,"created_at"?: string,"decision"?: string,"id"?: string,"log_score"?: number | null,"model_version_id"?: string,"owner_id"?: string,"recording_id"?: string,"score"?: number,"threshold"?: number
+                    "baseline_count"?: number | null,"created_at"?: string,"decision"?: string,"id"?: string,"log_score"?: number | null,"model_version_id"?: string,"owner_id"?: string,"recording_id"?: string,"score"?: number,"threshold"?: number,"window_count"?: number,"window_log_scores"?: number[] | null
                   }
                   Relationships: [
                     {

@@ -116,6 +116,86 @@ Only record accepted decisions here. Proposed options belong in an issue or task
   - Real timestamped recordings are needed to validate the rule.
 - **Evidence:** EXP-011 in `docs/EXPERIMENT_LOG.md`.
 
+## ADR-010 — Product model: AST layer-4 frequency pooling with a condition-classifier head
+- **Status:** Accepted (approved by the user, 2026-11-07)
+- **Date:** 2026-11-07
+- **Context:** On held-out DCASE 2022 evaluation sections 03–05 (second use of that set), the EXP-014 head beat the ADR-008 feature in the app setup (10 own baselines):
+  - own10 AUC 0.791 vs 0.670, higher in 11 of 12 section-domains;
+  - recall at the app threshold 0.266 vs 0.065, at a similar FPR (0.041 vs 0.043);
+  - official AUC 0.771 vs 0.681 (95% gain +0.071 to +0.121) (EXP-016).
+  The pipeline was selected on development data only (EXP-013 to EXP-015).
+- **Decision:**
+  - Encoder: frozen AST (`MIT/ast-finetuned-audioset-10-10-0.4593`, BSD-3), using only its first 4 transformer layers. The feature is the mean over time of the layer-4 patch tokens for each of the 12 frequency rows (9,216 values).
+  - Head: the EXP-014 condition-classifier network (seed 0, fixed in advance, not chosen by results), trained on MIMII DG `train`/`adaptation` clips only. It maps the standardized feature to a 128-value L2-normalized embedding.
+  - Scoring and threshold are unchanged from ADR-008: k = 1 cosine distance to the machine's own baselines, and a leave-one-out threshold at spread 2.0 with at least 10 baselines.
+  - ADR-007's prototype labelling and ADR-009's alert rule still apply.
+- **Alternatives considered:**
+  - Keeping the ADR-008 feature.
+  - The frozen layer-4 feature without the head (better than ADR-008 on held-out data, but below the head).
+  - Fusing the two scores (EXP-015, rejected by its rule).
+- **Consequences/trade-offs:**
+  - Gearbox improves a lot. Bearing improves little and unevenly, and results must say so.
+  - Recall at about 4% FPR is still only about 27%, so most anomalies are still missed.
+  - The bundle adds small head weights and a training step to reproduce. The model gets cheaper: 4 of AST's 12 layers.
+  - Existing machines' baselines are re-embedded once with the new model version (automatic in the backend).
+  - The DCASE 2022 evaluation set is now used twice. Further model changes need a new untouched test set.
+- **Evidence:** EXP-013 to EXP-016 in `docs/EXPERIMENT_LOG.md`.
+
+## ADR-011 — Threshold spread 1.5 and a recommendation of 30 baselines
+- **Status:** Accepted (approved by the user, 2026-11-08). It amends ADR-010's threshold setting; the model is unchanged.
+- **Date:** 2026-11-08
+- **Context:**
+  - On development data, spread 1.5 was the smallest setting with mean FPR of 0.10 or below and every section-domain at 0.20 or below at 10 baselines: FPR 0.089 / recall 0.328, against 0.039 / 0.191 at spread 2.0. With 30 baselines: FPR 0.067 / recall 0.506 (EXP-017).
+  - On fresh MIMII DUE gearbox data, spread 1.5 kept FPR at 0.087, with every section-domain at 0.098 or below, and doubled recall from 0.078 to 0.162 (EXP-020). The same rule had been fixed in advance.
+- **Decision:**
+  - The leave-one-out threshold uses spread 1.5 instead of 2.0 (bundle `sonovate-ast-head` 0.3.1; weights identical to 0.3.0).
+  - The minimum stays at 10 baselines (ADR-007).
+  - The app recommends 30 baseline recordings, because more baselines raise detection at the same false-alarm level (EXP-012, EXP-017, EXP-020).
+- **Alternatives considered:**
+  - Keeping spread 2.0 (fewer false alarms, about half the recall).
+  - Spread 1.25 (development FPR 0.13 at 10 baselines, over the limit).
+  - Requiring 30 baselines (a heavier burden on users; the minimum stays 10).
+- **Consequences/trade-offs:**
+  - About 1 in 11 healthy recordings will be flagged at 10 baselines, against about 1 in 25 before.
+  - Most anomalies are still missed on unfamiliar recording setups.
+  - Confirmed on fresh data for gearbox only. Bearing rests on development data.
+  - Existing machines get new thresholds automatically, because thresholds are stored per model version.
+- **Evidence:** EXP-012, EXP-017 and EXP-020 in `docs/EXPERIMENT_LOG.md`.
+
+## ADR-012 — Judge recordings of 30 s or more on the average of their 10 s windows
+- **Status:** Accepted (approved by the user, 2026-11-09) and integrated: backend, migration `20261109230000_recording_windows.sql`, frontend upload (10–60 s) and result page. The model and the per-window threshold are unchanged.
+- **Date:** 2026-11-09
+- **Context:**
+  - Users will often upload recordings, or videos, longer than the model's 10 s input. Each is cut into 10 s windows.
+  - Averaging the shipped model's window log scores ranks anomalies far better: on fresh MIMII DUE gearbox data, AUC 0.667 (10 s) → 0.763 (30 s) → 0.837 (60 s) (EXP-025).
+  - With spreads chosen on development data by ADR-011's rule (30 s: 1.0; 60 s: 0.75), fresh gearbox false alarms stayed at 8.0% and 8.8%, with every section-domain at 10% or below, while recall rose from 25.4% to 32.8% and 42.3% (EXP-026).
+- **Decision:**
+  - Recordings may be 10 to 60 s (16 kHz mono WAV, ≤ 2 MiB, which fits 60 s of 16-bit audio). Each full 10 s window is scored; a baseline recording contributes its first 10 s only, as in the experiments.
+  - A recording of 60 s gets a recording-level decision: the mean of its window log scores against mean + 0.75 × std of the baseline leave-one-out log scores. 30–59 s uses 1.0. 20–29 s (two windows) uses the single-window spread on the mean, which is stricter and was not tested separately; 10–19 s is one window, as before.
+  - Per-window results stay visible next to it. The app recommends recording at least 60 s per check.
+- **Alternatives considered:** per-window only (current); the single-window threshold on the average (too strict, recall fell, EXP-025); a 1/√k spread (too loose, FPR 0.11–0.13, EXP-025).
+- **Consequences/trade-offs:**
+  - Roughly 1.7× as many anomalies caught at about the same false-alarm rate, for 60 s recordings.
+  - The evidence comes from pseudo-recordings built from independent clips; real continuous recordings may gain less. Confirmed for gearbox; bearing figures come from a reused set.
+  - The ADR-009 "2 of the last 3" rule would then apply to recording-level decisions.
+  - Implemented in the inference service, the database (`window_count`, `window_log_scores` on predictions) and the app, and in `ml/analyze.py`. Videos and non-WAV formats are accepted by `ml/analyze.py` only; the app still takes WAV.
+- **Evidence:** EXP-025 and EXP-026 in `docs/EXPERIMENT_LOG.md`.
+
+## ADR-013 — Bearings scored with a fusion of the head and frozen embeddings
+- **Status:** Proposed (2026-11-09) after the user asked for a stronger model; integrated on branch `claude/model-localisation` for testing (bundle `sonovate-ast-head` 0.4.0, migration `20261109233000_ast_head_fusion.sql`). Becomes accepted on the user's approval; until then it can be reverted by restoring 0.3.1 in `ALLOWED_BUNDLES`.
+- **Date:** 2026-11-09
+- **Context:**
+  - Bearing is the weak machine type (EXP-009, EXP-016, EXP-018).
+  - On development data, fusing the head embedding with the frozen layer-4 feature raised bearing AUC in 5 of 6 section-domains and lowered gearbox in 5 of 6 (EXP-027).
+  - On held-out DCASE 2022 bearing data (reused) it raised own10 AUC 0.671 → 0.701 in 6 of 6 section-domains, false alarms unchanged at about 7% (EXP-028). At 60 s it caught 43% of anomalies at 8.7% false alarms, against 37% for the head alone (EXP-029, EXP-026).
+- **Decision (proposed):** bearing machines are scored with z(log d_head) + z(log d_frozen), reported as exp(z-sum) so the leave-one-out threshold rule (spread 1.5) and the ADR-012 window rules apply unchanged. Gearbox keeps the head score. Weights are unchanged; bundle 0.4.0 only adds the scoring fields.
+- **Alternatives considered:** fusion for both types (lowers gearbox, EXP-027); shift test-time augmentation (no gain, EXP-027); patch-level scoring (worse, EXP-021); LoRA fine-tuning (overfit, EXP-019/020).
+- **Consequences/trade-offs:**
+  - Bearing baselines store 9,344 values instead of 128 (about 37 KB each); the embedding size limit is raised.
+  - Every machine is re-embedded once under the new model version.
+  - Evidence for bearing rests on a reused held-out set; no untouched bearing data exists.
+- **Evidence:** EXP-027, EXP-028, EXP-029.
+
 ## Pending decisions
 - Feature representation beyond the EXP-002 setup.
 - Recording hardware and context-sensor strategy.

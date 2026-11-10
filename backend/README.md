@@ -3,10 +3,12 @@
 FastAPI service with its own environment (separate from the root ML project).
 With `SONOVATE_BUNDLES_DIR` unset it has **no model**: `POST /v1/analyses` validates
 the request and the audio, then answers `503 no_validated_model` and stores nothing.
-With the bundles configured it serves frozen AST (`sonovate-ast-knn` 0.2.0, ADR-008) as a
-labelled research prototype (ADR-007): a recording's score is its cosine distance to the
-nearest of the machine's own baseline embeddings, judged against a threshold from the
-baselines' leave-one-out distances.
+With the bundles configured it serves `sonovate-ast-head` 0.4.0 (ADR-010 model, ADR-011 threshold spread 1.5, ADR-012 windows, ADR-013 bearing fusion) as a labelled
+research prototype (ADR-007): the first 4 layers of frozen AST, frequency-preserving pooling
+and a condition-classifier head give a 128-value embedding. A recording's score is its cosine
+distance to the nearest of the machine's own baseline embeddings, judged against a threshold
+from the baselines' leave-one-out distances. Baselines stored under an older model version
+are re-embedded automatically on the next analysis.
 
 ## Local stack (from the repository root)
 
@@ -45,7 +47,7 @@ SONOVATE_BUNDLES_DIR=/path/to/artifacts/bundles uv run pytest   # parity tests n
 - The abuse limits (`app/limits.py`) live in process memory: one analysis in flight per user,
   `SONOVATE_ANALYSES_PER_WINDOW` analyses per `SONOVATE_RATE_WINDOW_SECONDS` (default 20 per
   600 s), and `SONOVATE_EMBED_CONCURRENCY` transformer passes at once (default 1). With N
-  workers they apply per worker. Each worker loads the AST model (about 350 MB of memory).
+  workers they apply per worker. Each worker loads the 4-layer AST model and head (about 140 MB of weights).
 - `SUPABASE_URL` must be https unless it points at loopback. See `docs/DEPLOYMENT.md`.
 - `Dockerfile` builds the production image (CPU-only torch, one worker, port 7860, uid 1000)
   for a Hugging Face Docker Space. Bundles are not in git, so build from the context staged by
@@ -68,7 +70,7 @@ say why.
 | 401 | `unauthenticated` | Missing, expired or invalid token |
 | 404 | `recording_not_found` | Recording does not exist or belongs to someone else |
 | 422 | `invalid_request` | Body is not `{"recording_id": uuid}` |
-| 422 | `not_wav`, `malformed_wav`, `unsupported_encoding`, `wrong_sample_rate`, `wrong_channel_count`, `wrong_duration`, `recording_too_large` | Audio fails the input contract (WAV, 16 kHz, mono, 10 s ± 0.05 s, ≤ 2 MiB) |
+| 422 | `not_wav`, `malformed_wav`, `unsupported_encoding`, `wrong_sample_rate`, `wrong_channel_count`, `wrong_duration`, `recording_too_large` | Audio fails the input contract (WAV, 16 kHz, mono, 10–60 s (± 0.05 s), ≤ 2 MiB) |
 | 422 | `unsupported_machine_type` | Machine type is `other`, or no model is registered for its type |
 | 422 | `baseline_recording` | The recording is a baseline; baselines set the threshold and are not analysed |
 | 409 | `baseline_required` | Fewer than 10 baseline recordings; `details` has `baseline_count` and `baseline_required` |

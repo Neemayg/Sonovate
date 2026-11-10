@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { IBM_Plex_Mono, IBM_Plex_Sans, Instrument_Serif } from "next/font/google";
 import { AuthProvider } from "@/components/AuthProvider";
 import "./globals.css";
 
@@ -17,8 +17,17 @@ const mono = IBM_Plex_Mono({
   display: "swap",
 });
 
+// Display serif, used only for the italic accent word in large headlines.
+const serif = Instrument_Serif({
+  subsets: ["latin"],
+  weight: "400",
+  style: "italic",
+  variable: "--font-serif",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Sonovate",
+  title: { default: "Sonovate — acoustic machine screening", template: "%s · Sonovate" },
   description: "Acoustic anomaly screening for bearings and gearboxes (research prototype).",
 };
 
@@ -33,7 +42,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${sans.variable} ${mono.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${sans.variable} ${mono.variable} ${serif.variable}`}>
       <body>
         <AuthProvider>{children}</AuthProvider>
       </body>

@@ -112,13 +112,13 @@ def test_unknown_recording_is_404(client: TestClient) -> None:
         (wav_bytes(rate=44_100), "wrong_sample_rate"),
         (wav_bytes(channels=2), "wrong_channel_count"),
         (wav_bytes(seconds=5), "wrong_duration"),
-        (wav_bytes(seconds=10.2), "wrong_duration"),
+        (wav_bytes(seconds=61), "wrong_duration"),
         (wav_bytes(bits=8), "unsupported_encoding"),
         (wav_bytes(fmt_tag=0x0055), "unsupported_encoding"),
         (b"RIFF\x04\x00\x00\x00WAVE", "malformed_wav"),
         (wav_bytes() + b"\x00" * (2 * 1024 * 1024), "recording_too_large"),
     ],
-    ids=["not-wav", "44k", "stereo", "5s", "10.2s", "8bit", "mp3-in-wav", "no-chunks", "too-large"],
+    ids=["not-wav", "44k", "stereo", "5s", "61s", "8bit", "mp3-in-wav", "no-chunks", "too-large"],
 )
 def test_invalid_audio_is_422(client: TestClient, source: FakeRecordingSource, data: bytes, code: str) -> None:
     rid = source.add(USER_A, data)
@@ -225,9 +225,52 @@ def test_result_uses_this_machines_baseline_threshold(
     assert body["notice"] == "Research prototype, low sensitivity. Not a diagnosis or failure prediction."
     assert store.saved_rows == [
         {"score": target, "log_score": pytest.approx(math.log(target)),
-         "threshold": pytest.approx(expected_threshold(BASELINE_SCORES)), "decision": decision, "baseline_count": 10}
+         "threshold": pytest.approx(expected_threshold(BASELINE_SCORES)), "decision": decision, "baseline_count": 10,
+         "window_log_scores": [pytest.approx(math.log(target))]}
     ]
+    assert p["window_count"] == 1 and p["threshold_spread"] == 2.0
     assert len(store.threshold_writes) == 1
+
+
+def _log_stats(scores: list[float]) -> tuple[float, float]:
+    logs = [math.log(x) for x in scores]
+    mean = sum(logs) / len(logs)
+    return mean, math.sqrt(sum((v - mean) ** 2 for v in logs) / len(logs))
+
+
+@pytest.mark.parametrize(("seconds", "windows", "spread"), [(30, 3, 1.0), (35, 3, 1.0), (60, 6, 0.75), (20, 2, 2.0)])
+def test_longer_recording_is_judged_on_the_window_mean(
+    source: FakeRecordingSource, verifier: TokenVerifier, seconds: float, windows: int, spread: float
+) -> None:
+    """ADR-012: windows of a 20-60 s recording are scored one by one and judged on their mean log score."""
+    window_scores = [1.3, 1.6, 1.2, 1.5, 1.4, 1.7][:windows]
+    model = FakeModel(BASELINE_SCORES + window_scores)
+    client, store = make_app(source, verifier, model)
+    machine = source.add_baselines(USER_A, 10)
+    rid = source.add(USER_A, wav_bytes(seconds=seconds), machine_id=machine)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 200, res.text
+    p = res.json()["prediction"]
+    mean, std = _log_stats(BASELINE_SCORES)
+    expected_log = sum(math.log(s) for s in window_scores) / windows
+    assert p["window_count"] == windows and p["threshold_spread"] == spread
+    assert p["window_log_scores"] == pytest.approx([math.log(s) for s in window_scores])
+    assert p["log_score"] == pytest.approx(expected_log)
+    assert p["score"] == pytest.approx(math.exp(expected_log))
+    assert p["threshold"] == pytest.approx(mean + spread * std)
+    assert p["decision"] == ("above_threshold" if expected_log > mean + spread * std else "below_threshold")
+    assert len(model.calls) == 10 + windows
+    assert store.saved_rows[0]["window_log_scores"] == pytest.approx([math.log(s) for s in window_scores])
+
+
+def test_long_baseline_contributes_one_window(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    model = FakeModel(BASELINE_SCORES + [1.0])
+    client, _ = make_app(source, verifier, model)
+    machine = source.add_baselines(USER_A, 10, data=wav_bytes(seconds=60))
+    rid = source.add(USER_A, wav_bytes(), machine_id=machine)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 200, res.text
+    assert len(model.calls) == 11  # one embedding per baseline recording, one for the 10 s recording
 
 
 def test_equal_to_threshold_is_below(source: FakeRecordingSource, verifier: TokenVerifier) -> None:

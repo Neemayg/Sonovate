@@ -1,0 +1,11 @@
+{
+  "raw_root": "data/raw/own",
+  "metadata": "data/raw/own/metadata.csv",
+  "interim_root": "data/interim/own",
+  "output": "artifacts/own_eval",
+  "bundle_dir": "artifacts/bundles/sonovate-ast-head-0.3.1",
+  "sample_rate": 16000,
+  "clip_seconds": 10,
+  "baseline_sizes": [10, 30],
+  "alert": {"needed": 2, "window": 3}
+}

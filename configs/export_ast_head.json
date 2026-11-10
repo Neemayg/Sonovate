@@ -1,0 +1,21 @@
+{
+  "name": "sonovate-ast-head",
+  "version": "0.3.0",
+  "model_id": "MIT/ast-finetuned-audioset-10-10-0.4593",
+  "layer": 4,
+  "head_config": "configs/attribute_head.json",
+  "seed": 0,
+  "output": "artifacts/bundles",
+  "machine_types": ["bearing", "gearbox"],
+  "evidence": ["EXP-013", "EXP-014", "EXP-016"],
+  "baseline": {
+    "clips": 10,
+    "spread": 2.0
+  },
+  "limitations": [
+    "Validated only on MIMII DG / DCASE 2022 lab bearings and gearboxes with induced faults; other machines are out of scope.",
+    "On held-out evaluation data, with 10 baseline recordings it caught about 27% of anomalies with about 4% false alarms (EXP-016); most anomalies are still missed.",
+    "Gains over the previous model are large on gearbox but small and uneven on bearing (EXP-016).",
+    "Below threshold does not mean healthy."
+  ]
+}
