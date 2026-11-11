@@ -6,6 +6,7 @@
 
 import { createClient, type Session } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
+import { friendlyAuthError } from "./authMessages";
 import type { WavInfo } from "./wav";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -106,7 +107,7 @@ export const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? 
 
 export async function signIn(email: string, password: string, captchaToken?: string): Promise<void> {
   const { error } = await supabase().auth.signInWithPassword({ email, password, options: { captchaToken } });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(friendlyAuthError(error.code, error.message));
 }
 
 export async function signUp(
@@ -115,8 +116,25 @@ export async function signUp(
   captchaToken?: string,
 ): Promise<{ needsConfirmation: boolean }> {
   const { data, error } = await supabase().auth.signUp({ email, password, options: { captchaToken } });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(friendlyAuthError(error.code, error.message));
   return { needsConfirmation: data.session === null };
+}
+
+// Sends a password-reset email. The link returns to /auth/reset, where the
+// Supabase client exchanges it for a short recovery session. The response is
+// the same whether or not the address has an account.
+export async function requestPasswordReset(email: string, captchaToken?: string): Promise<void> {
+  const { error } = await supabase().auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/auth/reset`,
+    captchaToken,
+  });
+  if (error) throw new Error(friendlyAuthError(error.code, error.message));
+}
+
+// Sets a new password for the signed-in (or recovering) user.
+export async function updatePassword(password: string): Promise<void> {
+  const { error } = await supabase().auth.updateUser({ password });
+  if (error) throw new Error(friendlyAuthError(error.code, error.message));
 }
 
 // Asks Supabase Auth which sign-in providers are switched on, so the UI only
@@ -173,6 +191,8 @@ export type MachineOverview = Machine & {
   latest: { decision: string; created_at: string; recording_id: string } | null;
   // Latest stored decision of each analysis recording, newest last, at most RECENT_RESULTS.
   recent: { above: boolean; created_at: string; recording_id: string }[];
+  // Check (analysis) recordings with at least one stored result.
+  checksWithResult: number;
   alert: MachineAlert | null;
 };
 
@@ -254,6 +274,7 @@ export function summarise(row: Machine & Partial<Pick<OverviewRow, "recordings">
     baselineCount: recordings.filter((r) => r.kind === "baseline").length,
     lastUploadAt,
     latest,
+    checksWithResult: recent.length,
     recent: recent.sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-RECENT_RESULTS),
     alert: null,
   };

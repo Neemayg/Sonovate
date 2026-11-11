@@ -1,49 +1,41 @@
 import type { CSSProperties, ReactNode } from "react";
+import type { Metadata } from "next";
+import Image from "next/image";
+import Link from "next/link";
 import { Brand } from "@/components/Brand";
 import { SignalBars, SignalTrace } from "@/components/Decor";
 import { LandingEffects } from "@/components/LandingEffects";
 import { ModelStory } from "@/components/ModelStory";
 import { SessionCta } from "@/components/SessionCta";
 
-// Public landing page. Every figure here is a documented result:
-// EXP-009 in docs/EXPERIMENT_LOG.md (untouched DCASE 2022 evaluation
-// sections 03-05) and the product rules in docs/DECISIONS.md. The hero
-// instrument is a labelled illustration, not a reading.
+// Public landing page. Product screenshots are real captures of this app
+// (public/product/, demo account seeded from the MIMII DG dataset, CC-BY-4.0;
+// no account details shown). No performance figures appear here: the
+// supporting evaluations reuse held-out sets and pseudo-recordings, so they
+// are described with their caveats in the user guide (/guide#evidence)
+// instead of as headline numbers. Product rules: docs/DECISIONS.md.
 
-const STEPS = [
-  {
-    n: "01",
-    title: "Register a machine",
-    body: "Add a bearing or gearbox with its name and location. Each machine is compared only with itself, never with a fleet average.",
+const TITLE = "Sonovate — Acoustic Machine Monitoring";
+const DESCRIPTION =
+  "Monitor changes in industrial machine sounds using machine-specific acoustic baselines, audio analysis and transparent recording comparisons.";
+
+export const metadata: Metadata = {
+  title: { absolute: TITLE },
+  description: DESCRIPTION,
+  openGraph: {
+    type: "website",
+    title: TITLE,
+    description: DESCRIPTION,
+    siteName: "Sonovate",
+    images: [{ url: "/product/og-image.jpg", width: 1200, height: 630, alt: "A Sonovate result page comparing a machine recording with its normal sound" }],
   },
-  {
-    n: "02",
-    title: "Record its normal sound",
-    body: "Upload at least 10 baseline recordings (30 is better) while it runs as expected. Phone recordings and videos are converted in the browser; add operating context such as speed or load if you know it.",
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+    images: ["/product/og-image.jpg"],
   },
-  {
-    n: "03",
-    title: "Compare what comes next",
-    body: "Each new recording is placed against that machine's own baseline threshold. Repeated results above it raise a machine alert worth checking.",
-  },
-];
-
-const STATS: { value: string; label: string; note: string }[] = [
-  { value: "0.678", label: "Mean AUC", note: "Over 12 section-domains, versus 0.650 for the autoencoder baseline" },
-  { value: "+0.028", label: "AUC over baseline", note: "95% interval +0.001 to +0.055" },
-  { value: "2–9%", label: "False alarms", note: "At the baseline-calibrated threshold" },
-  { value: "4–23%", label: "Anomalies caught", note: "At that same threshold: most faults are missed" },
-];
-
-const LIMITS = [
-  { title: "Not a diagnosis", body: "It says a recording sounds unlike the baseline. It does not name a fault, a part or a cause." },
-  { title: "Not a probability", body: "Anomaly scores are distances, not chances of failure, and are never shown as health percentages." },
-  { title: "Not a failure forecast", body: "No remaining-useful-life estimate and no guaranteed warning before a breakdown." },
-  { title: "Low sensitivity", body: "At a low false-alarm rate it misses most faults. No alert does not mean no fault." },
-];
-
-// The intro plays on every full page load, reloads included. Returning to this
-// page through client-side navigation skips it (see LandingEffects).
+};
 
 function delay(ms: number): CSSProperties {
   return { "--d": `${ms}ms` } as CSSProperties;
@@ -57,107 +49,153 @@ function Icon({ children }: { children: ReactNode }) {
   );
 }
 
-const STEP_ICONS = [
-  <Icon key="a">
-    <rect x="3" y="5" width="14" height="10" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-    <circle cx="7.5" cy="10" r="1.6" fill="currentColor" />
-    <path d="M11 9h3.5M11 11.5h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </Icon>,
-  <Icon key="b">
-    <path d="M3 10h1.5M6 7v6M9 4v12M12 6.5v7M15 8.5v3M17 10h0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-  </Icon>,
-  <Icon key="c">
-    <path d="M3 14.5h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    <path d="M10 3.5v8" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1.5 2" />
-    <circle cx="13.5" cy="9" r="2" fill="currentColor" />
-  </Icon>,
+const PROBLEM = [
+  {
+    title: "Every machine sounds like itself",
+    body: "Motors, pumps, fans and gear drives each produce a characteristic acoustic pattern while they run.",
+  },
+  {
+    title: "That sound can change",
+    body: "Wear, damage, loose parts or a change in how the machine runs can alter its sound, sometimes gradually.",
+  },
+  {
+    title: "Small changes are easy to miss",
+    body: "Listening on a walk-round depends on the person, the day and the noise around them, so small shifts are hard to judge consistently.",
+  },
+  {
+    title: "A repeatable comparison",
+    body: "Sonovate compares each new recording with that machine's own normal recordings, the same way every time.",
+  },
 ];
 
-function Intro() {
-  return (
-    <div className="intro" aria-hidden="true">
-      <div className="intro-inner">
-        <div className="intro-bars">
-          {Array.from({ length: 5 }, (_, i) => (
-            <span key={i} style={{ "--i": i } as CSSProperties} />
-          ))}
-        </div>
-        <p className="intro-word">
-          {"SONOVATE".split("").map((ch, i) => (
-            <span key={i} style={{ "--i": i } as CSSProperties}>
-              {ch}
-            </span>
-          ))}
-        </p>
-        <span className="intro-line" />
-        <p className="intro-sub">Listening for change</p>
-      </div>
-    </div>
-  );
-}
+const STEPS = [
+  {
+    n: "01",
+    title: "Establish a baseline",
+    body: "Register a bearing or gearbox and record it while it runs normally.",
+    points: ["At least 10 normal recordings", "30 recommended for wider coverage", "Every machine gets its own reference"],
+    icon: (
+      <Icon>
+        <path d="M3 10h1.5M6 7v6M9 4v12M12 6.5v7M15 8.5v3M17 10h0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </Icon>
+    ),
+  },
+  {
+    n: "02",
+    title: "Record a check",
+    body: "Upload a new audio recording, or a video with sound, from your phone or recorder.",
+    points: ["Converted to audio in your browser", "60 seconds recommended (10–60 s accepted)", "No specialised hardware required"],
+    icon: (
+      <Icon>
+        <rect x="6.5" y="2.5" width="7" height="11" rx="3.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M4 10a6 6 0 0 0 12 0M10 16v2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </Icon>
+    ),
+  },
+  {
+    n: "03",
+    title: "Understand the result",
+    body: "Sonovate places the check against the machine's own threshold and helps you decide what to look at.",
+    points: ["Above threshold: unusual, worth inspecting", "Below threshold: similar to normal", "Listen & compare, and history over time"],
+    icon: (
+      <Icon>
+        <path d="M3 14.5h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M10 3.5v8" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1.5 2" />
+        <circle cx="13.5" cy="9" r="2" fill="currentColor" />
+      </Icon>
+    ),
+  },
+];
 
-function HeroInstrument() {
-  return (
-    <figure
-      className="instrument tilt"
-      aria-label="Illustration of how a recording is compared with a baseline. Not real data."
-    >
-      <div className="instrument-head">
-        <div>
-          <p className="eyebrow">Comparison view</p>
-          <p className="instrument-title">Recording vs. baseline</p>
-        </div>
-        <span className="tag tag-illustration">Illustration</span>
-      </div>
+const USPS: { title: string; body: string; tag?: string }[] = [
+  {
+    title: "Machine-specific baselines",
+    body: "Each machine is compared only with its own normal recordings and gets its own threshold, calculated from those recordings.",
+  },
+  {
+    title: "No specialised recording hardware",
+    body: "Use compatible phone recordings or videos. Audio is converted to 16 kHz mono in your browser, and only that audio is uploaded.",
+  },
+  {
+    title: "Listen & compare",
+    body: "Play a check in sync with a normal reference, switch between them instantly, match loudness and see where the frequency profile differs.",
+  },
+  {
+    title: "Longer acoustic checks",
+    body: "A 60-second check is evaluated across six 10-second windows; the result uses their average and each window stays visible.",
+  },
+  {
+    title: "Repeated-deviation alerts",
+    body: "A machine alert needs at least 2 of its last 3 checks above threshold, so a single odd recording does not raise one.",
+    tag: "Rule chosen on simulated timelines",
+  },
+  {
+    title: "Traceable results",
+    body: "Every result keeps its threshold, baseline count and model version. Browse a machine's history or export it as CSV.",
+  },
+  {
+    title: "Private by design",
+    body: "Audio is stored privately, each account's data is isolated in the database, and deleting your account removes your audio.",
+  },
+];
 
-      <div className="instrument-wave">
-        <SignalBars count={84} seed={0.6} />
-        <span className="instrument-playhead" aria-hidden="true" />
-      </div>
-      <div className="instrument-axis num" aria-hidden="true">
-        <span>0 s</span>
-        <span>5 s</span>
-        <span>10 s</span>
-      </div>
+const HONESTY = [
+  { title: "A research prototype", body: "Built and tested on lab recordings of bearings and gearboxes. Treat it as decision support." },
+  { title: "Acoustic anomaly screening", body: "It tells you whether a recording sounds unlike the machine's normal sound, not what is wrong." },
+  { title: "It can miss anomalies", body: "Many changes are not caught. No alert does not mean no fault." },
+  { title: "It can flag normal recordings", body: "Some normal recordings land above the threshold. A second check helps." },
+  { title: "Above threshold is not a confirmed fault", body: "It is a reason to inspect the machine with your usual procedures." },
+  { title: "Below threshold is not a clean bill of health", body: "It means the recording is similar to the baseline, nothing more." },
+];
 
-      <div className="instrument-grid" aria-hidden="true">
-        <div>
-          <span className="eyebrow">Baseline</span>
-          <span className="instrument-meter">
-            {Array.from({ length: 10 }, (_, i) => (
-              <i key={i} style={{ animationDelay: `calc(var(--intro, 0ms) + ${300 + i * 70}ms)` }} />
-            ))}
-          </span>
-        </div>
-        <div>
-          <span className="eyebrow">Encoder</span>
-          <strong>Frozen AST</strong>
-        </div>
-        <div>
-          <span className="eyebrow">Threshold</span>
-          <strong>Per machine</strong>
-        </div>
-      </div>
+type Shot = { src: string; width: number; height: number; alt: string; title: string; body: string };
 
-      <div className="instrument-strip" aria-hidden="true">
-        <span className="strip-side strip-below">Below</span>
-        <span className="strip-side strip-above">Above</span>
-        <span className="instrument-track" />
-        <span className="instrument-zone" />
-        <span className="instrument-threshold" />
-        <span className="instrument-marker" />
-      </div>
-      <figcaption className="instrument-caption">
-        Shapes are drawn for illustration. Real results appear only after you upload recordings.
-      </figcaption>
-    </figure>
-  );
-}
+const SHOWCASE: Shot[] = [
+  {
+    src: "/product/add-machine.webp",
+    width: 1012,
+    height: 486,
+    alt: "Add a machine screen with Bearing, Gearbox and Other cards; Bearing selected",
+    title: "Register a machine",
+    body: "Choose the machine type, then give it a name and location.",
+  },
+  {
+    src: "/product/setup.webp",
+    width: 1164,
+    height: 433,
+    alt: "Setup panel showing 4 of 10 baseline recordings, with a minimum of 10 and 30 recommended",
+    title: "Build its normal sound",
+    body: "Upload normal recordings in one batch and watch the baseline fill.",
+  },
+  {
+    src: "/product/attention.webp",
+    width: 1164,
+    height: 403,
+    alt: "Needs attention list with two machines showing repeated unusual readings and one with an incomplete baseline",
+    title: "See what needs attention",
+    body: "Alerts first, then machines that need baselines or a first check.",
+  },
+  {
+    src: "/product/windows.webp",
+    width: 1164,
+    height: 359,
+    alt: "Bar chart of six 10-second window scores against a dashed threshold line",
+    title: "Read the result",
+    body: "A plain verdict, then each 10-second window against the threshold.",
+  },
+  {
+    src: "/product/listen-compare.webp",
+    width: 1164,
+    height: 952,
+    alt: "Listen and compare panel with two synced waveforms and a frequency profile with the largest difference shaded around 732 Hz",
+    title: "Listen & compare",
+    body: "Hear the check next to a normal reference and see where the sound differs.",
+  },
+];
 
 export default function Landing() {
   return (
     <div className="landing theme-dark">
-      <Intro />
       <LandingEffects />
       <a href="#main" className="skip-link">
         Skip to content
@@ -168,17 +206,28 @@ export default function Landing() {
           <Brand href="/" />
           <nav aria-label="Sections" className="l-nav-links">
             <a href="#how">How it works</a>
-            <a href="#model">The model</a>
-            <a href="#evaluation">Evaluation</a>
-            <a href="#limits">Limits</a>
+            <a href="#capabilities">Capabilities</a>
+            <a href="#evidence">Evidence</a>
+            <Link href="/guide">User guide</Link>
           </nav>
           <div className="l-nav-cta">
             <SessionCta variant="nav" />
           </div>
+          <details className="l-mobile-nav">
+            <summary aria-label="Open the section menu">Menu</summary>
+            <nav aria-label="Sections (mobile)">
+              <a href="#how">How it works</a>
+              <a href="#capabilities">Capabilities</a>
+              <a href="#product">The product</a>
+              <a href="#evidence">Evidence</a>
+              <Link href="/guide">User guide</Link>
+            </nav>
+          </details>
         </div>
       </header>
 
       <main id="main">
+        {/* 1. Hero */}
         <section className="hero" aria-labelledby="hero-title">
           <div className="hero-glow" aria-hidden="true" />
           <div className="hero-grid-bg" aria-hidden="true" />
@@ -188,49 +237,92 @@ export default function Landing() {
             <div className="hero-copy">
               <p className="pill">
                 <span className="pill-dot" aria-hidden="true" />
-                Research prototype · bearings &amp; gearboxes
+                Acoustic machine monitoring · research prototype
               </p>
               <h1 id="hero-title">
-                Hear what <em>changed</em> in a machine&apos;s sound.
+                Every machine has a sound. <em>Know when it changes.</em>
               </h1>
               <p className="lead">
-                Sonovate learns how each machine sounds when it runs normally, then shows whether a new recording sits
-                above or below that machine&apos;s own baseline. Acoustic screening, honestly labelled.
+                Sonovate helps industrial teams monitor acoustic changes in their machines by comparing new recordings
+                against machine-specific normal sound baselines.
               </p>
               <div className="hero-cta">
                 <SessionCta variant="hero" />
                 <a href="#how" className="btn btn-ghost btn-lg">
-                  See how it works
+                  Explore how it works
                 </a>
               </div>
               <dl className="hero-facts">
                 <div>
-                  <dt>Recording</dt>
+                  <dt>Baseline</dt>
+                  <dd className="num">10–30 clips</dd>
+                </div>
+                <div>
+                  <dt>Check</dt>
                   <dd className="num">10–60 s</dd>
                 </div>
                 <div>
-                  <dt>Sample rate</dt>
-                  <dd className="num">16 kHz</dd>
-                </div>
-                <div>
-                  <dt>Baseline</dt>
-                  <dd className="num">10 clips</dd>
+                  <dt>Input</dt>
+                  <dd>Phone or video</dd>
                 </div>
               </dl>
             </div>
-            <HeroInstrument />
+            <figure className="instrument tilt shot-hero">
+              <Image
+                src="/product/result-hero.webp"
+                width={1154}
+                height={508}
+                priority
+                sizes="(min-width: 1000px) 56vw, 92vw"
+                alt="Sonovate result page: Unusual compared with this machine's normal sound, the threshold position, and Listen and compare below"
+              />
+              <figcaption className="instrument-caption">
+                The real result page, shown with demo recordings from the public MIMII DG dataset.
+              </figcaption>
+            </figure>
           </div>
-          <a href="#how" className="scroll-cue" aria-label="Scroll to how it works">
+          <a href="#problem" className="scroll-cue" aria-label="Scroll to the problem Sonovate addresses">
             <span />
           </a>
         </section>
 
-        <section id="how" className="l-section" aria-labelledby="how-title">
+        {/* 2. The problem */}
+        <section id="problem" className="l-section" aria-labelledby="problem-title">
+          <div className="l-container problem-layout">
+            <div className="l-section-head" data-reveal>
+              <p className="eyebrow">The problem</p>
+              <h2 id="problem-title">
+                Machines change their sound <em>before anyone notices.</em>
+              </h2>
+              <div className="problem-visual" aria-hidden="true">
+                <SignalBars count={72} seed={1.3} />
+                <SignalTrace className="problem-trace" />
+                <span className="problem-visual-label">Illustration</span>
+              </div>
+            </div>
+            <ol className="problem-list">
+              {PROBLEM.map((p, i) => (
+                <li key={p.title} className="spot" data-reveal style={delay(i * 110)}>
+                  <span className="problem-n num" aria-hidden="true">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <div>
+                    <h3>{p.title}</h3>
+                    <p>{p.body}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
+        {/* 3. How it works */}
+        <section id="how" className="l-section l-section-alt" aria-labelledby="how-title">
           <div className="l-container">
             <div className="l-section-head" data-reveal>
               <p className="eyebrow">How it works</p>
               <h2 id="how-title">
-                Three steps from first clip to <em>first comparison.</em>
+                Three steps from first recording to <em>first comparison.</em>
               </h2>
             </div>
             <div className="steps-wrap" data-reveal>
@@ -238,83 +330,127 @@ export default function Landing() {
                 <span />
               </span>
               <ol className="steps">
-              {STEPS.map((s, i) => (
-                <li key={s.n} className="step spot" data-reveal style={delay(i * 140)}>
-                  <span className="step-watermark num" aria-hidden="true">
-                    {s.n}
-                  </span>
-                  <div className="step-top">
-                    {STEP_ICONS[i]}
-                    <span className="step-n num">Step {s.n}</span>
-                  </div>
-                  <h3>{s.title}</h3>
-                  <p>{s.body}</p>
-                </li>
-              ))}
+                {STEPS.map((s, i) => (
+                  <li key={s.n} className="step spot" data-reveal style={delay(i * 140)}>
+                    <span className="step-watermark num" aria-hidden="true">
+                      {s.n}
+                    </span>
+                    <div className="step-top">
+                      {s.icon}
+                      <span className="step-n num">Step {s.n}</span>
+                    </div>
+                    <h3>{s.title}</h3>
+                    <p>{s.body}</p>
+                    <ul className="step-points">
+                      {s.points.map((pt) => (
+                        <li key={pt}>{pt}</li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
               </ol>
             </div>
           </div>
         </section>
 
-        <ModelStory />
-
-        <section id="evaluation" className="l-section" aria-labelledby="eval-title">
+        {/* 4. Capabilities */}
+        <section id="capabilities" className="l-section" aria-labelledby="cap-title">
           <div className="l-container">
             <div className="l-section-head l-section-head-wide" data-reveal>
-              <p className="eyebrow">Evaluation</p>
-              <h2 id="eval-title">
-                Measured on recordings it had <em>never heard.</em>
+              <p className="eyebrow">Capabilities</p>
+              <h2 id="cap-title">
+                Built for repeatable, <em>inspectable</em> monitoring.
               </h2>
-              <p className="l-body">
-                The final test used DCASE 2022 evaluation data (sections 03–05) that stayed untouched until the model was
-                chosen. These are the numbers, including the weak ones.
-              </p>
+              <p className="l-body">Everything here works in the app today.</p>
             </div>
-            <ul className="stats">
-              {STATS.map((s, i) => (
-                <li key={s.label} className="stat spot" data-reveal style={delay(i * 110)}>
-                  <span className="stat-value num" aria-hidden="true" data-countup={s.value}>
-                    {s.value}
+            <ul className="usp-grid">
+              {USPS.map((u, i) => (
+                <li key={u.title} className="usp spot" data-reveal style={delay((i % 3) * 100)}>
+                  <span className="usp-n num" aria-hidden="true">
+                    {String(i + 1).padStart(2, "0")}
                   </span>
-                  <span className="visually-hidden">{s.value}</span>
-                  <span className="stat-label">{s.label}</span>
-                  <span className="stat-note">{s.note}</span>
+                  <h3>{u.title}</h3>
+                  <p>{u.body}</p>
+                  {u.tag && <span className="tag usp-tag">{u.tag}</span>}
                 </li>
               ))}
             </ul>
-            <p className="l-footnote" data-reveal>
-              Gearbox AUC 0.730 vs 0.654. Bearing 0.626 vs 0.646: not improved over the baseline. AUC measures ranking,
-              not accuracy, and anomaly scores are not failure probabilities.
+          </div>
+        </section>
+
+        {/* 5. The product */}
+        <section id="product" className="l-section l-section-alt" aria-labelledby="product-title">
+          <div className="l-container">
+            <div className="l-section-head l-section-head-wide" data-reveal>
+              <p className="eyebrow">The product</p>
+              <h2 id="product-title">
+                From recording to <em>understanding.</em>
+              </h2>
+              <p className="l-body">Screens from the working app, shown with demo recordings from the public MIMII DG dataset.</p>
+            </div>
+            <ol className="showcase">
+              {SHOWCASE.map((s, i) => (
+                <li key={s.src} className={`showcase-item${i === SHOWCASE.length - 1 ? " is-wide" : ""}`} data-reveal style={delay((i % 2) * 120)}>
+                  <figure className="shot-frame">
+                    <Image src={s.src} width={s.width} height={s.height} alt={s.alt} sizes="(min-width: 1000px) 560px, 92vw" />
+                  </figure>
+                  <div className="showcase-copy">
+                    <span className="num showcase-n">{String(i + 1).padStart(2, "0")}</span>
+                    <h3>{s.title}</h3>
+                    <p>{s.body}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
+        <ModelStory />
+
+        {/* 6. Evidence and honesty */}
+        <section id="evidence" className="l-section" aria-labelledby="evidence-title">
+          <div className="l-container">
+            <div className="l-section-head l-section-head-wide" data-reveal>
+              <p className="eyebrow">Built on evidence, designed with honesty</p>
+              <h2 id="evidence-title">
+                Technology you can inspect. <em>Results you can question.</em>
+              </h2>
+              <p className="l-body">
+                Sonovate shows what each result is based on and says plainly what it cannot tell you. Each model change
+                was checked on held-out lab recordings before it was adopted, and every decision is written down.
+              </p>
+            </div>
+            <ul className="honesty-grid">
+              {HONESTY.map((h, i) => (
+                <li key={h.title} className="spot" data-reveal style={delay((i % 3) * 100)}>
+                  <h3>{h.title}</h3>
+                  <p>{h.body}</p>
+                </li>
+              ))}
+            </ul>
+            <p className="evidence-link" data-reveal>
+              <Link href="/guide#evidence" className="btn btn-ghost">
+                See the evidence and limits
+              </Link>
+              <span className="l-footnote">
+                Operating conditions such as speed or load are stored with recordings for your records; the current
+                model listens to audio only.
+              </span>
             </p>
           </div>
         </section>
 
-        <section id="limits" className="l-section l-section-alt" aria-labelledby="limits-title">
-          <div className="l-container">
-            <div className="l-section-head" data-reveal>
-              <p className="eyebrow">Limits</p>
-              <h2 id="limits-title">
-                What Sonovate will <em>not</em> tell you.
-              </h2>
-            </div>
-            <ul className="limits-grid">
-              {LIMITS.map((l, i) => (
-                <li key={l.title} className="spot" data-reveal style={delay(i * 110)}>
-                  <h3>{l.title}</h3>
-                  <p>{l.body}</p>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-
+        {/* 7. Final call to action */}
         <section className="l-cta" aria-labelledby="cta-title">
           <div className="l-container l-cta-inner" data-reveal>
             <SignalTrace className="l-cta-trace" />
-            <h2 id="cta-title">Start with one machine and ten normal recordings.</h2>
-            <p className="l-body">Your machines, recordings and results are visible only to you.</p>
+            <h2 id="cta-title">Start listening to your machines differently.</h2>
+            <p className="l-body">Create your first machine profile and establish its normal acoustic baseline.</p>
             <div className="hero-cta">
               <SessionCta variant="pair" />
+              <Link href="/guide" className="btn btn-ghost btn-lg">
+                Read the user guide
+              </Link>
             </div>
           </div>
         </section>
@@ -323,7 +459,14 @@ export default function Landing() {
       <footer className="l-footer">
         <div className="l-container l-footer-inner">
           <Brand href="/" />
-          <p>Research prototype. Low sensitivity; not a diagnosis or failure prediction.</p>
+          <nav aria-label="Footer" className="l-footer-links">
+            <a href="#how">How it works</a>
+            <a href="#capabilities">Capabilities</a>
+            <a href="#evidence">Evidence</a>
+            <Link href="/guide">User guide</Link>
+            <Link href="/login">Sign in</Link>
+          </nav>
+          <p>Research prototype. Acoustic anomaly screening; not a diagnosis or failure prediction.</p>
         </div>
       </footer>
     </div>

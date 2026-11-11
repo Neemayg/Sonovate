@@ -6,7 +6,7 @@
 // not probabilities.
 
 import Link from "next/link";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   BASELINE_RECOMMENDED,
   BASELINE_REQUIRED,
@@ -16,24 +16,12 @@ import {
   type ServiceStatus,
 } from "@/lib/api";
 import { machineTypeLabel } from "@/lib/modelInputs";
-import { SignalBars } from "./Decor";
-import { machineStatus, type MachineStatus } from "./MachineCard";
+import { ATTENTION_ORDER, nextAction, stateSummary, type MonitoringState } from "@/lib/monitoring";
+import { machineStatus } from "./MachineCard";
+import { EmptyState, HowAlertsWork, PrototypeNotice, SkeletonBlock, StatusBadge, overviewState } from "./MonitoringStatus";
 import { formatDateTime } from "./Status";
 
 // --- helpers ------------------------------------------------------------------
-
-export function greeting(now = new Date()): string {
-  const h = now.getHours();
-  if (h < 5) return "Working late";
-  if (h < 12) return "Good morning";
-  if (h < 18) return "Good afternoon";
-  return "Good evening";
-}
-
-export function displayName(email: string | undefined): string {
-  const local = (email ?? "").split("@")[0]?.split(/[._-]+/)[0] ?? "";
-  return local ? local[0].toUpperCase() + local.slice(1) : "there";
-}
 
 export function relativeTime(iso: string, now = Date.now()): string {
   const diff = Math.max(0, now - new Date(iso).getTime());
@@ -94,7 +82,7 @@ export const Icons = {
   ),
 };
 
-// --- hero ---------------------------------------------------------------------
+// --- compact header -----------------------------------------------------------
 
 const SERVICE_LABEL: Record<ServiceStatus | "checking", string> = {
   checking: "Checking analysis service…",
@@ -103,95 +91,96 @@ const SERVICE_LABEL: Record<ServiceStatus | "checking", string> = {
   not_configured: "Analysis service not configured",
 };
 
-export function DashHero({
-  email,
-  machines,
-  service,
-  model,
-}: {
-  email: string | undefined;
-  machines: MachineOverview[] | null;
-  service: ServiceStatus | "checking";
-  model: ModelVersionInfo | null;
-}) {
-  const alerts = machines?.filter((m) => m.alert?.alert).length ?? 0;
-  const waiting = machines?.filter((m) => machineStatus(m) === "needs_baseline").length ?? 0;
-  let summary = "Loading your machines…";
-  if (machines) {
-    if (machines.length === 0) summary = "Add your first machine to start building its baseline.";
-    else if (alerts > 0)
-      summary = `${alerts} ${alerts === 1 ? "machine has" : "machines have"} a machine alert worth checking.`;
-    else if (waiting > 0)
-      summary = `${waiting} ${waiting === 1 ? "machine needs" : "machines need"} more baseline recordings before analysis.`;
-    else summary = "No machine alerts right now. No alert does not mean no fault.";
-  }
-
+// No name is derived from the email address: accounts have no display name.
+export function DashHeader({ service }: { service: ServiceStatus | "checking" }) {
+  const today = new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
   return (
-    <section className="dash-hero theme-dark" aria-labelledby="dash-title">
+    <header className="dash-head theme-dark">
       <div className="dash-hero-glow" aria-hidden="true" />
       <div className="dash-hero-grid" aria-hidden="true" />
-      <div className="dash-hero-copy">
-        <p className="eyebrow">Overview · {formatDateTime(new Date().toISOString())}</p>
-        <h1 id="dash-title">
-          {greeting()}, <em>{displayName(email)}</em>
-        </h1>
-        <p className="dash-hero-summary">{summary}</p>
-        <div className="dash-chips">
-          <span className={`chip chip-service is-${service}`} role="status">
-            <span className="chip-dot" aria-hidden="true" />
-            {SERVICE_LABEL[service]}
-          </span>
-          {model && (
-            <span className="chip">
-              <span className="chip-key">Model</span>
-              <span className="num">
-                {model.name} {model.version}
+      <div className="dash-head-copy">
+        <p className="eyebrow">Welcome back · {today}</p>
+        <h1>Machine monitoring</h1>
+      </div>
+      <div className="dash-head-side">
+        <span className={`chip chip-service is-${service}`} role="status">
+          <span className="chip-dot" aria-hidden="true" />
+          {SERVICE_LABEL[service]}
+        </span>
+        <Link href="/machines/new" className="btn btn-primary">
+          {Icons.plus} Add machine
+        </Link>
+      </div>
+      <div className="dash-head-note">
+        <PrototypeNotice />
+      </div>
+    </header>
+  );
+}
+
+// --- attention -------------------------------------------------------------------
+
+type AttentionItem = { m: MachineOverview; state: MonitoringState };
+
+export function attentionItems(machines: MachineOverview[]): AttentionItem[] {
+  return machines
+    .map((m) => ({ m, state: overviewState(m) }))
+    .filter((i) => i.state !== "records_only")
+    .sort((a, b) => ATTENTION_ORDER[a.state] - ATTENTION_ORDER[b.state] || a.m.name.localeCompare(b.m.name));
+}
+
+// Machines in order of what needs doing: alerts, then setup, then first checks,
+// then routine monitoring. Each row links to the relevant section of its page.
+export function AttentionPanel({ machines }: { machines: MachineOverview[] }) {
+  const items = attentionItems(machines);
+  const needing = items.filter((i) => i.state !== "monitoring").length;
+  if (items.length === 0) return null;
+  return (
+    <section className="card attention" aria-labelledby="attention-title">
+      <div className="card-header">
+        <div>
+          <h2 id="attention-title">Needs attention</h2>
+          <p className="muted small">
+            {needing === 0
+              ? "Nothing waiting. Machines below are being monitored; no alert does not confirm they are fault-free."
+              : `${needing} machine${needing === 1 ? "" : "s"} with something to do.`}
+          </p>
+        </div>
+        <HowAlertsWork compact />
+      </div>
+      <ul className="attention-list">
+        {items.map(({ m, state }) => {
+          const action = nextAction(state);
+          const lastCheck = m.recent[m.recent.length - 1];
+          return (
+            <li key={m.id} className={`attention-row is-${state}`}>
+              <div className="attention-main">
+                <Link href={`/machines/${m.id}`} className="attention-name">
+                  {m.name}
+                </Link>
+                <span className="muted small">{machineTypeLabel(m.machine_type)}</span>
+              </div>
+              <StatusBadge state={state} />
+              <span className="attention-last small muted">
+                {lastCheck ? `Last check ${relativeTime(lastCheck.created_at)}` : "No checks yet"}
               </span>
-            </span>
-          )}
-          <span className="chip">
-            <span className="chip-key">Baseline</span>
-            <span className="num">
-              {BASELINE_REQUIRED} min · {BASELINE_RECOMMENDED} recommended
-            </span>
-          </span>
-        </div>
-        <div className="dash-hero-actions">
-          <Link href="/machines/new" className="btn btn-primary">
-            {Icons.plus} Add machine
-          </Link>
-          <Link href="/guide" className="btn btn-ghost">
-            User guide
-          </Link>
-        </div>
-      </div>
-      <div className="dash-hero-visual" aria-hidden="true">
-        <SignalBars count={48} seed={2.4} />
-      </div>
+              <span className="attention-detail small">{stateSummary(state, m.baselineCount)}</span>
+              <Link
+                href={`/machines/${m.id}#${action.anchor}`}
+                className={`btn btn-sm ${state === "monitoring" ? "btn-outline" : "btn-primary"}`}
+                aria-label={`${action.label}: ${m.name}`}
+              >
+                {action.label}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }
 
 // --- KPI tiles ----------------------------------------------------------------
-
-function Ring({ value, max }: { value: number; max: number }) {
-  const r = 22;
-  const c = 2 * Math.PI * r;
-  const frac = max > 0 ? Math.min(1, value / max) : 0;
-  return (
-    <svg className="ring" width="56" height="56" viewBox="0 0 56 56" aria-hidden="true">
-      <circle cx="28" cy="28" r={r} className="ring-track" />
-      <circle
-        cx="28"
-        cy="28"
-        r={r}
-        className="ring-value"
-        strokeDasharray={c}
-        style={{ "--offset": c * (1 - frac), "--full": c } as CSSProperties}
-      />
-    </svg>
-  );
-}
 
 export function KpiTiles({
   machines,
@@ -205,62 +194,83 @@ export function KpiTiles({
   const alerts = machines.filter((m) => m.alert?.alert).length;
   const bearings = machines.filter((m) => m.machine_type === "bearing").length;
   const gearboxes = machines.filter((m) => m.machine_type === "gearbox").length;
-  const baselineTotal = machines.reduce((n, m) => n + m.baselineCount, 0);
 
-  return (
-    <ul className="kpis" aria-label="Summary">
-      <li className="kpi" style={{ "--d": "0ms" } as CSSProperties}>
-        <span className="kpi-icon">{Icons.machine}</span>
-        <span className="kpi-label">Machines</span>
-        <span className="kpi-value num">{machines.length}</span>
-        <span className="kpi-note">
-          {bearings} bearing{bearings === 1 ? "" : "s"} · {gearboxes} gearbox{gearboxes === 1 ? "" : "es"}
-        </span>
-      </li>
-      <li className="kpi kpi-ring" style={{ "--d": "70ms" } as CSSProperties}>
-        <span className="kpi-icon">{Icons.baseline}</span>
-        <span className="kpi-label">Baseline ready</span>
-        <span className="kpi-value num">
+  const tiles: { label: string; value: ReactNode; note: string; icon: ReactNode; warn?: boolean }[] = [
+    {
+      label: "Machines",
+      value: machines.length,
+      note: `${bearings} bearing${bearings === 1 ? "" : "s"} · ${gearboxes} gearbox${gearboxes === 1 ? "" : "es"}`,
+      icon: Icons.machine,
+    },
+    {
+      label: "Baseline ready",
+      value: (
+        <>
           {ready}
           <small>/{analysable.length}</small>
-        </span>
-        <span className="kpi-note">{baselineTotal} baseline recordings in total</span>
-        <Ring value={ready} max={analysable.length} />
-      </li>
-      <li className="kpi" style={{ "--d": "140ms" } as CSSProperties}>
-        <span className="kpi-icon">{Icons.analysis}</span>
-        <span className="kpi-label">Analyses run</span>
-        <span className="kpi-value num">{analyses ? analyses.total : "—"}</span>
-        <span className="kpi-note">
-          {analyses?.latest ? `Latest ${relativeTime(analyses.latest)}` : "No analyses yet"}
-        </span>
-      </li>
-      <li className={`kpi${alerts > 0 ? " is-warn" : ""}`} style={{ "--d": "210ms" } as CSSProperties}>
-        <span className="kpi-icon">{Icons.alert}</span>
-        <span className="kpi-label">Machine alerts</span>
-        <span className="kpi-value num">{alerts}</span>
-        <span className="kpi-note">2 of the last 3 analyses above threshold</span>
-      </li>
+        </>
+      ),
+      note: `At least ${BASELINE_REQUIRED} normal recordings`,
+      icon: Icons.baseline,
+    },
+    {
+      label: "Analyses completed",
+      value: analyses ? analyses.total : "—",
+      note: analyses?.latest ? `Latest ${relativeTime(analyses.latest)}` : "No analyses yet",
+      icon: Icons.analysis,
+    },
+    {
+      label: "Machine alerts",
+      value: alerts,
+      note: "Repeated unusual readings",
+      icon: Icons.alert,
+      warn: alerts > 0,
+    },
+  ];
+
+  return (
+    <ul className="kpis kpis-compact" aria-label="Summary">
+      {tiles.map((t) => (
+        <li key={t.label} className={`kpi${t.warn ? " is-warn" : ""}`}>
+          <span className="kpi-icon">{t.icon}</span>
+          <span className="kpi-label">{t.label}</span>
+          <span className="kpi-value num">{t.value}</span>
+          <span className="kpi-note">{t.note}</span>
+        </li>
+      ))}
     </ul>
   );
 }
 
 // --- machine filters ------------------------------------------------------------
 
-export type MachineFilter = "all" | "alert" | MachineStatus;
+export type MachineFilter = "all" | "alert" | "needs_baseline" | "ready" | "has_result" | "records_only";
 
 const FILTERS: { id: MachineFilter; label: string }[] = [
-  { id: "all", label: "All" },
+  { id: "all", label: "All machines" },
   { id: "alert", label: "Alerts" },
   { id: "needs_baseline", label: "Needs baseline" },
-  { id: "ready", label: "Ready" },
+  { id: "ready", label: "Ready for first check" },
   { id: "has_result", label: "With results" },
+  { id: "records_only", label: "Records only" },
 ];
 
 export function matchesFilter(m: MachineOverview, f: MachineFilter): boolean {
-  if (f === "all") return true;
-  if (f === "alert") return m.alert?.alert === true;
-  return machineStatus(m) === f;
+  const state = overviewState(m);
+  switch (f) {
+    case "all":
+      return true;
+    case "alert":
+      return state === "alert";
+    case "needs_baseline":
+      return state === "baseline_incomplete";
+    case "ready":
+      return state === "ready_first_check";
+    case "has_result":
+      return m.checksWithResult > 0;
+    case "records_only":
+      return state === "records_only";
+  }
 }
 
 export function MachineFilters({
@@ -289,97 +299,6 @@ export function MachineFilters({
 
 // --- side panels -----------------------------------------------------------------
 
-type Step = { key: string; tone: "warn" | "info" | "plain"; title: ReactNode; detail: string; href: string };
-
-function nextSteps(machines: MachineOverview[]): Step[] {
-  const steps: Step[] = [];
-  for (const m of machines) {
-    if (m.alert?.alert) {
-      steps.push({
-        key: `alert-${m.id}`,
-        tone: "warn",
-        title: <>Check {m.name}</>,
-        detail: `${m.alert.above_threshold_count} of the last ${m.alert.analyses_considered} analyses above its threshold`,
-        href: `/machines/${m.id}/history`,
-      });
-    }
-  }
-  for (const m of machines) {
-    const status = machineStatus(m);
-    if (status === "needs_baseline") {
-      const left = BASELINE_REQUIRED - m.baselineCount;
-      steps.push({
-        key: `base-${m.id}`,
-        tone: "info",
-        title: <>Record {left} more baseline{left === 1 ? "" : "s"}</>,
-        detail: `${m.name} · ${m.baselineCount}/${BASELINE_REQUIRED} so far`,
-        href: `/machines/${m.id}#baseline`,
-      });
-    } else if (status === "ready") {
-      steps.push({
-        key: `ready-${m.id}`,
-        tone: "plain",
-        title: <>Run the first check</>,
-        detail: `${m.name} · baseline ready, no analysis yet`,
-        href: `/machines/${m.id}#check`,
-      });
-    }
-  }
-  return steps.slice(0, 4);
-}
-
-export function NextStepsPanel({ machines }: { machines: MachineOverview[] }) {
-  const steps = nextSteps(machines);
-  return (
-    <section className="panel" aria-labelledby="next-title">
-      <div className="panel-head">
-        <h2 id="next-title">Next steps</h2>
-      </div>
-      {machines.length === 0 ? (
-        <Link href="/machines/new" className="step-item">
-          <span className="step-dot is-info" aria-hidden="true" />
-          <span>
-            <strong>Add your first machine</strong>
-            <span>A bearing or gearbox you can record</span>
-          </span>
-          {Icons.arrow}
-        </Link>
-      ) : steps.length === 0 ? (
-        <p className="muted small panel-empty">Nothing waiting. Run new checks from a machine&apos;s page.</p>
-      ) : (
-        <ul className="step-list">
-          {steps.map((s) => (
-            <li key={s.key}>
-              <Link href={s.href} className="step-item">
-                <span className={`step-dot is-${s.tone}`} aria-hidden="true" />
-                <span>
-                  <strong>{s.title}</strong>
-                  <span>{s.detail}</span>
-                </span>
-                {Icons.arrow}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-// Same mapping as ScoreStrip: a log-score axis centred on the threshold.
-function MiniStrip({ logScore, threshold }: { logScore: number; threshold: number }) {
-  const distance = logScore - threshold;
-  const span = Math.max(Math.abs(distance) * 1.6, 0.25);
-  const x = Math.min(Math.max(((logScore - (threshold - span)) / (2 * span)) * 100, 4), 96);
-  return (
-    <span className="mini-strip" aria-hidden="true">
-      <span className="mini-zone" />
-      <span className="mini-threshold" />
-      <span className="mini-marker" style={{ left: `${x}%` }} />
-    </span>
-  );
-}
-
 export function RecentAnalysesPanel({
   items,
   error,
@@ -390,22 +309,15 @@ export function RecentAnalysesPanel({
   return (
     <section className="panel" aria-labelledby="recent-title">
       <div className="panel-head">
-        <h2 id="recent-title">Recent analyses</h2>
+        <h2 id="recent-title">Recent checks</h2>
         <span className="muted small">Latest first</span>
       </div>
       {error && <p className="small panel-empty">{error}</p>}
-      {!error && items === null && (
-        <div className="panel-skeleton" aria-hidden="true">
-          <span className="skeleton" />
-          <span className="skeleton" />
-          <span className="skeleton" />
-        </div>
-      )}
+      {!error && items === null && <SkeletonBlock lines={3} />}
       {items?.length === 0 && (
-        <p className="muted small panel-empty">
-          No analyses yet. Once a machine has {BASELINE_REQUIRED} baseline recordings, upload a new recording and run an
-          analysis.
-        </p>
+        <EmptyState title="No checks yet">
+          Once a machine has {BASELINE_REQUIRED} baseline recordings, run a check from its page.
+        </EmptyState>
       )}
       {items && items.length > 0 && (
         <ul className="feed">
@@ -417,18 +329,13 @@ export function RecentAnalysesPanel({
                   <span className="feed-top">
                     <strong>{a.machine?.name ?? "Machine"}</strong>
                     <span className={`decision-pill${above ? " is-above" : ""}`}>
-                      {above ? "Above threshold" : "Below threshold"}
+                      {above ? "Unusual" : "Similar to normal"}
                     </span>
                   </span>
-                  {a.log_score !== null && <MiniStrip logScore={a.log_score} threshold={a.threshold} />}
                   <span className="feed-meta">
                     <span title={formatDateTime(a.created_at)}>{relativeTime(a.created_at)}</span>
                     {a.machine && <span>{machineTypeLabel(a.machine.machine_type)}</span>}
-                    {a.log_score !== null && (
-                      <span className="num">
-                        log score {a.log_score.toFixed(3)} / {a.threshold.toFixed(3)}
-                      </span>
-                    )}
+                    {a.baseline_count !== null && <span>vs {a.baseline_count} normal recordings</span>}
                   </span>
                 </Link>
               </li>
@@ -436,7 +343,6 @@ export function RecentAnalysesPanel({
           })}
         </ul>
       )}
-      <p className="panel-foot">Positions are relative to each machine&apos;s own threshold, not probabilities.</p>
     </section>
   );
 }
@@ -448,51 +354,39 @@ export function ModelPanel({ model, error }: { model: ModelVersionInfo | null | 
     <section id="dash-model" className="panel panel-model" aria-labelledby="model-title">
       <div className="panel-head">
         <h2 id="model-title">Analysis model</h2>
-        <span className="tag">Research prototype</span>
       </div>
       {error && <p className="small panel-empty">{error}</p>}
-      {model === undefined && !error && (
-        <div className="panel-skeleton" aria-hidden="true">
-          <span className="skeleton" />
-          <span className="skeleton" />
-        </div>
-      )}
+      {model === undefined && !error && <SkeletonBlock lines={2} />}
       {model === null && !error && <p className="muted small panel-empty">No model is registered.</p>}
       {model && (
         <>
-          <div className="model-id">
-            <span className="model-badge" aria-hidden="true">
-              AST
-            </span>
-            <div>
-              <strong className="num">{model.name}</strong>
-              <span className="muted small">
-                Version <span className="num">{model.version}</span> ·{" "}
-                {model.machine_type ? machineTypeLabel(model.machine_type) : "Bearings and gearboxes"}
-              </span>
-            </div>
-          </div>
-          <ol className="model-flow" aria-label="How a recording is analysed">
-            {PIPELINE.map((p, i) => (
-              <li key={p} style={{ "--i": i } as CSSProperties}>
-                <span className="num">{i + 1}</span>
-                {p}
-              </li>
-            ))}
-          </ol>
-          {model.limitations.length > 0 && (
-            <details className="model-limits">
-              <summary>Known limitations ({model.limitations.length})</summary>
-              <ul>
+          <p className="small">
+            Compares each check with that machine&apos;s own normal recordings. Bearings and gearboxes;{" "}
+            {BASELINE_REQUIRED} normal recordings minimum, {BASELINE_RECOMMENDED} recommended.
+          </p>
+          <details className="model-limits">
+            <summary>Technical details</summary>
+            <p className="small num">
+              {model.name} {model.version}
+            </p>
+            <ol className="model-flow" aria-label="How a recording is analysed">
+              {PIPELINE.map((p, i) => (
+                <li key={p}>
+                  <span className="num">{i + 1}</span>
+                  {p}
+                </li>
+              ))}
+            </ol>
+            {model.limitations.length > 0 && (
+              <ul className="small">
                 {model.limitations.map((l) => (
                   <li key={l}>{l}</li>
                 ))}
               </ul>
-            </details>
-          )}
+            )}
+          </details>
         </>
       )}
-      <p className="panel-foot">Each result records the model version that produced it.</p>
     </section>
   );
 }

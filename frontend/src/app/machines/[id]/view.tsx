@@ -6,10 +6,13 @@ import { useCallback, useEffect, useState } from "react";
 import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { MachineAlertNotice } from "@/components/MachineAlertNotice";
 import { MachineForm } from "@/components/MachineForm";
-import { ConditionCoverage, ExportHistoryButton, ResultTimeline } from "@/components/MachineInsights";
+import { ConditionCoverage, ExportHistoryButton, ResultTimeline, analysedPoints } from "@/components/MachineInsights";
+import { AlertPanel, LatestResultCard, MonitoringHeader, SetupModule } from "@/components/MachineStateModules";
+import { PageSkeleton, PrototypeNotice } from "@/components/MonitoringStatus";
 import { PageHead } from "@/components/PageHead";
-import { RecordingWorkbench } from "@/components/RecordingWorkbench";
-import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
+import { RecordingArea } from "@/components/RecordingArea";
+import { RecordingWorkbench, type WorkbenchTab } from "@/components/RecordingWorkbench";
+import { ErrorMessage, formatDateTime } from "@/components/Status";
 import {
   BASELINE_REQUIRED,
   deleteMachine,
@@ -23,11 +26,11 @@ import {
   type MachineAlert,
 } from "@/lib/api";
 import { MODEL_INPUTS, machineTypeLabel } from "@/lib/modelInputs";
-
-const RECORDINGS_SHOWN = 12;
+import { monitoringState } from "@/lib/monitoring";
 
 // Shown once, right after the machine was created (/machines/new adds ?setup=1).
-function SetupWelcome({ machine, analysable }: { machine: Machine; analysable: boolean }) {
+function SetupWelcome({ machine, analysable, baselineCount }: { machine: Machine; analysable: boolean; baselineCount: number }) {
+  const baselineDone = baselineCount >= BASELINE_REQUIRED;
   return (
     <section className="card setup-welcome" aria-labelledby="setup-title">
       <p className="eyebrow">Machine registered</p>
@@ -35,15 +38,18 @@ function SetupWelcome({ machine, analysable }: { machine: Machine; analysable: b
       {analysable ? (
         <>
           <p>
-            Next, record its normal sound. Upload at least {BASELINE_REQUIRED} recordings made while it runs as
-            expected; you can add them all at once.
+            {baselineDone
+              ? "Its baseline is complete. Next, run its first acoustic check."
+              : `Next, record its normal sound. Upload at least ${BASELINE_REQUIRED} recordings made while it runs as expected; you can add them all at once.`}
           </p>
           <ol className="setup-steps">
             <li className="is-done">Register the machine</li>
-            <li className="is-current">
+            <li className={baselineDone ? "is-done" : "is-current"}>
               <a href="#baseline">Upload normal operating recordings</a>
             </li>
-            <li>Run the first acoustic check</li>
+            <li className={baselineDone ? "is-current" : undefined}>
+              {baselineDone ? <a href="#check">Run the first acoustic check</a> : "Run the first acoustic check"}
+            </li>
           </ol>
         </>
       ) : (
@@ -63,20 +69,22 @@ export function MachineDetail({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [alert, setAlert] = useState<MachineAlert | null>(null);
+  const [request, setRequest] = useState<{ tab: WorkbenchTab; n: number } | undefined>(undefined);
   // ?setup=1 marks the first visit after creating the machine (/machines/new).
   // Read once, so removing it from the address below keeps the welcome shown.
   const searchParams = useSearchParams();
   const [justCreated] = useState(() => searchParams.get("setup") === "1");
-  const [listFilter, setListFilter] = useState<"all" | "baseline" | "analysis">("all");
-  const [showAll, setShowAll] = useState(false);
 
-  // Recordings with their context and stored results, which the timeline,
-  // coverage panels and baseline count read; reloaded after every upload so
-  // the count always reflects what is stored.
+  // Recordings with their context and stored results; reloaded after every
+  // upload or delete so counts always reflect what is stored. The alert is
+  // re-read too, since it depends on the stored results.
   const reloadHistory = useCallback(
     () =>
-      listMachineHistory(id)
-        .then(setRecordings)
+      Promise.all([listMachineHistory(id), getMachineAlert(id)])
+        .then(([r, a]) => {
+          setRecordings(r);
+          setAlert(a);
+        })
         .catch((err: Error) => setError(err.message)),
     [id],
   );
@@ -102,8 +110,15 @@ export function MachineDetail({ id }: { id: string }) {
     }
   }, []);
 
+  // #alert links from the dashboard: bring the alert panel into view once it exists.
+  useEffect(() => {
+    if (recordings && window.location.hash === "#alert") {
+      document.getElementById("alert")?.scrollIntoView({ block: "start" });
+    }
+  }, [recordings]);
+
   if (error) return <ErrorMessage>{error}</ErrorMessage>;
-  if (machine === undefined || (machine !== null && recordings === null)) return <Loading label="Loading machine…" />;
+  if (machine === undefined || (machine !== null && recordings === null)) return <PageSkeleton label="Loading machine…" />;
   if (machine === null) {
     return (
       <>
@@ -119,35 +134,18 @@ export function MachineDetail({ id }: { id: string }) {
   const modelled = MODEL_INPUTS[machine.machine_type].length > 0;
   const baselineCount = all.filter((r) => r.kind === "baseline").length;
   const analysisCount = all.length - baselineCount;
-  const listed = all.filter((r) => listFilter === "all" || r.kind === listFilter);
-  const visible = showAll ? listed : listed.slice(0, RECORDINGS_SHOWN);
+  const checksWithResult = analysedPoints(all).length;
+  const state = monitoringState({
+    analysable: modelled,
+    baselineCount,
+    checksWithResult,
+    alert: alert?.alert === true,
+  });
+  const open = (tab: WorkbenchTab) => setRequest((r) => ({ tab, n: (r?.n ?? 0) + 1 }));
+  const monitoring = state === "monitoring" || state === "ready_first_check" || state === "alert";
 
-  return (
+  const workbench = (
     <>
-      <PageHead
-        crumbs={[{ href: "/machines", label: "Machines" }]}
-        eyebrow={[machineTypeLabel(machine.machine_type), machine.location].filter(Boolean).join(" · ")}
-        title={machine.name}
-        meta={`${baselineCount} baseline · ${analysisCount} ${analysisCount === 1 ? "check" : "checks"}`}
-        actions={
-          <>
-            <ExportHistoryButton machine={machine} entries={all} />
-            <Link href={`/machines/${machine.id}/history`} className="button-like">
-              History
-            </Link>
-          </>
-        }
-      />
-
-      {justCreated && <SetupWelcome machine={machine} analysable={modelled} />}
-
-      {alert && (
-        <section className="card" aria-labelledby="machine-alert-title">
-          <h2 id="machine-alert-title">Machine alert</h2>
-          <MachineAlertNotice alert={alert} />
-        </section>
-      )}
-
       {/* Anchor targets for links from the dashboard and the setup steps. */}
       <span id="baseline" className="anchor" aria-hidden="true" />
       <span id="check" className="anchor" aria-hidden="true" />
@@ -158,8 +156,59 @@ export function MachineDetail({ id }: { id: string }) {
         analysable={modelled}
         baselineCount={baselineCount}
         reload={reloadHistory}
-        initialTab={justCreated ? "baseline" : undefined}
+        initialTab={justCreated || state === "baseline_incomplete" ? "baseline" : undefined}
+        request={request}
+        hideBaselineProgress={state === "baseline_incomplete"}
       />
+    </>
+  );
+
+  return (
+    <>
+      <PageHead
+        crumbs={[{ href: "/machines", label: "Machines" }]}
+        eyebrow={[machineTypeLabel(machine.machine_type), machine.location].filter(Boolean).join(" · ")}
+        title={machine.name}
+        meta={`${baselineCount} normal reference${baselineCount === 1 ? "" : "s"} · ${analysisCount} ${analysisCount === 1 ? "check" : "checks"}`}
+        actions={
+          <>
+            <ExportHistoryButton machine={machine} entries={all} />
+            <Link href={`/machines/${machine.id}/history`} className="button-like">
+              History
+            </Link>
+          </>
+        }
+      />
+      {modelled && <PrototypeNotice />}
+
+      {justCreated && <SetupWelcome machine={machine} analysable={modelled} baselineCount={baselineCount} />}
+
+      {state === "alert" && alert && <AlertPanel alert={alert} entries={all} />}
+
+      {state === "baseline_incomplete" && (
+        <SetupModule machine={machine} baselineCount={baselineCount} onAddBaselines={() => open("baseline")} />
+      )}
+
+      {monitoring && (
+        <MonitoringHeader
+          machine={machine}
+          state={state}
+          baselineCount={baselineCount}
+          entries={all}
+          onRunCheck={() => open("check")}
+        />
+      )}
+
+      {monitoring && <LatestResultCard entries={all} />}
+
+      {monitoring && state !== "alert" && alert && (
+        <section className="card" aria-labelledby="machine-alert-title">
+          <h2 id="machine-alert-title">Machine alert</h2>
+          <MachineAlertNotice alert={alert} />
+        </section>
+      )}
+
+      {workbench}
 
       {modelled && analysisCount > 0 && (
         <div className="insights">
@@ -182,62 +231,21 @@ export function MachineDetail({ id }: { id: string }) {
       <section className="card" aria-labelledby="recordings-title">
         <div className="card-header">
           <h2 id="recordings-title">Recordings</h2>
-          <Link href={`/machines/${machine.id}/history`}>View history</Link>
+          <Link href={`/machines/${machine.id}/history`}>Full history</Link>
         </div>
-        {all.length === 0 ? (
-          <Empty>No recordings yet. {modelled ? "Start with the baseline recordings above." : ""}</Empty>
-        ) : (
-          <>
-            <div className="filters" role="group" aria-label="Filter recordings">
-              {(
-                [
-                  ["all", "All", all.length],
-                  ["baseline", "Baseline", baselineCount],
-                  ["analysis", "Checks", analysisCount],
-                ] as const
-              ).map(([value, label, count]) => (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={listFilter === value}
-                  onClick={() => {
-                    setListFilter(value);
-                    setShowAll(false);
-                  }}
-                >
-                  {label} <span className="num">{count}</span>
-                </button>
-              ))}
-            </div>
-            {listed.length === 0 ? (
-              <Empty>No recordings of this kind yet.</Empty>
-            ) : (
-              <ul className="list">
-                {visible.map((r) => (
-                  <li key={r.id}>
-                    <Link href={`/recordings/${r.id}`} className="list-link">
-                      <span className="list-title">{r.original_filename ?? "Recording"}</span>
-                      <span className="muted small">
-                        <span className={`tag tag-${r.kind}`}>{r.kind === "baseline" ? "Baseline" : "Check"}</span>{" "}
-                        uploaded {formatDateTime(r.created_at)}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {listed.length > RECORDINGS_SHOWN && (
-              <button type="button" className="button-link" onClick={() => setShowAll((v) => !v)}>
-                {showAll ? "Show fewer" : `Show all ${listed.length}`}
-              </button>
-            )}
-          </>
-        )}
+        <RecordingArea
+          machineType={machine.machine_type}
+          entries={all}
+          analysable={modelled}
+          onChanged={() => void reloadHistory()}
+          onAddBaselines={() => open("baseline")}
+          onRunCheck={() => open("check")}
+        />
       </section>
 
       <section className="card" aria-labelledby="machine-details-title">
         <div className="card-header">
-          <h2 id="machine-details-title">Details</h2>
+          <h2 id="machine-details-title">Machine information</h2>
           {!editing && (
             <button type="button" className="button-secondary" onClick={() => setEditing(true)}>
               Edit

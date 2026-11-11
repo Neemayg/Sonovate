@@ -3,19 +3,19 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
-import { useAuth } from "@/components/AuthProvider";
 import {
-  DashHero,
+  AttentionPanel,
+  DashHeader,
   GettingStarted,
   gettingStartedSteps,
   KpiTiles,
   MachineFilters,
   matchesFilter,
   ModelPanel,
-  NextStepsPanel,
   RecentAnalysesPanel,
   type MachineFilter,
 } from "@/components/Dashboard";
+import { EmptyState } from "@/components/MonitoringStatus";
 import { MachineCard } from "@/components/MachineCard";
 import { ErrorMessage } from "@/components/Status";
 import {
@@ -46,7 +46,6 @@ function MachinesSkeleton() {
 }
 
 function Overview() {
-  const { session } = useAuth();
   const [machines, setMachines] = useState<MachineOverview[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<{ items: RecentAnalysis[]; total: number } | null>(null);
@@ -86,13 +85,15 @@ function Overview() {
 
   return (
     <div className="dash">
-      <DashHero email={session?.user.email} machines={machines} service={service} model={model ?? null} />
+      <DashHeader service={service} />
 
       {error && <ErrorMessage>{error}</ErrorMessage>}
 
       {machines && recent && !setupDone && (
         <GettingStarted machines={machines} analysesTotal={recent.total} variant="strip" />
       )}
+
+      {machines && <AttentionPanel machines={machines} />}
 
       {machines && (
         <KpiTiles
@@ -115,7 +116,11 @@ function Overview() {
 
           {!error && machines === null && <MachinesSkeleton />}
 
-          {machines && machines.length > 0 && (
+          {machines && machines.length > 0 && visible.length === 0 && (
+            <EmptyState title="No machines match this filter">Choose another filter to see your machines.</EmptyState>
+          )}
+
+          {machines && visible.length > 0 && (
             <ul className="machine-grid" key={filter}>
               {visible.map((m) => (
                 <li key={m.id}>
@@ -141,7 +146,6 @@ function Overview() {
         </section>
 
         <aside className="dash-side" aria-label="Activity and model">
-          {machines && <NextStepsPanel machines={machines} />}
           <RecentAnalysesPanel items={recent?.items ?? null} error={recentError} />
           <ModelPanel model={model} error={modelError} />
         </aside>

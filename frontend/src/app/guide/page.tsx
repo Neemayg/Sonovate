@@ -1,8 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
+import { useAuth } from "@/components/AuthProvider";
+import { Brand } from "@/components/Brand";
+import { Loading } from "@/components/Status";
 import { BASELINE_REQUIRED } from "@/lib/api";
 import { MODEL_INPUTS } from "@/lib/modelInputs";
 
@@ -17,6 +21,7 @@ const SECTIONS = [
   { id: "analyse", title: "3. Run a machine check" },
   { id: "results", title: "4. Read the result" },
   { id: "alerts", title: "5. Alerts and history" },
+  { id: "evidence", title: "What it can and cannot tell you" },
   { id: "manage", title: "6. Edit and delete" },
   { id: "troubleshooting", title: "Troubleshooting" },
   { id: "demo", title: "Presenting with the demo" },
@@ -56,11 +61,13 @@ function Tip({ title = "Tip", children }: { title?: string; children: ReactNode 
   );
 }
 
-function Mock({ label, children }: { label: string; children: ReactNode }) {
+// A real screenshot of the app (public/product/, captured with the demo
+// account's public MIMII DG recordings; no account details shown).
+function Shot({ src, width, height, alt, caption }: { src: string; width: number; height: number; alt: string; caption: string }) {
   return (
-    <figure className="guide-mock" aria-label={label}>
-      <figcaption>{label}</figcaption>
-      {children}
+    <figure className="guide-shot">
+      <Image src={src} width={width} height={height} alt={alt} sizes="(min-width: 1000px) 720px, 92vw" />
+      <figcaption>{caption}</figcaption>
     </figure>
   );
 }
@@ -91,8 +98,16 @@ function GuideView() {
           How to use <em>Sonovate</em>
         </h1>
         <p className="guide-lead">
-          From your first machine to reading a result, step by step. Each step uses the same labels you will see on
-          screen.
+          Register a machine, record its normal sound, then check new recordings against it. Each step below uses the
+          labels you see on screen.
+        </p>
+        <p className="guide-start">
+          <Link href="/machines/new" className="btn btn-primary btn-sm">
+            Add a machine
+          </Link>
+          <Link href="/machines" className="btn btn-ghost btn-sm">
+            Open your machines
+          </Link>
         </p>
         <ol className="guide-quick">
           {QUICK.map((q) => (
@@ -123,9 +138,9 @@ function GuideView() {
         <div className="guide-body">
           <Section id="overview" title="What Sonovate does">
             <p>
-              Sonovate learns how <strong>each of your machines</strong> sounds when it runs normally, then tells you
-              whether a new recording sits <strong>above or below that machine&apos;s own baseline threshold</strong>.
-              It is a screening aid: a quick, repeatable way to notice when a machine starts to sound different.
+              Sonovate learns how <strong>each of your machines</strong> sounds when it runs normally. Each new
+              recording is then placed <strong>above or below that machine&apos;s own threshold</strong>: a quick,
+              repeatable way to notice when a machine starts to sound different.
             </p>
             <div className="guide-cards">
               <div>
@@ -196,22 +211,22 @@ function GuideView() {
                 Press <Ui>Create machine</Ui>. The new machine&apos;s page opens, ready for its baseline recordings.
               </li>
             </Steps>
-            <Mock label="Machine type cards">
-              <div className="mock-select">
-                <div className="mock-option">
-                  <strong>Bearing</strong>
-                  <span>Analysed. Optional input: rotation speed.</span>
-                </div>
-                <div className="mock-option">
-                  <strong>Gearbox</strong>
-                  <span>Analysed. Optional inputs: motor voltage and load weight.</span>
-                </div>
-                <div className="mock-option">
-                  <strong>Other</strong>
-                  <span>Stored only. Recordings can be kept but not analysed.</span>
-                </div>
-              </div>
-            </Mock>
+            <Shot
+              src="/product/add-machine.webp"
+              width={1012}
+              height={486}
+              alt="The machine type step with Bearing, Gearbox and Other cards; Bearing is selected"
+              caption="Step 1 of adding a machine: choose its type."
+            />
+            <ul className="guide-list">
+              <li>
+                <strong>Bearing</strong> and <strong>Gearbox</strong>: analysed. Optional operating inputs: rotation
+                speed (bearing); motor voltage and load weight (gearbox).
+              </li>
+              <li>
+                <strong>Other</strong>: stored only. Recordings can be kept but not analysed.
+              </li>
+            </ul>
             <p className="muted small">
               The model was validated only on lab bearings and gearboxes, which is why other machine types are not
               analysed.
@@ -246,16 +261,13 @@ function GuideView() {
                 (not a guarantee of better fault detection); only the first 10 s of each baseline recording is used.
               </li>
             </Steps>
-            <Mock label="Baseline progress">
-              <div className="mock-meter">
-                {Array.from({ length: BASELINE_REQUIRED }, (_, i) => (
-                  <span key={i} className={i < 7 ? "is-on" : undefined} />
-                ))}
-              </div>
-              <p className="mock-caption">
-                Baseline needed before analysis <span className="num">7/{BASELINE_REQUIRED}</span>
-              </p>
-            </Mock>
+            <Shot
+              src="/product/setup.webp"
+              width={1164}
+              height={433}
+              alt="Setup panel: 4 normal recordings uploaded, minimum 10 with 6 to go, 30 recommended"
+              caption="Baseline progress while a machine is being set up."
+            />
             <h3>Operating conditions</h3>
             <p>
               These optional fields, under <Ui>Advanced details</Ui>, depend on the machine type. They are stored for
@@ -315,51 +327,57 @@ function GuideView() {
           </Section>
 
           <Section id="results" title="4. Read the result">
-            <p>Every result says one of two things, always next to the research-prototype notice:</p>
+            <p>
+              The result page opens with one of two verdicts, then <Ui>Listen &amp; compare</Ui>, a recording overview,
+              a bar per 10-second window and what to do next. The exact scores sit under <Ui>Technical details</Ui>.
+            </p>
             <div className="guide-cards guide-cards-2">
               <div className="is-above">
-                <strong>Above this machine&apos;s baseline threshold</strong>
+                <strong>Unusual compared with this machine&apos;s normal sound</strong>
                 <span>
-                  The clip is less typical than the baseline. Worth a closer look; it is not a confirmed fault.
+                  Above this machine&apos;s baseline threshold. Worth inspecting; it does not confirm a fault.
                 </span>
               </div>
               <div>
-                <strong>Below this machine&apos;s baseline threshold</strong>
+                <strong>Similar to this machine&apos;s normal sound</strong>
                 <span>
-                  The clip is similar to the baseline. That does not prove the machine is healthy: most faults are
-                  missed.
+                  Below this machine&apos;s baseline threshold. That does not guarantee the machine is fault-free: most
+                  faults are missed.
                 </span>
               </div>
             </div>
-            <Mock label="Score strip">
-              <div className="mock-strip">
-                <span className="mock-zone" />
-                <span className="mock-threshold" />
-                <span className="mock-marker" />
-                <span className="mock-side mock-below">below</span>
-                <span className="mock-side mock-above">above</span>
-              </div>
-              <p className="mock-caption">
-                The dot is the recording&apos;s score; the line is the machine&apos;s threshold; the hatched area is
-                &ldquo;above&rdquo;.
-              </p>
-            </Mock>
+            <Shot
+              src="/product/verdict.webp"
+              width={1164}
+              height={313}
+              alt="Result verdict: Unusual compared with this machine's normal sound, with the threshold position bar"
+              caption="The verdict and the dot's position against this machine's threshold."
+            />
+            <Shot
+              src="/product/windows.webp"
+              width={1164}
+              height={359}
+              alt="Six bars, one per 10-second window, against a dashed threshold line"
+              caption="A 60-second check: one bar per 10-second window. The verdict uses their average."
+            />
             <p className="muted small">
               The score is a distance in the model&apos;s embedding space, shown on a log scale. It is not a percentage
-              or a chance of failure. Each result records the model version that produced it.
+              or a chance of failure. The window bars show each 10-second part against the same threshold line; the
+              verdict uses their average, and a tall bar does not show where a fault is. Each result records the model
+              version that produced it.
             </p>
             <h3>Listen &amp; compare</h3>
             <p>
-              Below every analysed recording, <Ui>Listen &amp; compare</Ui> plays it in sync with one of the
-              machine&apos;s baseline recordings, so you can hear what changed instead of trusting a number.
+              Right below the verdict, <Ui>Listen &amp; compare</Ui> plays the check in sync with one of the
+              machine&apos;s normal references, so you can hear what changed instead of trusting a number.
             </p>
             <ol className="guide-steps">
               <li>
-                Choose a baseline under <Ui>Compare with</Ui>. Baselines recorded at the same setting are listed first
+                Choose one under <Ui>Normal reference</Ui>. References recorded at the same setting are listed first
                 and marked <Ui>same setting</Ui>.
               </li>
               <li>
-                Press play, then switch between <Ui>A · This recording</Ui> and <Ui>B · Baseline</Ui>. The switch is
+                Press play, then switch between <Ui>This check</Ui> and <Ui>Normal reference</Ui>. The switch is
                 instant and keeps your place, so a short difference is easy to catch. Click a waveform to jump.
               </li>
               <li>
@@ -367,30 +385,121 @@ function GuideView() {
               </li>
               <li>
                 The <Ui>Average frequency profile</Ui> shows where the energy differs, for example a hum around
-                500 Hz. It is measured from the two files, not used by the model, and not a diagnosis.
+                500 Hz; the band named in the summary is shaded. It is a descriptive comparison measured from the two
+                files, not used by the model, and not a diagnosis. Loudness figures are under <Ui>Loudness details</Ui>.
               </li>
             </ol>
+            <Shot
+              src="/product/listen-compare.webp"
+              width={1164}
+              height={952}
+              alt="Listen and compare with two synced waveforms and a frequency profile; the largest difference is shaded around 732 Hz"
+              caption="Listen & compare: this check against a normal reference, with the largest difference shaded."
+            />
           </Section>
 
           <Section id="alerts" title="5. Alerts and history">
             <ul className="guide-list">
               <li>
-                <strong>Machine alert</strong>: shown when at least 2 of the last 3 analyses are above the threshold.
-                The rule was chosen on simulated timelines, not real machine histories.
+                <strong>Machine alert</strong> (<Ui>Repeated unusual readings</Ui>): shown when at least 2 of the last
+                3 checks are above the threshold. The rule was chosen on simulated timelines, not real machine
+                histories. <Ui>No current machine alert</Ui> does not confirm that a machine is fault-free.
               </li>
               <li>
-                <strong>Dashboard</strong>: the summary tiles, <Ui>Next steps</Ui> and <Ui>Recent analyses</Ui> show
-                what needs attention across all machines. Use the filters above <Ui>Your machines</Ui> to show only
-                alerts, machines that need a baseline, and so on.
+                <strong>Dashboard</strong>: <Ui>Needs attention</Ui> lists machines with an alert first, then those
+                that need baselines or a first check, each with its next action. The summary tiles and{" "}
+                <Ui>Recent checks</Ui> sit below; use the filters above <Ui>Your machines</Ui> to show only alerts,
+                machines that need a baseline, and so on.
               </li>
               <li>
-                <strong>History</strong>: open a machine and choose <Ui>View history</Ui> to see every recording, its
-                conditions and its result over time. The machine page also shows a <Ui>Result timeline</Ui> (one dot
+                <strong>History</strong>: open a machine and choose <Ui>History</Ui> for a table of every recording,
+                filterable by type and result, sortable by date, with expandable rows. The machine page itself
+                splits recordings into <Ui>Baselines</Ui> (with playback and delete) and <Ui>Checks</Ui> (with their
+                result), and shows a <Ui>Result timeline</Ui> (one dot
                 per analysis; the latest 3 decide the alert), <Ui>Operating-condition coverage</Ui> (whether your
                 baselines were recorded at the same settings as your analyses), and <Ui>Export CSV</Ui> for your own
                 records.
               </li>
             </ul>
+            <Shot
+              src="/product/attention.webp"
+              width={1164}
+              height={403}
+              alt="Needs attention list: two machines with repeated unusual readings, one with an incomplete baseline"
+              caption="The dashboard's Needs attention list, with each machine's next action."
+            />
+          </Section>
+
+          <Section id="evidence" title="What it can and cannot tell you">
+            <p>
+              Sonovate is a research prototype for <strong>acoustic anomaly screening</strong>. A result says whether a
+              recording sounds unlike that machine&apos;s normal recordings. It does not name a fault, a part or a
+              cause, and it does not predict when a machine will fail.
+            </p>
+            <div className="guide-cards guide-cards-2">
+              <div className="is-above">
+                <strong>Above threshold is not a confirmed fault</strong>
+                <span>It is a reason to inspect the machine with your usual procedures. Normal recordings are sometimes flagged.</span>
+              </div>
+              <div>
+                <strong>Below threshold is not a clean bill of health</strong>
+                <span>Many anomalies are missed. No alert does not mean no fault.</span>
+              </div>
+            </div>
+            <h3>How it was tested</h3>
+            <p>
+              The model (<code>sonovate-ast-head</code> 0.4.0) was developed on lab recordings of bearings and gearboxes
+              with deliberately induced faults (MIMII DG). Each setting was chosen on development data and then
+              checked on held-out recordings it had not been tuned on (DCASE 2022 Task 2 and MIMII DUE). Every
+              experiment and decision is recorded in the project&apos;s experiment log and decision record.
+            </p>
+            <div className="guide-table guide-table-evidence" role="table" aria-label="Held-out results with 10 normal recordings, Standard sensitivity">
+              <div role="row" className="guide-table-head">
+                <span role="columnheader">Check</span>
+                <span role="columnheader">Anomalous recordings flagged</span>
+                <span role="columnheader">Normal recordings flagged</span>
+                <span role="columnheader">Test data</span>
+              </div>
+              <div role="row">
+                <span role="cell">Gearbox, 60 s</span>
+                <span role="cell" className="num">about 42%</span>
+                <span role="cell" className="num">about 9%</span>
+                <span role="cell">MIMII DUE evaluation (third use)</span>
+              </div>
+              <div role="row">
+                <span role="cell">Gearbox, 10 s</span>
+                <span role="cell" className="num">about 25%</span>
+                <span role="cell" className="num">about 9%</span>
+                <span role="cell">MIMII DUE evaluation (third use)</span>
+              </div>
+              <div role="row">
+                <span role="cell">Bearing, 60 s</span>
+                <span role="cell" className="num">about 43%</span>
+                <span role="cell" className="num">about 9%</span>
+                <span role="cell">DCASE 2022 bearing (reused many times; weak evidence)</span>
+              </div>
+              <div role="row">
+                <span role="cell">Bearing, 10 s</span>
+                <span role="cell" className="num">about 18%</span>
+                <span role="cell" className="num">about 9%</span>
+                <span role="cell">DCASE 2022 bearing (reused many times; weak evidence)</span>
+              </div>
+            </div>
+            <p className="muted small">
+              Sources: EXP-026 (gearbox) and EXP-029 (bearing) in <code>docs/EXPERIMENT_LOG.md</code>; 10 normal
+              recordings per machine, Standard sensitivity. With <strong>High sensitivity</strong> (ADR-014, EXP-032)
+              more anomalies are flagged (for 60 s gearbox checks about 57%) but so are more normal recordings (about
+              17%).
+            </p>
+            <Tip title="Read these figures with care">
+              <ul className="guide-list">
+                <li>They come from lab recordings, not from your machines, microphones or rooms; results in real use can be lower.</li>
+                <li>The 30 s and 60 s figures were measured on recordings joined from separate 10 s clips, which may make them look better than continuous recordings.</li>
+                <li>The test sets had been used before, so they are supporting evidence rather than a clean first test; the bearing evidence is weak.</li>
+                <li>There are no figures for other machine types, which is why only bearings and gearboxes are analysed.</li>
+                <li>Operating conditions you enter are stored for your records; the model listens to audio only.</li>
+              </ul>
+            </Tip>
           </Section>
 
           <Section id="manage" title="6. Edit and delete">
@@ -485,10 +594,54 @@ function GuideView() {
   );
 }
 
-export default function GuidePage() {
+// The guide holds no user data, so it is readable without an account:
+// signed-in users get the app shell, visitors a slim public header.
+function PublicHeader() {
   return (
-    <AppShell>
-      <GuideView />
-    </AppShell>
+    <header className="topbar">
+      <div className="container topbar-inner">
+        <Brand href="/" />
+        <nav aria-label="Main" className="app-nav">
+          <Link href="/">Home</Link>
+          <Link href="/guide" aria-current="page">
+            Guide
+          </Link>
+        </nav>
+        <div className="topbar-user">
+          <Link href="/login" className="button-like btn-sm">
+            Sign in
+          </Link>
+          <Link href="/login?mode=sign-up" className="btn btn-primary btn-sm">
+            Get started
+          </Link>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+export default function GuidePage() {
+  const { session, loading } = useAuth();
+  if (loading) {
+    return (
+      <main className="container session-check">
+        <Loading label="Loading the guide…" />
+      </main>
+    );
+  }
+  if (session) {
+    return (
+      <AppShell>
+        <GuideView />
+      </AppShell>
+    );
+  }
+  return (
+    <>
+      <PublicHeader />
+      <main className="container">
+        <GuideView />
+      </main>
+    </>
   );
 }

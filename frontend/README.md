@@ -111,8 +111,13 @@ npm run build
   ranges in the test data used for the out-of-range notices (the model does not use these values).
 - `src/lib/batch.ts` — state helpers for the batch baseline uploader (pure; tested in `tests/`).
 - `src/lib/analysisMessages.ts` — plain-language text for the inference service's error codes.
+- `src/lib/monitoring.ts` — machine status words, next actions and friendly recording names (pure; tested in `tests/`).
 - `src/app/` — routes: `/` (public landing page), `/login`, `/guide` (user manual), `/auth/callback`, `/machines`,
-  `/machines/new` (two-step add-machine flow), `/machines/[id]`, `/machines/[id]/history`, `/recordings/[id]`.
+  `/machines/new` (two-step add-machine flow), `/machines/[id]`, `/machines/[id]/history`, `/recordings/[id]`,
+  `/auth/reset` (choose a new password from a reset link). `/guide` is readable without signing in.
+- `public/product/` — real screenshots of the app for the landing page and guide, captured with the demo
+  account (public MIMII DG recordings, no account details). Recapture them when those screens change.
+- `src/lib/authMessages.ts` — plain-language text for Supabase Auth errors (pure; tested in `tests/`).
 
 Pages are client-rendered; the Supabase session lives in the browser and row-level
 security decides what each user can read or write. Only the publishable key is used

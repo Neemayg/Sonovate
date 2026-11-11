@@ -7,8 +7,9 @@ import { BaselineMeter } from "@/components/BaselineMeter";
 import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { ListenCompare } from "@/components/ListenCompare";
 import { PageHead } from "@/components/PageHead";
-import { ContextList, PredictionView, SCORE_NOTE } from "@/components/RecordingDetails";
-import { Empty, ErrorMessage, Loading, formatDateTime } from "@/components/Status";
+import { EmptyState, PageSkeleton, PrototypeNotice } from "@/components/MonitoringStatus";
+import { ContextList, NextStepsCard, TechnicalDetails, VerdictCard, WindowChart } from "@/components/RecordingDetails";
+import { ErrorMessage, Loading, formatDateTime } from "@/components/Status";
 import { Waveform } from "@/components/Waveform";
 import {
   deleteRecording,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/api";
 import { friendlyAnalysisError } from "@/lib/analysisMessages";
 import { machineTypeLabel } from "@/lib/modelInputs";
+import { formatDuration, recordingLabel } from "@/lib/monitoring";
 
 export function RecordingAnalysis({ id }: { id: string }) {
   const router = useRouter();
@@ -81,8 +83,15 @@ export function RecordingAnalysis({ id }: { id: string }) {
     });
   }, [id, load, router, runAnalysis]);
 
+  // #listen links (dashboard alert, machine page): scroll once the section exists.
+  useEffect(() => {
+    if (recording && window.location.hash === "#listen") {
+      document.getElementById("listen")?.scrollIntoView({ block: "start" });
+    }
+  }, [recording]);
+
   if (loadError) return <ErrorMessage>{loadError}</ErrorMessage>;
-  if (recording === undefined) return <Loading label="Loading recording…" />;
+  if (recording === undefined) return <PageSkeleton label="Loading recording…" />;
   if (recording === null) {
     return (
       <>
@@ -95,6 +104,117 @@ export function RecordingAnalysis({ id }: { id: string }) {
   }
 
   const machine = recording.machines;
+  const isCheck = recording.kind === "analysis";
+  const latest = predictions && predictions.length > 0 ? predictions[0] : null;
+  const earlier = predictions ? predictions.slice(1) : [];
+  const title = recordingLabel(recording);
+
+  const statusNotices = (
+    <>
+      {running && <Loading label="Comparing against the machine baseline…" />}
+
+      {result?.status === "no_validated_model" && (
+        <div className="notice notice-info" role="status">
+          <p>
+            <strong>No validated model yet.</strong>
+          </p>
+          <p>{result.message}</p>
+        </div>
+      )}
+
+      {result?.status === "unsupported_machine_type" && (
+        <div className="notice notice-info" role="status">
+          <p>
+            <strong>Not supported for this machine type.</strong>
+          </p>
+          <p>{result.message}</p>
+        </div>
+      )}
+
+      {result?.status === "baseline_required" && (
+        <div className="notice notice-info" role="status">
+          <p>
+            <strong>
+              Baseline needed: {result.count}/{result.required} baseline recordings.
+            </strong>
+          </p>
+          <p>
+            Results are compared with this machine&apos;s own normal recordings. Upload{" "}
+            {result.required - result.count} more baseline{" "}
+            {result.required - result.count === 1 ? "recording" : "recordings"}, made while it runs normally. Nothing
+            was stored.
+          </p>
+          {machine && (
+            <p>
+              <Link href={`/machines/${machine.id}#baseline`}>Upload baseline recordings</Link>
+            </p>
+          )}
+          <BaselineMeter count={result.count} required={result.required} />
+        </div>
+      )}
+
+      {result?.status === "baseline_recording" && (
+        <div className="notice notice-info" role="status">
+          {result.message}
+        </div>
+      )}
+
+      {result?.status === "error" && (
+        <ErrorMessage>
+          <p>
+            <strong>{friendlyAnalysisError(result.code, result.message).title}</strong>
+          </p>
+          <p>
+            {friendlyAnalysisError(result.code, result.message).message}
+            {result.code === "unauthenticated" && (
+              <>
+                {" "}
+                <Link href="/login">Sign in</Link>
+              </>
+            )}
+          </p>
+        </ErrorMessage>
+      )}
+
+      {result?.status === "completed" && (
+        <div className="notice" role="status">
+          Analysis saved.
+        </div>
+      )}
+    </>
+  );
+
+  const runControls = latest ? (
+    confirmRerun ? (
+      <div className="notice rerun-confirm" role="group" aria-label="Confirm re-run">
+        <p>
+          Re-running adds <strong>another analysis result</strong> for this recording. The{" "}
+          {predictions!.length === 1 ? "existing result is" : `${predictions!.length} existing results are`} kept.
+        </p>
+        <div className="actions">
+          <button type="button" onClick={runAnalysis} disabled={running}>
+            Re-run analysis
+          </button>
+          <button type="button" className="button-secondary" onClick={() => setConfirmRerun(false)}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    ) : (
+      <div className="actions">
+        <button type="button" className="button-secondary" onClick={() => setConfirmRerun(true)} disabled={running}>
+          {running ? "Analysing…" : "Re-run analysis"}
+        </button>
+        <span className="muted small">Creates another analysis result; earlier results are kept.</span>
+      </div>
+    )
+  ) : (
+    <div className="actions">
+      <button type="button" onClick={runAnalysis} disabled={running}>
+        {running ? "Analysing…" : "Run analysis"}
+      </button>
+    </div>
+  );
 
   return (
     <>
@@ -103,194 +223,130 @@ export function RecordingAnalysis({ id }: { id: string }) {
           { href: "/machines", label: "Machines" },
           ...(machine ? [{ href: `/machines/${machine.id}`, label: machine.name }] : []),
         ]}
-        eyebrow={recording.kind === "baseline" ? "Baseline recording" : "Machine check"}
-        title={recording.original_filename ?? "Recording"}
-        meta={`Uploaded ${formatDateTime(recording.created_at)}`}
+        eyebrow={isCheck ? "Machine check" : "Normal reference recording"}
+        title={title}
+        meta={recording.original_filename ? `File: ${recording.original_filename}` : undefined}
       />
+      {isCheck && <PrototypeNotice />}
 
-      <div className="columns">
-        <div>
-          <section className="card" aria-labelledby="recording-title">
-            <h2 id="recording-title">Recording</h2>
-            <Waveform storagePath={recording.storage_path} label={recording.original_filename ?? "this recording"} />
-            <dl className="details">
-              <dt>Machine</dt>
-              <dd>{machine ? `${machine.name} (${machineTypeLabel(machine.machine_type)})` : "—"}</dd>
-              <dt>File</dt>
-              <dd>{recording.original_filename ?? "—"}</dd>
-              <dt>Purpose</dt>
-              <dd>{recording.kind === "baseline" ? "Baseline (known normal operation)" : "Machine check"}</dd>
-              <dt>Recorded at</dt>
-              <dd>{formatDateTime(recording.recorded_at)}</dd>
-              <dt>Uploaded</dt>
-              <dd>{formatDateTime(recording.created_at)}</dd>
-              <dt>Format</dt>
-              <dd className="num">
-                {recording.duration_seconds && recording.sample_rate_hz
-                  ? `${recording.duration_seconds.toFixed(2)} s · ${recording.sample_rate_hz / 1000} kHz · ${
-                      recording.channels === 1 ? "mono" : `${recording.channels} channels`
-                    }`
-                  : "—"}
-              </dd>
-            </dl>
-          </section>
+      {isCheck && latest && <VerdictCard p={latest} />}
 
-          <section className="card" aria-labelledby="context-title">
-            <h2 id="context-title">Operating context</h2>
-            {recording.context_readings.length === 0 ? (
-              <Empty>No operating context was entered for this recording.</Empty>
-            ) : (
-              <>
-                <ContextList readings={recording.context_readings} machineType={machine?.machine_type ?? "other"} />
-                <p className="muted small">Entered by you when uploading.</p>
-              </>
-            )}
-          </section>
-        </div>
+      {isCheck && !latest && (
+        <section className="card" aria-labelledby="analysis-title" aria-busy={running}>
+          <h2 id="analysis-title">Analysis</h2>
+          {!result && !running && (
+            <EmptyState title="Not analysed yet">Run the analysis to compare this recording with the machine&apos;s baseline.</EmptyState>
+          )}
+          {statusNotices}
+          {runControls}
+        </section>
+      )}
 
-        {recording.kind === "baseline" ? (
-          <section className="card" aria-labelledby="analysis-title">
-            <h2 id="analysis-title">Baseline recording</h2>
-            <p>
-              This recording is part of this machine&apos;s baseline: it is used to set the machine&apos;s threshold and
-              is not analysed itself.
-            </p>
-            {machine && (
-              <p>
-                <Link href={`/machines/${machine.id}`}>See baseline progress for {machine.name}</Link>
-              </p>
-            )}
-          </section>
-        ) : (
-          <section className="card" aria-labelledby="analysis-title" aria-busy={running}>
-            <h2 id="analysis-title">Analysis result</h2>
-
-            {predictions && predictions.length > 0 ? (
-              <>
-                {predictions.map((p) => (
-                  <PredictionView key={p.id} p={p} />
-                ))}
-                <p className="muted small">{SCORE_NOTE}</p>
-              </>
-            ) : (
-              !result && <Empty>This recording has not been analysed yet.</Empty>
-            )}
-
-            {running && <Loading label="Analysing recording…" />}
-
-            {result?.status === "no_validated_model" && (
-              <div className="notice notice-info" role="status">
-                <p>
-                  <strong>No validated model yet.</strong>
-                </p>
-                <p>{result.message}</p>
-              </div>
-            )}
-
-            {result?.status === "unsupported_machine_type" && (
-              <div className="notice notice-info" role="status">
-                <p>
-                  <strong>Not supported for this machine type.</strong>
-                </p>
-                <p>{result.message}</p>
-              </div>
-            )}
-
-            {result?.status === "baseline_required" && (
-              <div className="notice notice-info" role="status">
-                <p>
-                  <strong>
-                    Baseline needed: {result.count}/{result.required} baseline recordings.
-                  </strong>
-                </p>
-                <p>
-                  Results are compared with this machine&apos;s own normal recordings. Upload{" "}
-                  {result.required - result.count} more baseline{" "}
-                  {result.required - result.count === 1 ? "recording" : "recordings"}, made while it runs normally.
-                  Nothing was stored.
-                </p>
-                {machine && (
-                  <p>
-                    <Link href={`/machines/${machine.id}#baseline`}>Upload baseline recordings</Link>
-                  </p>
-                )}
-                <BaselineMeter count={result.count} required={result.required} />
-              </div>
-            )}
-
-            {result?.status === "baseline_recording" && (
-              <div className="notice notice-info" role="status">
-                {result.message}
-              </div>
-            )}
-
-            {result?.status === "error" && (
-              <ErrorMessage>
-                <p>
-                  <strong>{friendlyAnalysisError(result.code, result.message).title}</strong>
-                </p>
-                <p>
-                  {friendlyAnalysisError(result.code, result.message).message}
-                  {result.code === "unauthenticated" && (
-                    <>
-                      {" "}
-                      <Link href="/login">Sign in</Link>
-                    </>
-                  )}
-                </p>
-              </ErrorMessage>
-            )}
-
-            {result?.status === "completed" && (
-              <div className="notice" role="status">
-                Analysis saved.
-              </div>
-            )}
-
-            {predictions && predictions.length > 0 ? (
-              confirmRerun ? (
-                <div className="notice rerun-confirm" role="group" aria-label="Confirm re-run">
-                  <p>
-                    Re-running adds <strong>another analysis result</strong> for this recording. The{" "}
-                    {predictions.length === 1 ? "existing result is" : `${predictions.length} existing results are`} kept.
-                  </p>
-                  <div className="actions">
-                    <button type="button" onClick={runAnalysis} disabled={running}>
-                      Re-run analysis
-                    </button>
-                    <button type="button" className="button-secondary" onClick={() => setConfirmRerun(false)}>
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="actions">
-                  <button type="button" className="button-secondary" onClick={() => setConfirmRerun(true)} disabled={running}>
-                    {running ? "Analysing…" : "Re-run analysis"}
-                  </button>
-                  <span className="muted small">Creates another analysis result; earlier results are kept.</span>
-                </div>
-              )
-            ) : (
-              <div className="actions">
-                <button type="button" onClick={runAnalysis} disabled={running}>
-                  {running ? "Analysing…" : "Run analysis"}
-                </button>
-              </div>
-            )}
-          </section>
-        )}
-      </div>
-
-      {recording.kind === "analysis" && machine && (
-        <section className="card" aria-labelledby="listen-title">
+      {isCheck && machine && (
+        <section id="listen" className="card listen-card" aria-labelledby="listen-title">
           <div className="card-header">
-            <h2 id="listen-title">Listen &amp; compare</h2>
-            <span className="muted small">Hear it next to this machine&apos;s normal sound</span>
+            <div>
+              <h2 id="listen-title">Listen &amp; compare</h2>
+              <p className="muted small">Hear this check next to a normal reference from the same machine.</p>
+            </div>
           </div>
           <ListenCompare machineId={machine.id} machineType={machine.machine_type} recording={recording} />
         </section>
       )}
+
+      <div className="columns result-columns">
+        <section className="card" aria-labelledby="overview-title">
+          <h2 id="overview-title">Recording overview</h2>
+          <Waveform storagePath={recording.storage_path} label={title} />
+          <dl className="details">
+            <dt>Recorded</dt>
+            <dd>{formatDateTime(recording.recorded_at ?? recording.created_at)}</dd>
+            <dt>Duration</dt>
+            <dd className="num">{formatDuration(recording.duration_seconds)}</dd>
+            <dt>Machine</dt>
+            <dd>
+              {machine ? (
+                <Link href={`/machines/${machine.id}`}>
+                  {machine.name} ({machineTypeLabel(machine.machine_type)})
+                </Link>
+              ) : (
+                "—"
+              )}
+            </dd>
+            {isCheck && (
+              <>
+                <dt>Baseline used</dt>
+                <dd>{latest?.baseline_count ? `${latest.baseline_count} normal recordings` : "—"}</dd>
+                <dt>Analysis status</dt>
+                <dd>
+                  {latest
+                    ? `Analysed ${formatDateTime(latest.created_at)}${earlier.length > 0 ? ` · ${predictions!.length} results` : ""}`
+                    : running
+                      ? "Analysing…"
+                      : "Not analysed yet"}
+                </dd>
+              </>
+            )}
+            {!isCheck && (
+              <>
+                <dt>Role</dt>
+                <dd>Normal reference: sets this machine&apos;s threshold and is never analysed itself.</dd>
+              </>
+            )}
+          </dl>
+        </section>
+
+        <section className="card" aria-labelledby="context-title">
+          <h2 id="context-title">Operating conditions</h2>
+          {recording.context_readings.length === 0 ? (
+            <EmptyState title="None entered">Operating conditions are optional and are not used by the model.</EmptyState>
+          ) : (
+            <>
+              <ContextList readings={recording.context_readings} machineType={machine?.machine_type ?? "other"} />
+              <p className="muted small">Entered when uploading; stored for your records, not used by the model.</p>
+            </>
+          )}
+          {!isCheck && machine && (
+            <p className="small">
+              <Link href={`/machines/${machine.id}#baseline`}>See baseline progress for {machine.name}</Link>
+            </p>
+          )}
+        </section>
+      </div>
+
+      {isCheck && latest && <WindowChart p={latest} />}
+      {isCheck && latest && <NextStepsCard p={latest} />}
+
+      {isCheck && latest && (
+        <>
+          <TechnicalDetails p={latest} earlier={earlier} />
+          <section className="card rerun-card" aria-labelledby="rerun-title" aria-busy={running}>
+            <h2 id="rerun-title" className="visually-hidden">
+              Run the analysis again
+            </h2>
+            {statusNotices}
+            {runControls}
+          </section>
+        </>
+      )}
+
+      <details className="card technical-card">
+        <summary>Recording file details</summary>
+        <dl className="details">
+          <dt>Original file</dt>
+          <dd>{recording.original_filename ?? "—"}</dd>
+          <dt>Uploaded</dt>
+          <dd>{formatDateTime(recording.created_at)}</dd>
+          <dt>Format</dt>
+          <dd className="num">
+            {recording.duration_seconds && recording.sample_rate_hz
+              ? `${recording.duration_seconds.toFixed(2)} s · ${recording.sample_rate_hz / 1000} kHz · ${
+                  recording.channels === 1 ? "mono" : `${recording.channels} channels`
+                }`
+              : "—"}
+          </dd>
+        </dl>
+      </details>
 
       <section className="card danger-zone" aria-labelledby="delete-recording-title">
         <h2 id="delete-recording-title">Danger zone</h2>

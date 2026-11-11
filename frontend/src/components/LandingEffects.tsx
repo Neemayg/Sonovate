@@ -71,6 +71,13 @@ export function LandingEffects() {
       targets.forEach((el) => observer?.observe(el));
     }
 
+    // --- mobile section menu: close it once a section is chosen ----------------
+    const mobileNav = root.querySelector<HTMLDetailsElement>(".l-mobile-nav");
+    const onMobileNavClick = (e: MouseEvent) => {
+      if (e.target instanceof Element && e.target.closest("a")) mobileNav?.removeAttribute("open");
+    };
+    mobileNav?.addEventListener("click", onMobileNavClick);
+
     // --- model story ---------------------------------------------------------
     const story = root.querySelector<HTMLElement>(".story");
     const storySteps = story ? [...story.querySelectorAll<HTMLElement>("[data-story-step]")] : [];
@@ -214,6 +221,7 @@ export function LandingEffects() {
       if (pointerFrame) cancelAnimationFrame(pointerFrame);
       if (scrollFrame) cancelAnimationFrame(scrollFrame);
       story?.removeEventListener("click", onStoryClick);
+      mobileNav?.removeEventListener("click", onMobileNavClick);
       root.removeEventListener("pointermove", onPointerMove);
       root.removeEventListener("pointerout", onPointerOut);
       window.removeEventListener("scroll", onScroll);
