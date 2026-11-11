@@ -7,6 +7,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { Brand } from "@/components/Brand";
 import { SignalBars, SignalTrace } from "@/components/Decor";
 import { ErrorMessage } from "@/components/Status";
+import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { Turnstile } from "@/components/Turnstile";
 import { isGoogleSignInEnabled, requestPasswordReset, signIn, signInWithGoogle, signUp, TURNSTILE_SITE_KEY } from "@/lib/api";
 
@@ -285,6 +286,7 @@ export default function LoginPage() {
             </svg>
             Back to home
           </Link>
+          <ThemeSwitch compact />
         </div>
         <div className="auth-center">
           <Suspense fallback={<div className="auth-card auth-card-skeleton skeleton" aria-hidden="true" />}>

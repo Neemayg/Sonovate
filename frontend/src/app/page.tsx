@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -6,6 +6,7 @@ import { Brand } from "@/components/Brand";
 import { SignalBars, SignalTrace } from "@/components/Decor";
 import { LandingEffects } from "@/components/LandingEffects";
 import { ModelStory } from "@/components/ModelStory";
+import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { SessionCta } from "@/components/SessionCta";
 
 // Public landing page. Product screenshots are real captures of this app
@@ -36,6 +37,9 @@ export const metadata: Metadata = {
     images: ["/product/og-image.jpg"],
   },
 };
+
+// Hero headline words, revealed one after another on every load.
+const HERO_WORDS = ["Every", "machine", "has", "a", "sound."];
 
 function delay(ms: number): CSSProperties {
   return { "--d": `${ms}ms` } as CSSProperties;
@@ -195,7 +199,7 @@ const SHOWCASE: Shot[] = [
 
 export default function Landing() {
   return (
-    <div className="landing theme-dark">
+    <div className="landing">
       <LandingEffects />
       <a href="#main" className="skip-link">
         Skip to content
@@ -211,6 +215,7 @@ export default function Landing() {
             <Link href="/guide">User guide</Link>
           </nav>
           <div className="l-nav-cta">
+            <ThemeSwitch compact />
             <SessionCta variant="nav" />
           </div>
           <details className="l-mobile-nav">
@@ -221,6 +226,9 @@ export default function Landing() {
               <a href="#product">The product</a>
               <a href="#evidence">Evidence</a>
               <Link href="/guide">User guide</Link>
+              <div className="l-mobile-theme">
+                <ThemeSwitch />
+              </div>
             </nav>
           </details>
         </div>
@@ -239,8 +247,17 @@ export default function Landing() {
                 <span className="pill-dot" aria-hidden="true" />
                 Acoustic machine monitoring · research prototype
               </p>
-              <h1 id="hero-title">
-                Every machine has a sound. <em>Know when it changes.</em>
+              <h1 id="hero-title" className="hero-title">
+                {HERO_WORDS.map((w, i) => (
+                  <Fragment key={w}>
+                    <span className="hw" style={{ "--i": i } as CSSProperties}>
+                      {w}
+                    </span>{" "}
+                  </Fragment>
+                ))}
+                <em className="hw hw-accent" style={{ "--i": HERO_WORDS.length } as CSSProperties}>
+                  Know when it changes.
+                </em>
               </h1>
               <p className="lead">
                 Sonovate helps industrial teams monitor acoustic changes in their machines by comparing new recordings
@@ -443,6 +460,11 @@ export default function Landing() {
         {/* 7. Final call to action */}
         <section className="l-cta" aria-labelledby="cta-title">
           <div className="l-container l-cta-inner" data-reveal>
+            <span className="cta-rings" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
             <SignalTrace className="l-cta-trace" />
             <h2 id="cta-title">Start listening to your machines differently.</h2>
             <p className="l-body">Create your first machine profile and establish its normal acoustic baseline.</p>

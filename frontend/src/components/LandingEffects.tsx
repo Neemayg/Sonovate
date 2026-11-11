@@ -42,6 +42,23 @@ export function LandingEffects() {
     if (!root) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const fine = window.matchMedia("(pointer: fine)").matches;
+
+    // --- reload: always open on the hero ----------------------------------------
+    // A reload used to restore the old scroll position (or jump to a #section
+    // from the address bar); now it starts at the top so the hero and its
+    // entrance play every time. Ordinary in-page links are unaffected.
+    const navEntry = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    const previousRestoration = history.scrollRestoration;
+    if (navEntry?.type === "reload") {
+      history.scrollRestoration = "manual";
+      if (location.hash) history.replaceState(history.state, "", location.pathname + location.search);
+      // "instant": the page uses smooth scrolling, which would animate this.
+      // Repeated next frame in case the browser restores scroll after us.
+      const toTop = () => window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      toTop();
+      requestAnimationFrame(toTop);
+    }
+
     root.classList.add("fx-ready");
 
     // --- reveals (replayable) ------------------------------------------------
@@ -195,10 +212,6 @@ export function LandingEffects() {
       root.addEventListener("pointerout", onPointerOut, { passive: true });
     }
 
-    // Once the intro has played, coming back to this page (client-side
-    // navigation keeps <html>) should not replay it.
-    const introTimer = window.setTimeout(() => document.documentElement.classList.add("intro-seen"), 2600);
-
     // --- scroll: progress bar, nav state, story --------------------------------
     let scrollFrame = 0;
     const onScrollFrame = () => {
@@ -226,7 +239,7 @@ export function LandingEffects() {
       root.removeEventListener("pointerout", onPointerOut);
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
-      window.clearTimeout(introTimer);
+      history.scrollRestoration = previousRestoration;
     };
   }, []);
 

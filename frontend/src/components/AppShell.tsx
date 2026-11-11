@@ -7,6 +7,7 @@ import { signOut } from "@/lib/api";
 import { useAuth } from "./AuthProvider";
 import { Brand } from "./Brand";
 import { Loading } from "./Status";
+import { ThemeSwitch } from "./ThemeSwitch";
 
 function MainNav({ current }: { current?: string }) {
   // Machine, recording and history pages all sit under "Machines".
@@ -65,6 +66,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <ActiveMainNav />
           </Suspense>
           <div className="topbar-user">
+            <ThemeSwitch compact />
             <Link href="/account" className="user-chip" title={session.user.email ?? undefined}>
               <span className="avatar" aria-hidden="true">
                 {initials(session.user.email ?? "")}

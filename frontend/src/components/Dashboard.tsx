@@ -95,7 +95,7 @@ const SERVICE_LABEL: Record<ServiceStatus | "checking", string> = {
 export function DashHeader({ service }: { service: ServiceStatus | "checking" }) {
   const today = new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
   return (
-    <header className="dash-head theme-dark">
+    <header className="dash-head">
       <div className="dash-hero-glow" aria-hidden="true" />
       <div className="dash-hero-grid" aria-hidden="true" />
       <div className="dash-head-copy">

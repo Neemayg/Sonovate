@@ -7,6 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { Brand } from "@/components/Brand";
 import { Loading } from "@/components/Status";
+import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { BASELINE_REQUIRED } from "@/lib/api";
 import { MODEL_INPUTS } from "@/lib/modelInputs";
 
@@ -91,7 +92,7 @@ function GuideView() {
 
   return (
     <div className="guide">
-      <header className="guide-hero theme-dark">
+      <header className="guide-hero">
         <div className="dash-hero-glow" aria-hidden="true" />
         <p className="eyebrow">User guide</p>
         <h1>
@@ -608,6 +609,7 @@ function PublicHeader() {
           </Link>
         </nav>
         <div className="topbar-user">
+          <ThemeSwitch compact />
           <Link href="/login" className="button-like btn-sm">
             Sign in
           </Link>

@@ -5,97 +5,37 @@
  * used for actions and focus only, never to signal good or bad results.
  */
 
-:root {
-  --bg: #f3f2ee;
-  --surface: #fbfbf9;
-  --surface-2: #eceae4;
-  --ink: #15171c;
-  --ink-2: #3a3e46;
-  --muted: #676b74;
-  --line: #dcd9d1;
-  --line-strong: #c4c0b5;
+/* --- theme tokens --------------------------------------------------------
+ * Dark is the default identity. An inline script in the root layout sets
+ * <html data-theme="dark|light"> before first paint from the stored choice
+ * (Light, Dark or System); without JS the page stays dark. Colours below are
+ * the only place hues are defined: components use these variables. Contrast
+ * (WCAG 2.1, worst case over --bg, --surface and --surface-2): ink >= 13:1,
+ * ink-2 >= 9:1, muted >= 4.8:1, danger/warn/info >= 4.8:1; accent 6.0:1 (dark)
+ * and 4.4:1 to 5.2:1 (light #c2410c, kept as the brand value; on --surface-2
+ * use it for large or bold text only).
+ */
 
-  --accent: #c2410c;
-  --accent-hover: #a3360a;
-  --accent-ink: #ffffff;
-  --accent-soft: rgba(194, 65, 12, 0.16);
-
-  --info-bg: #e9edf1;
-  --info-line: #51657a;
-  --warn-bg: #f6eedb;
-  --warn-line: #a86a12;
-  --error-bg: #f8e6e3;
-  --danger: #b42318;
-  --danger-ink: #ffffff;
-
-  --radius: 12px;
-  --radius-sm: 8px;
-  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
-  --dur: 160ms;
-  --shadow-lift: 0 1px 0 rgba(21, 23, 28, 0.04), 0 6px 18px -10px rgba(21, 23, 28, 0.28);
-  --shadow-sm: 0 1px 2px rgba(21, 23, 28, 0.05);
-  --shadow-lg: 0 1px 0 rgba(21, 23, 28, 0.04), 0 24px 60px -28px rgba(21, 23, 28, 0.35);
-  --highlight: rgba(255, 255, 255, 0.7);
-  --glow: rgba(194, 65, 12, 0.14);
-
-  --font-body: var(--font-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-num: var(--font-mono), ui-monospace, "SF Mono", Menlo, monospace;
-  --font-display: var(--font-serif), "Iowan Old Style", Georgia, serif;
-
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1012;
-    --surface: #16181b;
-    --surface-2: #1e2125;
-    --ink: #ecebe8;
-    --ink-2: #c3c5c9;
-    --muted: #8d929a;
-    --line: #2a2d32;
-    --line-strong: #3b3f46;
-
-    --accent: #ff7a4a;
-    --accent-hover: #ff9370;
-    --accent-ink: #1a0b05;
-    --accent-soft: rgba(255, 122, 74, 0.2);
-
-    --info-bg: #182029;
-    --info-line: #7d97b2;
-    --warn-bg: #261f12;
-    --warn-line: #d7a046;
-    --error-bg: #2b1715;
-    --danger: #f2796d;
-    --danger-ink: #1d0a08;
-
-    --shadow-lift: 0 1px 0 rgba(0, 0, 0, 0.3), 0 8px 22px -12px rgba(0, 0, 0, 0.7);
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 1px 0 rgba(0, 0, 0, 0.3), 0 30px 70px -30px rgba(0, 0, 0, 0.85);
-    --highlight: rgba(255, 255, 255, 0.06);
-    --glow: rgba(255, 122, 74, 0.18);
-
-    color-scheme: dark;
-  }
-}
-
-
-/* Always-dark surfaces (landing page, sign-in brand panel), whatever the
-   system colour scheme. Same values as the dark scheme, slightly deeper ground. */
+:root,
+[data-theme="dark"],
 .theme-dark {
-  --bg: #0b0c0e;
-  --surface: #16181b;
-  --surface-2: #1e2125;
-  --ink: #ecebe8;
-  --ink-2: #c3c5c9;
-  --muted: #8d929a;
-  --line: #2a2d32;
-  --line-strong: #3b3f46;
+  --bg: #101112;
+  --surface: #191b1d;
+  --surface-2: #222426;
+  --ink: #f5f5f4;
+  --ink-2: #d4d4d8;
+  --muted: #a1a1aa;
+  --line: #2c2f33;
+  --line-strong: #3e4248;
 
   --accent: #ff7a4a;
   --accent-hover: #ff9370;
   --accent-ink: #1a0b05;
   --accent-soft: rgba(255, 122, 74, 0.2);
+  /* gradient stops around the accent (headline accents, progress fills) */
+  --accent-hi: #ffb08f;
+  --accent-lo: #e0531c;
+  --accent-deep: #6b1f04;
 
   --info-bg: #182029;
   --info-line: #7d97b2;
@@ -104,14 +44,87 @@
   --error-bg: #2b1715;
   --danger: #f2796d;
   --danger-ink: #1d0a08;
+  --ok: #4ade80;
+
+  --hover: rgba(255, 255, 255, 0.045);
+  --press: rgba(255, 255, 255, 0.08);
+  --overlay: rgba(6, 7, 8, 0.66);
+  --tooltip-bg: #f5f5f4;
+  --tooltip-ink: #101112;
 
   --shadow-lift: 0 1px 0 rgba(0, 0, 0, 0.3), 0 8px 22px -12px rgba(0, 0, 0, 0.7);
-
-  color-scheme: dark;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 1px 0 rgba(0, 0, 0, 0.3), 0 30px 70px -30px rgba(0, 0, 0, 0.85);
+  --shadow-frame: 0 0 0 1px rgba(0, 0, 0, 0.2);
   --highlight: rgba(255, 255, 255, 0.06);
   --glow: rgba(255, 122, 74, 0.18);
+
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg: #f5f3ef;
+  --surface: #ffffff;
+  --surface-2: #eeece7;
+  --ink: #242424;
+  --ink-2: #3d3d3d;
+  --muted: #666666;
+  --line: #e0ddd6;
+  --line-strong: #c9c5bb;
+
+  --accent: #c2410c;
+  --accent-hover: #9a3412;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(194, 65, 12, 0.14);
+  --accent-hi: #ea6a2c;
+  --accent-lo: #9a3412;
+  --accent-deep: #5c1a03;
+
+  --info-bg: #e9edf1;
+  --info-line: #4b5f74;
+  --warn-bg: #f6eedb;
+  --warn-line: #8f5a0c;
+  --error-bg: #f8e6e3;
+  --danger: #b42318;
+  --danger-ink: #ffffff;
+  --ok: #15803d;
+
+  --hover: rgba(36, 36, 36, 0.045);
+  --press: rgba(36, 36, 36, 0.08);
+  --overlay: rgba(36, 33, 28, 0.42);
+  --tooltip-bg: #242424;
+  --tooltip-ink: #f5f3ef;
+
+  --shadow-lift: 0 1px 0 rgba(36, 30, 20, 0.04), 0 6px 18px -10px rgba(36, 30, 20, 0.26);
+  --shadow-sm: 0 1px 2px rgba(36, 30, 20, 0.06);
+  --shadow-lg: 0 1px 0 rgba(36, 30, 20, 0.04), 0 24px 60px -28px rgba(36, 30, 20, 0.3);
+  --shadow-frame: 0 0 0 1px rgba(36, 30, 20, 0.04);
+  --highlight: rgba(255, 255, 255, 0.8);
+  --glow: rgba(194, 65, 12, 0.1);
+
+  color-scheme: light;
+}
+
+:root {
+  --radius: 12px;
+  --radius-sm: 8px;
+
+  /* motion: one set of durations and curves for the whole product */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur: 160ms; /* colour, border, opacity on hover and focus */
+  --dur-med: 240ms; /* lifts, shadows, small movements */
+  --dur-slow: 500ms; /* reveals and scene changes */
+
+  --font-body: var(--font-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-num: var(--font-mono), ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: var(--font-serif), "Iowan Old Style", Georgia, serif;
+}
+
+/* Brand surfaces that stay dark in both themes (the sign-in brand panel). */
+.theme-dark {
   background: var(--bg);
   color: var(--ink);
 }
@@ -191,6 +204,12 @@ a:hover {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* Headings that receive focus from script (wizard steps) are announcement
+   targets, not controls: no ring flashing around them on every step. */
+:is(h1, h2, h3)[tabindex="-1"]:focus {
+  outline: none;
 }
 
 ::selection {
@@ -1754,6 +1773,100 @@ button.btn-outline:hover:not(:disabled) {
   }
 }
 
+/* --- theme switch (Light / Dark / System) --------------------------------- */
+
+/* While the theme changes, colours swap at once instead of each component
+   fading on its own timing (set for two frames by the theme script). */
+.theme-changing *,
+.theme-changing *::before,
+.theme-changing *::after {
+  transition: none !important;
+}
+
+.theme-switch {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+}
+
+.theme-switch-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 0;
+  padding: 0.35rem 0.75rem;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+/* scoped under .theme-switch to outrank the global button:hover fill */
+.theme-switch .theme-switch-option:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.theme-switch .theme-switch-option:active:not(:disabled) {
+  transform: none;
+}
+
+.theme-switch .theme-switch-option[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm), 0 0 0 1px var(--line);
+}
+
+.theme-switch-option[aria-pressed="true"] svg {
+  color: var(--accent);
+}
+
+.theme-switch.is-compact .theme-switch-option {
+  width: 28px;
+  height: 26px;
+  padding: 0;
+}
+
+@media (max-width: 639px) {
+  .topbar .theme-switch.is-compact .theme-switch-option,
+  .l-nav .theme-switch.is-compact .theme-switch-option,
+  .auth-topline .theme-switch.is-compact .theme-switch-option {
+    width: 26px;
+  }
+}
+
+/* phones: the app bar has no room for it; the full selector is on Account */
+@media (max-width: 479px) {
+  .topbar .theme-switch {
+    display: none;
+  }
+}
+
+.card.appearance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+}
+
+.card.appearance h2,
+.card.appearance p {
+  margin-bottom: 0.25rem;
+}
+
 /* --- app shell ---------------------------------------------------------- */
 
 .session-check {
@@ -1803,7 +1916,7 @@ button.btn-outline:hover:not(:disabled) {
   height: 28px;
   flex: none;
   border-radius: 50%;
-  background: linear-gradient(140deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #6b1f04));
+  background: linear-gradient(140deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--accent-deep)));
   color: #fff;
   font-family: var(--font-num);
   font-size: 0.68rem;
@@ -1934,8 +2047,8 @@ button.btn-outline:hover:not(:disabled) {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(560px 380px at 78% 30%, rgba(255, 122, 74, 0.075), transparent 70%),
-    radial-gradient(460px 320px at 15% 10%, rgba(125, 151, 178, 0.08), transparent 70%);
+    radial-gradient(560px 380px at 78% 30%, color-mix(in srgb, var(--accent) 7.5%, transparent), transparent 70%),
+    radial-gradient(460px 320px at 15% 10%, color-mix(in srgb, var(--info-line) 8%, transparent), transparent 70%);
 }
 
 .hero-grid-bg {
@@ -1969,22 +2082,14 @@ button.btn-outline:hover:not(:disabled) {
   }
 }
 
-.landing {
-  --intro: 1.9s;
-}
-
-.intro-seen .landing {
-  --intro: 0ms;
-}
-
 .hero-copy > * {
   animation: rise-in 720ms var(--ease) both;
-  animation-delay: var(--intro);
+  animation-delay: 0ms;
 }
-.hero-copy > *:nth-child(2) { animation-delay: calc(var(--intro) + 80ms); }
-.hero-copy > *:nth-child(3) { animation-delay: calc(var(--intro) + 160ms); }
-.hero-copy > *:nth-child(4) { animation-delay: calc(var(--intro) + 240ms); }
-.hero-copy > *:nth-child(5) { animation-delay: calc(var(--intro) + 320ms); }
+.hero-copy > *:nth-child(2) { animation-delay: 80ms; }
+.hero-copy > *:nth-child(3) { animation-delay: 160ms; }
+.hero-copy > *:nth-child(4) { animation-delay: 240ms; }
+.hero-copy > *:nth-child(5) { animation-delay: 320ms; }
 
 /* Entrance that uses the individual translate property, leaving transform
    free for hover tilt and lift. */
@@ -2001,6 +2106,7 @@ button.btn-outline:hover:not(:disabled) {
 
 .landing h1,
 .auth-panel h2 {
+  text-wrap: balance;
   font-weight: 600;
   letter-spacing: -0.035em;
   line-height: 1.02;
@@ -2021,10 +2127,24 @@ button.btn-outline:hover:not(:disabled) {
   font-weight: 400;
   letter-spacing: -0.01em;
   padding-right: 0.06em;
-  background: linear-gradient(100deg, #ffb08f 0%, var(--accent) 55%, #e0531c 100%);
+  background: linear-gradient(100deg, var(--accent-hi) 0%, var(--accent) 55%, var(--accent-lo) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+/* even line lengths in display headings; no single-word last lines in leads */
+.l-section h2,
+.story h2,
+.guide-hero h1,
+.dash-head h1,
+.auth-title {
+  text-wrap: balance;
+}
+
+.lead,
+.l-section p {
+  text-wrap: pretty;
 }
 
 .lead {
@@ -2074,12 +2194,12 @@ button.btn-outline:hover:not(:disabled) {
   border-radius: 20px;
   background:
     linear-gradient(var(--surface), var(--surface)) padding-box,
-    linear-gradient(140deg, rgba(255, 122, 74, 0.32), var(--line) 35%, var(--line) 70%, rgba(125, 151, 178, 0.28)) border-box;
-  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0, 0, 0, 0.2), 0 40px 120px -50px rgba(255, 122, 74, 0.1);
+    linear-gradient(140deg, color-mix(in srgb, var(--accent) 32%, transparent), var(--line) 35%, var(--line) 70%, color-mix(in srgb, var(--info-line) 28%, transparent)) border-box;
+  box-shadow: var(--shadow-lg), var(--shadow-frame), 0 40px 120px -50px color-mix(in srgb, var(--accent) 10%, transparent);
   animation: rise-in 900ms var(--ease) both;
-  animation-delay: calc(var(--intro) + 250ms);
+  animation-delay: 250ms;
   transform: perspective(1000px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
-  transition: transform 300ms var(--ease);
+  transition: transform var(--dur-med) var(--ease);
 }
 
 .instrument::before {
@@ -2124,7 +2244,7 @@ button.btn-outline:hover:not(:disabled) {
   left: 0;
   width: 2px;
   background: var(--accent);
-  box-shadow: 0 0 14px 2px rgba(255, 122, 74, 0.6);
+  box-shadow: 0 0 14px 2px color-mix(in srgb, var(--accent) 60%, transparent);
   animation: sweep 6s linear infinite;
 }
 
@@ -2132,7 +2252,7 @@ button.btn-outline:hover:not(:disabled) {
   content: "";
   position: absolute;
   inset: 0 0 0 -80px;
-  background: linear-gradient(90deg, transparent, rgba(255, 122, 74, 0.12));
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 12%, transparent));
 }
 
 @keyframes sweep {
@@ -2243,7 +2363,7 @@ button.btn-outline:hover:not(:disabled) {
   height: 13px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 0 3px var(--surface), 0 0 18px rgba(255, 122, 74, 0.7);
+  box-shadow: 0 0 0 3px var(--surface), 0 0 18px color-mix(in srgb, var(--accent) 70%, transparent);
   transform: translate(-50%, -50%);
   animation: drift 5s ease-in-out infinite alternate;
 }
@@ -2338,7 +2458,7 @@ button.btn-outline:hover:not(:disabled) {
   border: 1px solid var(--line);
   border-radius: 18px;
   background: linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--surface) 40%, var(--bg)));
-  transition: border-color var(--dur) var(--ease), transform 240ms var(--ease), box-shadow 240ms var(--ease);
+  transition: border-color var(--dur) var(--ease), transform var(--dur-med) var(--ease), box-shadow var(--dur-med) var(--ease);
 }
 
 .step:hover {
@@ -2554,8 +2674,12 @@ button.btn-outline:hover:not(:disabled) {
   inset: auto -20% -30% -20%;
   height: 520px;
   background:
-    radial-gradient(460px 320px at 30% 70%, rgba(255, 122, 74, 0.1), transparent 70%),
-    radial-gradient(360px 260px at 85% 20%, rgba(125, 151, 178, 0.1), transparent 70%);
+    radial-gradient(460px 320px at 30% 70%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%),
+    radial-gradient(360px 260px at 85% 20%, color-mix(in srgb, var(--info-line) 10%, transparent), transparent 70%);
+  /* fade the top edge: the gradients are larger than this box and used to
+     end in a visible horizontal seam above the waveform */
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 45%);
+  mask-image: linear-gradient(to bottom, transparent, #000 45%);
 }
 
 .auth-panel-copy > * {
@@ -2665,7 +2789,9 @@ button.btn-outline:hover:not(:disabled) {
 
 .auth-topline {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   padding: 1rem 1rem 0;
 }
 
@@ -2783,7 +2909,7 @@ button.btn-outline:hover:not(:disabled) {
   border-radius: 9px;
   background: var(--surface);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 1px var(--line);
-  transition: transform 260ms var(--ease);
+  transition: transform var(--dur-med) var(--ease);
 }
 
 .segmented-thumb[data-pos="1"] {
@@ -2901,120 +3027,9 @@ input::placeholder {
 /* ======================================================================== */
 /* --- landing motion -------------------------------------------------------- */
 
-/* intro: plays once per tab, hides itself with CSS alone (no JS needed) */
-.intro {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: grid;
-  place-items: center;
-  background:
-    radial-gradient(420px 300px at 50% 55%, rgba(255, 122, 74, 0.07), transparent 70%),
-    #0b0c0e;
-  color: #ecebe8;
-  clip-path: inset(0 0 0 0);
-  animation: intro-out 850ms cubic-bezier(0.76, 0, 0.24, 1) 1.55s forwards;
-}
-
-.intro-seen .intro {
-  display: none;
-}
-
-@keyframes intro-out {
-  to {
-    clip-path: inset(0 0 100% 0);
-    visibility: hidden;
-  }
-}
-
-.intro-inner {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1.1rem;
-}
-
-.intro-bars {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 56px;
-}
-
-.intro-bars span {
-  width: 7px;
-  height: 100%;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #ffb08f, #ff7a4a);
-  box-shadow: 0 0 18px rgba(255, 122, 74, 0.55);
-  transform: scaleY(0.2);
-  animation: eq 900ms ease-in-out calc(var(--i) * 110ms) infinite alternate;
-}
-
-@keyframes eq {
-  0% { transform: scaleY(0.18); }
-  45% { transform: scaleY(1); }
-  100% { transform: scaleY(0.4); }
-}
-
-.intro-word {
-  display: flex;
-  margin: 0;
-  overflow: hidden;
-  font-family: var(--font-num);
-  font-size: clamp(1.4rem, 1rem + 2vw, 2.2rem);
-  font-weight: 500;
-  letter-spacing: 0.32em;
-  padding-left: 0.32em;
-}
-
-.intro-word span {
-  display: inline-block;
-  animation: intro-letter 700ms var(--ease) calc(250ms + var(--i) * 55ms) both;
-}
-
-@keyframes intro-letter {
-  from {
-    opacity: 0;
-    transform: translateY(110%);
-    filter: blur(8px);
-  }
-}
-
-.intro-line {
-  display: block;
-  height: 1px;
-  width: 180px;
-  background: linear-gradient(90deg, transparent, #ff7a4a, transparent);
-  transform: scaleX(0);
-  animation: intro-line 900ms var(--ease) 500ms forwards;
-}
-
-@keyframes intro-line {
-  to {
-    transform: scaleX(1);
-  }
-}
-
-.intro-sub {
-  margin: 0;
-  font-family: var(--font-num);
-  font-size: 0.7rem;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: #8d929a;
-  animation: rise 600ms var(--ease) 800ms both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .intro {
-    display: none;
-  }
-}
-
 /* nav: transparent over the hero, solid once scrolled; progress bar */
 .l-nav {
-  transition: background 300ms var(--ease), border-color 300ms var(--ease);
+  transition: background var(--dur-med) var(--ease), border-color var(--dur-med) var(--ease);
 }
 
 .fx-ready:not(.is-scrolled) .l-nav {
@@ -3032,7 +3047,7 @@ input::placeholder {
   height: 1px;
   transform-origin: left;
   transform: scaleX(var(--progress, 0));
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 70%, transparent), color-mix(in srgb, #ffb08f 50%, transparent));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 70%, transparent), color-mix(in srgb, var(--accent-hi) 50%, transparent));
 }
 
 /* hero grid: pointer spotlight and a highlighted cell under the cursor */
@@ -3042,8 +3057,8 @@ input::placeholder {
   z-index: -1;
   pointer-events: none;
   background-image:
-    linear-gradient(to right, rgba(255, 122, 74, 0.35) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 122, 74, 0.35) 1px, transparent 1px);
+    linear-gradient(to right, color-mix(in srgb, var(--accent) 35%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--accent) 35%, transparent) 1px, transparent 1px);
   background-size: 56px 56px;
   mask-image: radial-gradient(220px circle at var(--mx, -999px) var(--my, -999px), #000, transparent 70%);
   -webkit-mask-image: radial-gradient(220px circle at var(--mx, -999px) var(--my, -999px), #000, transparent 70%);
@@ -3059,8 +3074,8 @@ input::placeholder {
   width: 57px;
   height: 57px;
   pointer-events: none;
-  background: rgba(255, 122, 74, 0.07);
-  box-shadow: inset 0 0 0 1px rgba(255, 122, 74, 0.5);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
   opacity: 0;
   transition: left 120ms var(--ease), top 120ms var(--ease), opacity 300ms var(--ease);
 }
@@ -3081,7 +3096,7 @@ input::placeholder {
   border: 1.5px solid var(--line-strong);
   border-radius: 14px;
   animation: rise-in 700ms var(--ease) both;
-  animation-delay: calc(var(--intro) + 700ms);
+  animation-delay: 700ms;
 }
 
 .scroll-cue span {
@@ -3114,7 +3129,7 @@ input::placeholder {
   translate: 0 32px;
   transition:
     opacity 800ms var(--ease) var(--d, 0ms),
-    translate 1000ms cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0ms);
+    translate 1000ms var(--ease-out) var(--d, 0ms);
 }
 
 .fx-ready [data-reveal].is-visible {
@@ -3144,12 +3159,12 @@ input::placeholder {
 }
 
 .spot::before {
-  background: radial-gradient(320px circle at var(--sx, 50%) var(--sy, 50%), rgba(255, 122, 74, 0.06), transparent 65%);
+  background: radial-gradient(320px circle at var(--sx, 50%) var(--sy, 50%), color-mix(in srgb, var(--accent) 6%, transparent), transparent 65%);
 }
 
 .spot::after {
   padding: 1px;
-  background: radial-gradient(220px circle at var(--sx, 50%) var(--sy, 50%), rgba(255, 122, 74, 0.5), transparent 70%);
+  background: radial-gradient(220px circle at var(--sx, 50%) var(--sy, 50%), color-mix(in srgb, var(--accent) 50%, transparent), transparent 70%);
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
@@ -3220,11 +3235,11 @@ input::placeholder {
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: linear-gradient(90deg, var(--accent), #ffb08f);
-    box-shadow: 0 0 12px rgba(255, 122, 74, 0.5);
+    background: linear-gradient(90deg, var(--accent), var(--accent-hi));
+    box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
     transform-origin: left;
     transform: scaleX(0);
-    transition: transform 1100ms cubic-bezier(0.65, 0, 0.35, 1) 200ms;
+    transition: transform 1100ms var(--ease-in-out) 200ms;
   }
 
   .is-visible .steps-rail span::before,
@@ -3251,7 +3266,7 @@ input::placeholder {
 
 .step:hover {
   transform: none;
-  translate: 0 -6px;
+  translate: 0 -3px;
 }
 
 .fx-ready .steps-wrap.is-visible .step:hover {
@@ -3278,7 +3293,7 @@ input::placeholder {
 }
 
 .step .l-icon {
-  transition: transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1), background 300ms var(--ease);
+  transition: transform 400ms var(--ease-spring), background 300ms var(--ease);
 }
 
 .step:hover .l-icon {
@@ -3293,7 +3308,7 @@ input::placeholder {
 
 /* stats + limits hover */
 .stat {
-  transition: background 260ms var(--ease);
+  transition: background var(--dur-med) var(--ease);
 }
 
 .stat:hover {
@@ -3306,7 +3321,7 @@ input::placeholder {
 }
 
 .limits-grid li h3::before {
-  transition: border-color 300ms var(--ease), transform 400ms var(--ease);
+  transition: border-color var(--dur) var(--ease), transform var(--dur-med) var(--ease);
 }
 
 .limits-grid li:hover h3::before {
@@ -3339,8 +3354,8 @@ input::placeholder {
   width: 57px;
   height: 57px;
   pointer-events: none;
-  background: rgba(255, 122, 74, 0.05);
-  box-shadow: inset 0 0 0 1px rgba(255, 122, 74, 0.3);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
   animation: trail-fade 900ms var(--ease) forwards;
 }
 
@@ -3393,8 +3408,8 @@ input::placeholder {
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(420px 260px at 85% 40%, rgba(255, 122, 74, 0.12), transparent 70%),
-    radial-gradient(360px 220px at 5% 0%, rgba(125, 151, 178, 0.1), transparent 70%);
+    radial-gradient(420px 260px at 85% 40%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%),
+    radial-gradient(360px 220px at 5% 0%, color-mix(in srgb, var(--info-line) 10%, transparent), transparent 70%);
 }
 
 .dash-hero-grid {
@@ -3422,7 +3437,7 @@ input::placeholder {
   font-style: italic;
   font-weight: 400;
   padding-right: 0.06em;
-  background: linear-gradient(100deg, #ffb08f 0%, var(--accent) 60%, #e0531c 100%);
+  background: linear-gradient(100deg, var(--accent-hi) 0%, var(--accent) 60%, var(--accent-lo) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -3477,8 +3492,8 @@ input::placeholder {
 }
 
 .chip-service.is-online .chip-dot {
-  background: #4ade80;
-  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent);
 }
 
 .chip-service.is-unreachable .chip-dot,
@@ -3515,7 +3530,7 @@ input::placeholder {
   bottom: 0;
   width: 2px;
   background: var(--accent);
-  box-shadow: 0 0 14px 2px rgba(255, 122, 74, 0.6);
+  box-shadow: 0 0 14px 2px color-mix(in srgb, var(--accent) 60%, transparent);
   animation: sweep 5s linear infinite;
 }
 
@@ -3558,7 +3573,7 @@ input::placeholder {
   box-shadow: var(--shadow-sm);
   animation: rise-in 600ms var(--ease) both;
   animation-delay: calc(150ms + var(--d, 0ms));
-  transition: border-color 220ms var(--ease), translate 220ms var(--ease), box-shadow 220ms var(--ease);
+  transition: border-color var(--dur) var(--ease), translate var(--dur-med) var(--ease), box-shadow var(--dur-med) var(--ease);
 }
 
 .kpi:hover {
@@ -3748,7 +3763,7 @@ input::placeholder {
 }
 
 .machine-card.is-has_result::before {
-  background: linear-gradient(90deg, var(--accent), #ffb08f);
+  background: linear-gradient(90deg, var(--accent), var(--accent-hi));
 }
 
 .machine-card.has-alert::before {
@@ -4100,7 +4115,7 @@ button.step-item-button:hover:not(:disabled) {
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: linear-gradient(140deg, var(--accent), color-mix(in srgb, var(--accent) 50%, #6b1f04));
+  background: linear-gradient(140deg, var(--accent), color-mix(in srgb, var(--accent) 50%, var(--accent-deep)));
   color: #fff;
   font-family: var(--font-num);
   font-size: 0.72rem;
@@ -4223,7 +4238,7 @@ button.add-machine-toggle:hover:not(:disabled) {
   border-radius: 10px;
   background: var(--accent);
   color: var(--accent-ink);
-  transition: transform 300ms var(--ease);
+  transition: transform var(--dur-med) var(--ease);
 }
 
 .add-machine.is-open .add-machine-icon {
@@ -4236,7 +4251,7 @@ button.add-machine-toggle:hover:not(:disabled) {
   border-right: 1.5px solid var(--muted);
   border-bottom: 1.5px solid var(--muted);
   transform: rotate(45deg) translate(-2px, -2px);
-  transition: transform 300ms var(--ease);
+  transition: transform var(--dur-med) var(--ease);
 }
 
 .add-machine.is-open .add-machine-chevron {
@@ -4266,7 +4281,7 @@ button.add-machine-toggle:hover:not(:disabled) {
   will-change: transform, opacity;
   transition:
     opacity 700ms var(--ease) var(--d, 0ms),
-    transform 1100ms cubic-bezier(0.16, 1, 0.3, 1) var(--d, 0ms),
+    transform 1100ms var(--ease-out) var(--d, 0ms),
     translate 260ms var(--ease),
     border-color 260ms var(--ease),
     box-shadow 260ms var(--ease),
@@ -4278,7 +4293,7 @@ button.add-machine-toggle:hover:not(:disabled) {
 }
 
 .fx-ready .step[data-reveal].is-visible:hover {
-  translate: 0 -6px;
+  translate: 0 -3px;
 }
 
 .fx-ready .limits-grid li[data-reveal].is-visible:hover {
@@ -4302,7 +4317,7 @@ button.add-machine-toggle:hover:not(:disabled) {
 }
 
 .fx-ready .step.is-visible .l-icon {
-  animation: icon-pop 800ms cubic-bezier(0.34, 1.56, 0.64, 1) calc(var(--d, 0ms) + 250ms) both;
+  animation: icon-pop 800ms var(--ease-spring) calc(var(--d, 0ms) + 250ms) both;
 }
 
 @keyframes icon-pop {
@@ -4314,7 +4329,7 @@ button.add-machine-toggle:hover:not(:disabled) {
 }
 
 .fx-ready .step.is-visible .step-watermark {
-  animation: watermark-in 1200ms cubic-bezier(0.16, 1, 0.3, 1) calc(var(--d, 0ms) + 150ms) both;
+  animation: watermark-in 1200ms var(--ease-out) calc(var(--d, 0ms) + 150ms) both;
 }
 
 @keyframes watermark-in {
@@ -4348,7 +4363,7 @@ button.add-machine-toggle:hover:not(:disabled) {
 }
 
 .fx-ready .story {
-  height: 480vh;
+  height: 400vh;
 }
 
 .fx-ready .story-sticky {
@@ -4392,7 +4407,7 @@ button.add-machine-toggle:hover:not(:disabled) {
   font-style: italic;
   font-weight: 400;
   padding-right: 0.06em;
-  background: linear-gradient(100deg, #ffb08f 0%, var(--accent) 55%, #e0531c 100%);
+  background: linear-gradient(100deg, var(--accent-hi) 0%, var(--accent) 55%, var(--accent-lo) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -4417,7 +4432,7 @@ button.add-machine-toggle:hover:not(:disabled) {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(180deg, var(--accent), #ffb08f);
+  background: linear-gradient(180deg, var(--accent), var(--accent-hi));
   transform-origin: top;
   transform: scaleY(var(--story, 0));
 }
@@ -4536,7 +4551,7 @@ button.story-step-button:hover:not(:disabled) {
   border-radius: 20px;
   background:
     linear-gradient(var(--surface), var(--surface)) padding-box,
-    linear-gradient(140deg, rgba(255, 122, 74, 0.3), var(--line) 35%, var(--line) 70%, rgba(125, 151, 178, 0.25)) border-box;
+    linear-gradient(140deg, color-mix(in srgb, var(--accent) 30%, transparent), var(--line) 35%, var(--line) 70%, color-mix(in srgb, var(--info-line) 25%, transparent)) border-box;
   box-shadow: var(--shadow-lg);
 }
 
@@ -4560,14 +4575,14 @@ button.story-step-button:hover:not(:disabled) {
   opacity: 0;
   visibility: hidden;
   transform: translateY(28px) scale(0.98);
-  transition: opacity 450ms var(--ease), transform 700ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 700ms;
+  transition: opacity 450ms var(--ease), transform 700ms var(--ease-out), visibility 0s linear 700ms;
 }
 
 .scene.is-active {
   opacity: 1;
   visibility: visible;
   transform: none;
-  transition: opacity 500ms var(--ease) 150ms, transform 800ms cubic-bezier(0.16, 1, 0.3, 1) 150ms, visibility 0s;
+  transition: opacity 500ms var(--ease) 150ms, transform 800ms var(--ease-out) 150ms, visibility 0s;
 }
 
 .scene-title {
@@ -4626,8 +4641,8 @@ button.story-step-button:hover:not(:disabled) {
 /* shared "arrive when the scene is active" behaviour */
 .scene :is(.scene-checks li, .enc-spec span, .enc-vector span, .enc-model span, .dist-base, .thr-tick, .alert-run) {
   opacity: 0;
-  transition: opacity 400ms var(--ease), transform 600ms cubic-bezier(0.34, 1.56, 0.64, 1), scale 600ms
-    cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: opacity 400ms var(--ease), transform 600ms var(--ease-spring), scale 600ms
+    var(--ease-spring);
 }
 
 .scene.is-active :is(.scene-checks li, .enc-spec span, .enc-vector span, .enc-model span, .dist-base, .thr-tick, .alert-run) {
@@ -4694,7 +4709,7 @@ button.story-step-button:hover:not(:disabled) {
   left: 0;
   width: 2px;
   background: var(--accent);
-  box-shadow: 0 0 10px rgba(255, 122, 74, 0.5);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 .scene.is-active .scene-scan {
@@ -4913,7 +4928,7 @@ button.story-step-button:hover:not(:disabled) {
   transform-box: fill-box;
   transform-origin: center;
   scale: 0;
-  transition: scale 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: scale 600ms var(--ease-spring);
 }
 
 .scene.is-active .dist-new {
@@ -5019,7 +5034,7 @@ button.story-step-button:hover:not(:disabled) {
   background: var(--accent);
   box-shadow: 0 0 0 4px var(--accent-soft);
   opacity: 0;
-  transition: left 1200ms cubic-bezier(0.65, 0, 0.35, 1), opacity 400ms var(--ease);
+  transition: left 1200ms var(--ease-in-out), opacity 400ms var(--ease);
 }
 
 .scene.is-active .thr-marker {
@@ -5151,7 +5166,7 @@ button.story-step-button:hover:not(:disabled) {
   font-size: 0.85rem;
   opacity: 0;
   scale: 0.85;
-  transition: opacity 400ms var(--ease), scale 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: opacity 400ms var(--ease), scale 600ms var(--ease-spring);
 }
 
 .alert-badge span {
@@ -5293,7 +5308,7 @@ button.story-step-button:hover:not(:disabled) {
   font-style: italic;
   font-weight: 400;
   padding-right: 0.06em;
-  background: linear-gradient(100deg, #ffb08f 0%, var(--accent) 60%, #e0531c 100%);
+  background: linear-gradient(100deg, var(--accent-hi) 0%, var(--accent) 60%, var(--accent-lo) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -6128,7 +6143,8 @@ button.story-step-button:hover:not(:disabled) {
   height: 56px;
 }
 .lc-wave rect {
-  fill: var(--line-strong);
+  /* unplayed bars: at least 3:1 against the track in both themes */
+  fill: color-mix(in srgb, var(--muted) 60%, var(--surface-2));
 }
 .lc-row.is-active .lc-wave rect.is-played {
   fill: var(--ink);
@@ -7486,6 +7502,31 @@ button.is-inactive {
   font-size: 1.5rem;
 }
 
+/* phones: two tiles per row; the icon moves above so labels and notes get
+   the full tile width instead of wrapping onto four lines */
+@media (max-width: 560px) {
+  .kpis-compact .kpi {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "icon value"
+      "label label"
+      "note note";
+    row-gap: 0.15rem;
+    align-items: start;
+  }
+
+  .kpis-compact .kpi-icon {
+    width: 26px;
+    height: 26px;
+    margin-bottom: 0.3rem;
+  }
+
+  .kpis-compact .kpi-value {
+    font-size: 1.35rem;
+    line-height: 1.1;
+  }
+}
+
 /* --- machine cards --------------------------------------------------------------- */
 
 .mcard {
@@ -8045,6 +8086,8 @@ button.is-inactive {
 }
 
 .hist-wrap {
+  /* positioned so visually hidden labels inside stay within the scroller */
+  position: relative;
   overflow-x: auto;
 }
 
@@ -8116,9 +8159,11 @@ button.is-inactive {
   margin-bottom: 0.6rem;
 }
 
-/* narrow screens: rows become stacked cards */
-@media (max-width: 760px) {
+/* narrow screens and tablets: rows become stacked cards (the full table
+   needs about 900px) */
+@media (max-width: 900px) {
   .hist-table thead {
+    display: block;
     position: absolute;
     width: 1px;
     height: 1px;
@@ -8189,15 +8234,10 @@ button.is-inactive {
 
 /* =========================================================================
  * Landing page (Milestone 3)
- * Same dark surfaces, orange accent, grid and spotlight cards as before.
+ * Same surfaces, orange accent, grid and spotlight cards as before.
  * The hero no longer waits for an intro splash: content shows at once and
  * the existing entrance animation plays without a delay.
  * ========================================================================= */
-
-.landing,
-.intro-seen .landing {
-  --intro: 0ms;
-}
 
 /* hero screenshot inside the existing instrument frame */
 .shot-hero {
@@ -8265,6 +8305,65 @@ button.is-inactive {
 .l-mobile-nav nav a:hover,
 .l-mobile-nav nav a:focus-visible {
   background: var(--surface-2);
+}
+
+.l-mobile-theme {
+  display: none;
+  margin-top: 0.35rem;
+  padding: 0.6rem 0.25rem 0.15rem;
+  border-top: 1px solid var(--line);
+}
+
+/* phones: the theme selector moves from the bar into the section menu */
+@media (max-width: 479px) {
+  .l-nav-cta .theme-switch {
+    display: none;
+  }
+
+  .l-mobile-theme {
+    display: block;
+  }
+
+  .l-mobile-theme .theme-switch-option {
+    padding: 0.35rem 0.55rem;
+  }
+}
+
+/* model story: keep the pinned layout still while steps change. The active
+   step's detail differs in length, which used to re-centre (and nudge) the
+   whole section on every step. */
+@media (min-width: 960px) {
+  .fx-ready .story-layout {
+    min-height: 540px;
+  }
+
+  .fx-ready .story-copy {
+    align-self: start;
+  }
+}
+
+@media (max-width: 959px) {
+  .fx-ready .story-sticky {
+    align-items: flex-start;
+    padding-top: 80px;
+  }
+}
+
+@media (max-width: 479px) {
+  .story h2 {
+    font-size: 1.4rem;
+  }
+
+  .fx-ready .story-sticky {
+    padding-top: 72px;
+  }
+}
+
+/* short phones (e.g. 360 x 740): keep the stage and its progress in view */
+@media (max-width: 479px) and (max-height: 780px) {
+  .story-scenes {
+    height: 230px;
+  }
 }
 
 @media (min-width: 900px) {
@@ -8481,7 +8580,7 @@ button.is-inactive {
   border-radius: 18px;
   background:
     linear-gradient(var(--surface), var(--surface)) padding-box,
-    linear-gradient(140deg, rgba(255, 122, 74, 0.28), var(--line) 35%, var(--line) 70%, rgba(125, 151, 178, 0.22)) border-box;
+    linear-gradient(140deg, color-mix(in srgb, var(--accent) 28%, transparent), var(--line) 35%, var(--line) 70%, color-mix(in srgb, var(--info-line) 22%, transparent)) border-box;
   box-shadow: var(--shadow-lg);
 }
 
@@ -8665,5 +8764,401 @@ button.is-inactive {
 
   .l-nav-inner .l-nav-cta {
     margin-left: auto;
+  }
+}
+
+/* =========================================================================
+ * Landing motion (Milestone 4)
+ * More presence for the landing page, built on the existing language: the
+ * hero headline arrives word by word, the product shot tilts into place and
+ * gets one scan line, product screens come forward as they scroll in,
+ * section headings wipe up, a light travels along the section rules and the
+ * final call to action sends out sound rings. Everything rests on its final
+ * state, so the global reduced-motion rule (animation: none) shows the page
+ * complete and still. Scroll-linked effects only run where the browser
+ * supports scroll timelines.
+ * ========================================================================= */
+
+/* --- hero entrance (plays on every load) ---------------------------------- */
+
+.landing .hero-copy > h1 {
+  animation: none;
+}
+
+.landing .hw {
+  display: inline-block;
+  animation: word-in 900ms var(--ease-out) both;
+  animation-delay: calc(120ms + var(--i, 0) * 70ms);
+}
+
+@keyframes word-in {
+  from {
+    opacity: 0;
+    translate: 0 0.45em;
+    filter: blur(10px);
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    filter: blur(0);
+  }
+}
+
+/* the accent line keeps a slow drift of light through its gradient */
+.landing .hero-title .hw-accent {
+  background-image: linear-gradient(
+    100deg,
+    var(--accent-hi) 0%,
+    var(--accent) 25%,
+    var(--accent-lo) 50%,
+    var(--accent) 75%,
+    var(--accent-hi) 100%
+  );
+  background-size: 200% 100%;
+  animation:
+    word-in 1000ms var(--ease-out) both,
+    accent-drift 9s linear infinite;
+  animation-delay: calc(200ms + var(--i, 0) * 70ms), 0ms;
+}
+
+@keyframes accent-drift {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* the rest of the hero copy follows the headline */
+.landing .hero-copy > :nth-child(3) { animation-delay: 620ms; }
+.landing .hero-copy > :nth-child(4) { animation-delay: 720ms; }
+.landing .hero-copy > :nth-child(5) { animation-delay: 820ms; }
+
+.landing .hero-facts > div {
+  animation: rise-in 700ms var(--ease) both;
+}
+.landing .hero-facts > div:nth-child(1) { animation-delay: 860ms; }
+.landing .hero-facts > div:nth-child(2) { animation-delay: 940ms; }
+.landing .hero-facts > div:nth-child(3) { animation-delay: 1020ms; }
+
+/* product shot: tilts up into place, then one scan passes over it */
+.landing .shot-hero {
+  animation: shot-in 1300ms var(--ease-out) both;
+  animation-delay: 420ms;
+}
+
+@keyframes shot-in {
+  from {
+    opacity: 0;
+    translate: 0 48px;
+    rotate: x 16deg;
+    scale: 0.96;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    rotate: x 0deg;
+    scale: 1;
+  }
+}
+
+.landing .hero-layout {
+  perspective: 1400px;
+}
+
+.landing .shot-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0.6rem 0.6rem auto;
+  height: 3px;
+  border-radius: 3px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  box-shadow: 0 0 22px 4px color-mix(in srgb, var(--accent) 45%, transparent);
+  opacity: 0;
+  animation: scan 1600ms var(--ease-in-out) 1500ms both;
+}
+
+@keyframes scan {
+  0% {
+    opacity: 0;
+    translate: 0 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    translate: 0 var(--scan-travel, 340px);
+  }
+}
+
+@media (max-width: 999px) {
+  .landing .shot-hero {
+    --scan-travel: 200px;
+  }
+}
+
+/* background: grid opens out from the centre, the glow breathes */
+.landing .hero-grid-bg {
+  animation: grid-in 1600ms var(--ease-out) both;
+}
+
+@keyframes grid-in {
+  from {
+    opacity: 0;
+    scale: 1.08;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+.landing .hero-glow {
+  animation: glow-breathe 8s var(--ease-in-out) infinite alternate;
+}
+
+@keyframes glow-breathe {
+  from {
+    opacity: 0.75;
+    scale: 1;
+  }
+  to {
+    opacity: 1;
+    scale: 1.06;
+  }
+}
+
+/* --- section headings: wipe up, accent rule grows -------------------------- */
+
+.fx-ready .l-section-head[data-reveal] h2 {
+  clip-path: inset(-10% -4% 100% -4%);
+  transition: clip-path 1000ms var(--ease-out) 120ms;
+}
+
+.fx-ready .l-section-head[data-reveal].is-visible h2 {
+  clip-path: inset(-10% -4% -25% -4%);
+}
+
+.landing .l-section-head .eyebrow::before {
+  content: "";
+  display: inline-block;
+  width: 22px;
+  height: 1px;
+  margin-right: 0.6rem;
+  vertical-align: middle;
+  background: var(--accent);
+  transform-origin: left;
+}
+
+.fx-ready .l-section-head[data-reveal] .eyebrow::before {
+  scale: 0 1;
+  transition: scale 700ms var(--ease-out) 60ms;
+}
+
+.fx-ready .l-section-head[data-reveal].is-visible .eyebrow::before {
+  scale: 1 1;
+}
+
+/* --- section rules: a point of light travels along the top edge ------------ */
+
+.landing .l-section-alt::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent 0 42%, var(--accent) 50%, transparent 58% 100%) no-repeat;
+  background-size: 250% 100%;
+  opacity: 0.8;
+  animation: rule-light 7s var(--ease-in-out) infinite;
+}
+
+@keyframes rule-light {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
+/* --- cards and buttons ----------------------------------------------------- */
+
+.landing :is(.usp-n, .problem-n) {
+  transition: color var(--dur) var(--ease), scale var(--dur-med) var(--ease-spring);
+}
+
+.landing .spot:hover :is(.usp-n, .problem-n) {
+  color: var(--accent);
+  scale: 1.12;
+}
+
+/* primary buttons: a band of light crosses on hover */
+.landing .btn-primary {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.landing .btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: -2px auto -2px 0;
+  width: 45%;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  translate: -160% 0;
+  transition: translate 750ms var(--ease-out);
+}
+
+.landing .btn-primary:hover::after,
+.landing .btn-primary:focus-visible::after {
+  translate: 320% 0;
+}
+
+/* the hero's main call to action keeps a soft pulse */
+.landing .hero-cta .btn-primary {
+  animation: cta-pulse 3.2s var(--ease-in-out) 1.8s infinite;
+}
+
+@keyframes cta-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 6px 18px -12px var(--accent), 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  50% {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 10px 26px -12px var(--accent), 0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+}
+
+/* --- final call to action: sound rings and a breathing glow ---------------- */
+
+.landing .l-cta {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.landing .l-cta::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: min(900px, 140vw);
+  height: 520px;
+  translate: -50% -50%;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 14%, transparent), transparent);
+  animation: glow-breathe 6s var(--ease-in-out) infinite alternate;
+}
+
+.cta-rings {
+  position: absolute;
+  left: 50%;
+  top: 40px;
+  width: 0;
+  height: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.cta-rings span {
+  position: absolute;
+  left: -160px;
+  top: -160px;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  opacity: 0;
+  animation: ring-out 4.8s var(--ease-out) infinite;
+}
+
+.cta-rings span:nth-child(2) { animation-delay: 1.6s; }
+.cta-rings span:nth-child(3) { animation-delay: 3.2s; }
+
+@keyframes ring-out {
+  0% {
+    opacity: 0;
+    scale: 0.2;
+  }
+  15% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    scale: 2.2;
+  }
+}
+
+/* rings wait until the section is on screen */
+.fx-ready .l-cta-inner[data-reveal]:not(.is-visible) .cta-rings span {
+  animation-play-state: paused;
+}
+
+/* --- scroll-linked (progressive enhancement) ------------------------------- */
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* product screens come forward as they scroll into view */
+    .landing .showcase-item {
+      perspective: 1400px;
+    }
+
+    .landing .shot-frame {
+      animation: shot-forward linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 35%;
+    }
+
+    @keyframes shot-forward {
+      from {
+        rotate: x 14deg;
+        scale: 0.92;
+      }
+      to {
+        rotate: x 0deg;
+        scale: 1;
+      }
+    }
+
+    /* hero background drifts up slower than the page */
+    .landing .hero-grid-bg {
+      animation:
+        grid-in 1600ms var(--ease-out) both,
+        hero-drift linear both;
+      animation-timeline: auto, scroll(root);
+      animation-range: normal, 0 100vh;
+    }
+
+    @keyframes hero-drift {
+      to {
+        translate: 0 90px;
+      }
+    }
+
+    /* the problem waveform fills from left to right as it scrolls in */
+    .landing .problem-visual .signal-bars {
+      animation: bars-wipe linear both;
+      animation-timeline: view();
+      animation-range: entry 10% cover 45%;
+    }
+
+    @keyframes bars-wipe {
+      from {
+        clip-path: inset(0 100% 0 0);
+      }
+      to {
+        clip-path: inset(0 0 0 0);
+      }
+    }
   }
 }
