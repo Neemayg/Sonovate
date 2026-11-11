@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BaselineMeter } from "@/components/BaselineMeter";
 import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { ListenCompare } from "@/components/ListenCompare";
@@ -34,25 +34,41 @@ export function RecordingAnalysis({ id }: { id: string }) {
       const [r, p] = await Promise.all([getRecording(id), listPredictions(id)]);
       setRecording(r);
       setPredictions(p);
+      return { recording: r, predictions: p };
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Could not load this recording.");
+      return null;
     }
   }, [id]);
 
-  useEffect(() => {
-    // Initial fetch of external data; state is set after the request resolves.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load]);
-
-  async function runAnalysis() {
+  const runAnalysis = useCallback(async () => {
     setRunning(true);
     setResult(null);
     const outcome = await requestAnalysis(id);
     setResult(outcome);
     setRunning(false);
     if (outcome.status === "completed") await load();
-  }
+  }, [id, load]);
+
+  // Effects can run twice (React strict mode); the ref keeps the automatic
+  // analysis to one request.
+  const autoAnalysed = useRef(false);
+  useEffect(() => {
+    // Initial fetch. Arriving from "Upload and analyse" (?analyse=1), the
+    // analysis then runs once and the flag is dropped, so a reload does not
+    // run it again.
+    const autoAnalyse =
+      !autoAnalysed.current && new URLSearchParams(window.location.search).get("analyse") === "1";
+    if (autoAnalyse) autoAnalysed.current = true;
+    if (autoAnalyse) router.replace(`/recordings/${id}`, { scroll: false });
+    // State is set after the requests resolve, as before this change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load().then((loaded) => {
+      if (autoAnalyse && loaded?.recording?.kind === "analysis" && loaded.predictions.length === 0) {
+        void runAnalysis();
+      }
+    });
+  }, [id, load, router, runAnalysis]);
 
   if (loadError) return <ErrorMessage>{loadError}</ErrorMessage>;
   if (recording === undefined) return <Loading label="Loading recording…" />;

@@ -90,7 +90,9 @@ without `SUPABASE_SECRET_KEY`.
 Errors never include file paths, stack traces or internals. A 200 response carries the raw
 score, `log_score`, this machine's `threshold` (log space; `above_threshold` when
 `log_score > threshold`), `baseline_count`, model version, the bundle's `limitations` and the
-research-prototype `notice`.
+research-prototype `notice`. `sensitivity` is the threshold setting used (ADR-014): a machine set
+to `high` is judged against looser spreads (`app/thresholds.py`, validated for bundle 0.4.0 only;
+other models fall back to `standard`), with `threshold_spread` giving the spread applied.
 
 ## Security notes
 

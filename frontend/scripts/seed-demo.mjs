@@ -19,23 +19,29 @@
 //
 // Refuses to run against anything but loopback hosts.
 
-import { createClient } from "@supabase/supabase-js";
 import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  analyse,
+  deleteMachines,
+  die,
+  joinClips,
+  localStack,
+  requireInference,
+  shuffled,
+  signIn,
+  uploadRecording,
+} from "./seed-lib.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
-const INFERENCE_URL = process.env.NEXT_PUBLIC_INFERENCE_API_URL ?? "";
 const DATA_DIR = process.env.SONOVATE_DEMO_DATA_DIR ?? path.join(repoRoot, "data/raw/mimii_dg");
 // Local-only demo credentials, like the seeded tech@sonovate.test user.
 const EMAIL = process.env.SONOVATE_DEMO_EMAIL ?? "demo@sonovate.test";
 const PASSWORD = process.env.SONOVATE_DEMO_PASSWORD ?? "local-demo-password-1";
 const RESET = process.argv.includes("--reset");
-const BUCKET = "recordings";
 
 const DEMO_NOTE =
   "Demo data from the public MIMII DG dataset (CC BY 4.0), section 00 source, test split (unseen by the model). " +
@@ -60,63 +66,6 @@ const PLAN = [
     context: SPEED, baselines: 4, checks: [], seed: 3 },
 ];
 
-function die(message) {
-  console.error(`\n✗ ${message}`);
-  process.exit(1);
-}
-
-function isLoopback(url) {
-  try {
-    const host = new URL(url).hostname;
-    return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host.endsWith(".localhost");
-  } catch {
-    return false;
-  }
-}
-
-// Minimal WAV header read, mirroring src/lib/wav.ts; the service re-checks.
-function wavInfo(buf) {
-  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  const tag = (o) => String.fromCharCode(buf[o], buf[o + 1], buf[o + 2], buf[o + 3]);
-  if (tag(0) !== "RIFF" || tag(8) !== "WAVE") throw new Error("not a WAV file");
-  let fmt = null;
-  let dataLength = null;
-  for (let pos = 12; pos + 8 <= buf.length; ) {
-    const id = tag(pos);
-    const size = view.getUint32(pos + 4, true);
-    if (id === "fmt ") {
-      fmt = {
-        channels: view.getUint16(pos + 10, true),
-        rate: view.getUint32(pos + 12, true),
-        block: view.getUint16(pos + 20, true),
-      };
-    } else if (id === "data") {
-      dataLength = Math.min(size, buf.length - pos - 8);
-      break;
-    }
-    pos += 8 + size + (size % 2);
-  }
-  if (!fmt || dataLength === null) throw new Error("WAV is missing its format or data section");
-  return { sampleRateHz: fmt.rate, channels: fmt.channels, durationSeconds: dataLength / fmt.block / fmt.rate };
-}
-
-// Deterministic shuffle (mulberry32), so the draw is fixed before any result is seen.
-function shuffled(items, seed) {
-  let t = seed >>> 0;
-  const rand = () => {
-    t = (t + 0x6d2b79f5) >>> 0;
-    let r = Math.imul(t ^ (t >>> 15), 1 | t);
-    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
-    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-  };
-  const out = [...items];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
-
 async function pool(folder, label, seed) {
   const dir = path.join(DATA_DIR, folder, "test");
   const pattern = new RegExp(`^section_00_source_test_${label}_\\d{4}_.+\\.wav$`);
@@ -125,63 +74,15 @@ async function pool(folder, label, seed) {
   return shuffled(files, seed).map((f) => path.join(dir, f));
 }
 
-// PCM bytes of a WAV's data chunk (the clips are 16 kHz mono 16-bit).
-function pcm(buf) {
-  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  for (let pos = 12; pos + 8 <= buf.length; ) {
-    const id = String.fromCharCode(buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]);
-    const size = view.getUint32(pos + 4, true);
-    if (id === "data") return buf.subarray(pos + 8, pos + 8 + size);
-    pos += 8 + size + (size % 2);
-  }
-  throw new Error("no data chunk");
-}
-
-function wavBytes(data) {
-  const header = Buffer.alloc(44);
-  header.write("RIFF", 0);
-  header.writeUInt32LE(36 + data.length, 4);
-  header.write("WAVEfmt ", 8);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(1, 22);
-  header.writeUInt32LE(16000, 24);
-  header.writeUInt32LE(32000, 28);
-  header.writeUInt16LE(2, 32);
-  header.writeUInt16LE(16, 34);
-  header.write("data", 36);
-  header.writeUInt32LE(data.length, 40);
-  return Buffer.concat([header, data]);
-}
-
 async function main() {
-  if (!SUPABASE_URL || !PUBLISHABLE_KEY || !INFERENCE_URL) {
-    die("Missing NEXT_PUBLIC_* settings. Run with: npm run seed:demo (it reads frontend/.env.local).");
-  }
-  if (!isLoopback(SUPABASE_URL) || !isLoopback(INFERENCE_URL)) {
-    die("The demo seeder only runs against a local stack (localhost / 127.0.0.1).");
-  }
+  const stack = await localStack("seed:demo");
   if (!(await access(DATA_DIR).then(() => true, () => false))) {
-    die(`MIMII DG data not found at ${DATA_DIR}. Prepare it (CLAUDE.md) or set SONOVATE_DEMO_DATA_DIR.`);
+    die(`MIMII DG data not found at ${DATA_DIR}. Prepare it (CLAUDE.md), set SONOVATE_DEMO_DATA_DIR, or use npm run seed:test-data.`);
   }
-  const health = await fetch(`${INFERENCE_URL}/v1/health`).catch(() => null);
-  if (!health?.ok) die(`The inference service is not reachable at ${INFERENCE_URL}. Start it first (backend/README.md).`);
-
-  const db = createClient(SUPABASE_URL, PUBLISHABLE_KEY, { auth: { persistSession: false } });
+  await requireInference(stack.inferenceUrl);
 
   // 1. account
-  let { data: auth, error } = await db.auth.signInWithPassword({ email: EMAIL, password: PASSWORD });
-  if (error) {
-    const signUp = await db.auth.signUp({ email: EMAIL, password: PASSWORD });
-    if (signUp.error) die(`Could not create ${EMAIL}: ${signUp.error.message}`);
-    ({ data: auth, error } = await db.auth.signInWithPassword({ email: EMAIL, password: PASSWORD }));
-    if (error) die(`Could not sign in as ${EMAIL}: ${error.message}`);
-    console.log(`Created demo account ${EMAIL}`);
-  } else {
-    console.log(`Signed in as ${EMAIL}`);
-  }
-  const userId = auth.user.id;
-  const token = auth.session.access_token;
+  const { db, userId, token } = await signIn(stack, EMAIL, PASSWORD);
 
   // Existing data: stop, or delete with --reset (same steps as deleteMachine).
   const { data: existing, error: listError } = await db.from("machines").select("id, name");
@@ -189,15 +90,7 @@ async function main() {
   if (existing.length > 0 && !RESET) {
     die(`${EMAIL} already has ${existing.length} machine(s). Re-run with --reset to replace them.`);
   }
-  for (const m of existing) {
-    const folder = `${userId}/${m.id}`;
-    const { data: objects } = await db.storage.from(BUCKET).list(folder, { limit: 1000 });
-    const paths = (objects ?? []).map((o) => `${folder}/${o.name}`);
-    if (paths.length > 0) await db.storage.from(BUCKET).remove(paths);
-    const { error: delError } = await db.from("machines").delete().eq("id", m.id);
-    if (delError) die(`Could not delete ${m.name}: ${delError.message}`);
-    console.log(`Deleted ${m.name}`);
-  }
+  await deleteMachines(db, userId, existing);
 
   // 2 + 3. machines, recordings, analyses
   const results = [];
@@ -212,34 +105,13 @@ async function main() {
 
     // `source` is a clip path, or { name, bytes } for a joined 60 s recording (no single operating setting).
     const upload = async (source, kind) => {
-      const file = typeof source === "string" ? source : source.name;
-      const bytes = typeof source === "string" ? await readFile(source) : source.bytes;
-      const wav = wavInfo(bytes);
-      const id = crypto.randomUUID();
-      const storagePath = `${userId}/${machine.id}/${id}.wav`;
-      const { error: rError } = await db.from("recordings").insert({
-        id,
-        machine_id: machine.id,
+      const single = typeof source === "string";
+      return uploadRecording(db, userId, machine.id, {
+        filename: single ? path.basename(source) : source.name,
+        bytes: single ? await readFile(source) : source.bytes,
         kind,
-        storage_path: storagePath,
-        original_filename: path.basename(file),
-        size_bytes: bytes.length,
-        duration_seconds: wav.durationSeconds,
-        sample_rate_hz: wav.sampleRateHz,
-        channels: wav.channels,
-        recorded_at: null,
+        context: single ? plan.context(source) : [],
       });
-      if (rError) die(`Could not save ${path.basename(file)}: ${rError.message}`);
-      const { error: uError } = await db.storage
-        .from(BUCKET)
-        .upload(storagePath, new Blob([bytes], { type: "audio/wav" }), { contentType: "audio/wav", upsert: false });
-      if (uError) die(`Could not upload ${path.basename(file)}: ${uError.message}`);
-      if (typeof source === "string") {
-        const context = plan.context(file).map((c) => ({ ...c, recording_id: id }));
-        const { error: cError } = await db.from("context_readings").insert(context);
-        if (cError) die(`Could not save context for ${path.basename(file)}: ${cError.message}`);
-      }
-      return id;
     };
 
     const pools = { normal: await pool(plan.folder, "normal", plan.seed), anomaly: await pool(plan.folder, "anomaly", plan.seed) };
@@ -254,37 +126,15 @@ async function main() {
       let source;
       if (long) {
         const parts = await Promise.all(take(label, 6).map((f) => readFile(f)));
-        source = { name: `demo_60s_${label}_joined_${++joined}.wav`, bytes: wavBytes(Buffer.concat(parts.map(pcm))) };
+        source = { name: `demo_60s_${label}_joined_${++joined}.wav`, bytes: joinClips(parts) };
       } else {
         source = take(label, 1)[0];
       }
-      const file = typeof source === "string" ? source : source.name;
+      const file = typeof source === "string" ? path.basename(source) : source.name;
       const recordingId = await upload(source, "analysis");
-      // The service rate-limits analyses per user (429 with Retry-After); wait and retry instead of failing.
-      let res;
-      let body;
-      for (let attempt = 0; attempt < 6; attempt++) {
-        res = await fetch(`${INFERENCE_URL}/v1/analyses`, {
-          method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-          body: JSON.stringify({ recording_id: recordingId }),
-        });
-        body = await res.json().catch(() => null);
-        if (res.status !== 429) break;
-        const wait = Number(res.headers.get("retry-after")) || 30;
-        console.log(`  rate limited; waiting ${wait} s`);
-        await new Promise((r) => setTimeout(r, (wait + 1) * 1000));
-      }
-      if (!res.ok) die(`Analysis of ${path.basename(file)} failed (${res.status}): ${body?.error?.message ?? "unknown"}`);
-      const { data: pred } = await db
-        .from("predictions")
-        .select("decision")
-        .eq("recording_id", recordingId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
-      results.push({ machine: plan.name, clip: path.basename(file), label: long ? `${label} (60 s)` : label, decision: pred?.decision ?? "?" });
-      console.log(`  analysed ${path.basename(file)} → ${pred?.decision ?? "?"}`);
+      const decision = await analyse(db, stack.inferenceUrl, token, recordingId, file);
+      results.push({ machine: plan.name, clip: file, label: long ? `${label} (60 s)` : label, decision });
+      console.log(`  analysed ${file} → ${decision}`);
     }
   }
 

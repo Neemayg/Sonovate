@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Protocol
+from typing import Literal, Protocol
 
 import httpx
 import numpy as np
@@ -21,6 +21,9 @@ from app.auth import AuthenticatedUser
 from app.config import Settings
 from app.registry import ContextValue, MachineType
 from app.thresholds import BaselineThreshold
+
+# ADR-014: a machine's threshold setting.
+Sensitivity = Literal["standard", "high"]
 
 
 class RecordingNotFound(Exception):
@@ -45,6 +48,8 @@ class Recording:
     kind: str = "analysis"
     original_filename: str | None = None
     context: dict[str, ContextValue] = field(default_factory=dict)
+    # The machine's threshold setting (ADR-014).
+    sensitivity: Sensitivity = "standard"
 
 
 @dataclass(frozen=True)
@@ -89,6 +94,7 @@ class PredictionStore(Protocol):
         decision: str,
         baseline_count: int,
         window_log_scores: list[float] | None = None,
+        sensitivity: Sensitivity = "standard",
     ) -> StoredPrediction: ...
 
     def save_threshold(
@@ -136,7 +142,7 @@ class SupabaseRecordingSource:
                 "id": f"eq.{recording_id}",
                 "select": (
                     "id,owner_id,machine_id,storage_path,kind,original_filename,"
-                    "machines(machine_type),context_readings(name,value,unit)"
+                    "machines(machine_type,sensitivity),context_readings(name,value,unit)"
                 ),
             },
         )
@@ -236,11 +242,17 @@ def _recording(row: dict) -> Recording:
         machine_type=_machine_type(row.get("machines")),
         kind=str(row.get("kind") or "analysis"),
         original_filename=row.get("original_filename"),
+        sensitivity=_sensitivity(row.get("machines")),
         context={
             str(c["name"]): ContextValue(value=float(c["value"]), unit=str(c["unit"]))
             for c in row.get("context_readings") or []
         },
     )
+
+
+def _sensitivity(machine: object) -> Sensitivity:
+    value = machine.get("sensitivity") if isinstance(machine, dict) else None
+    return "high" if value == "high" else "standard"
 
 
 def _machine_type(machine: object) -> MachineType:
@@ -282,6 +294,7 @@ class SupabasePredictionStore:
         decision: str,
         baseline_count: int,
         window_log_scores: list[float] | None = None,
+        sensitivity: Sensitivity = "standard",
     ) -> StoredPrediction:
         windows = window_log_scores or [log_score]
         res = self._post(
@@ -297,6 +310,7 @@ class SupabasePredictionStore:
                 "baseline_count": baseline_count,
                 "window_count": len(windows),
                 "window_log_scores": windows,
+                "sensitivity": sensitivity,
             },
             "return=representation",
         )

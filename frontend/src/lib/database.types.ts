@@ -79,14 +79,14 @@ isOneToOne: false
                   ]
                 },"machines": {
                   Row: {
-                    "created_at": string,"id": string,"location": string | null,"machine_type": Database["public"]['Enums']["machine_type"],"name": string,"notes": string | null,"owner_id": string,"updated_at": string
+                    "created_at": string,"id": string,"location": string | null,"machine_type": Database["public"]['Enums']["machine_type"],"name": string,"notes": string | null,"owner_id": string,"sensitivity": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"id"?: string,"location"?: string | null,"machine_type"?: Database["public"]['Enums']["machine_type"],"name": string,"notes"?: string | null,"owner_id"?: string,"updated_at"?: string
+                    "created_at"?: string,"id"?: string,"location"?: string | null,"machine_type"?: Database["public"]['Enums']["machine_type"],"name": string,"notes"?: string | null,"owner_id"?: string,"sensitivity"?: string,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"id"?: string,"location"?: string | null,"machine_type"?: Database["public"]['Enums']["machine_type"],"name"?: string,"notes"?: string | null,"owner_id"?: string,"updated_at"?: string
+                    "created_at"?: string,"id"?: string,"location"?: string | null,"machine_type"?: Database["public"]['Enums']["machine_type"],"name"?: string,"notes"?: string | null,"owner_id"?: string,"sensitivity"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -113,14 +113,14 @@ isOneToOne: false
                   ]
                 },"predictions": {
                   Row: {
-                    "baseline_count": number | null,"created_at": string,"decision": string,"id": string,"log_score": number | null,"model_version_id": string,"owner_id": string,"recording_id": string,"score": number,"threshold": number,"window_count": number,"window_log_scores": number[] | null
+                    "baseline_count": number | null,"created_at": string,"decision": string,"id": string,"log_score": number | null,"model_version_id": string,"owner_id": string,"recording_id": string,"score": number,"sensitivity": string,"threshold": number,"window_count": number,"window_log_scores": (number)[] | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "baseline_count"?: number | null,"created_at"?: string,"decision": string,"id"?: string,"log_score"?: number | null,"model_version_id": string,"owner_id": string,"recording_id": string,"score": number,"threshold": number,"window_count"?: number,"window_log_scores"?: number[] | null
+                    "baseline_count"?: number | null,"created_at"?: string,"decision": string,"id"?: string,"log_score"?: number | null,"model_version_id": string,"owner_id": string,"recording_id": string,"score": number,"sensitivity"?: string,"threshold": number,"window_count"?: number,"window_log_scores"?: (number)[] | null
                   }
                   Update: {
-                    "baseline_count"?: number | null,"created_at"?: string,"decision"?: string,"id"?: string,"log_score"?: number | null,"model_version_id"?: string,"owner_id"?: string,"recording_id"?: string,"score"?: number,"threshold"?: number,"window_count"?: number,"window_log_scores"?: number[] | null
+                    "baseline_count"?: number | null,"created_at"?: string,"decision"?: string,"id"?: string,"log_score"?: number | null,"model_version_id"?: string,"owner_id"?: string,"recording_id"?: string,"score"?: number,"sensitivity"?: string,"threshold"?: number,"window_count"?: number,"window_log_scores"?: (number)[] | null
                   }
                   Relationships: [
                     {

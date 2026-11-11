@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(74);
+select plan(79);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres, bypassing RLS). Fixed ids keep failures readable.
@@ -125,6 +125,7 @@ select is((select count(*)::int from storage.objects where bucket_id = 'recordin
 -- writes against B's rows silently affect nothing
 update public.machines set name = 'hijacked' where id = 'b1000000-0000-0000-0000-000000000002';
 update public.machines set machine_type = 'bearing' where id = 'b1000000-0000-0000-0000-000000000002';
+update public.machines set sensitivity = 'high' where id = 'b1000000-0000-0000-0000-000000000002';
 delete from public.machines where id = 'b1000000-0000-0000-0000-000000000002';
 delete from public.recordings where id = 'b2000000-0000-0000-0000-000000000002';
 update public.context_readings set value = 0 where owner_id = 'bbbbbbbb-0000-0000-0000-000000000002';
@@ -245,6 +246,21 @@ select throws_ok(
   $$update public.machines set machine_type = 'pump' where id = 'a1000000-0000-0000-0000-000000000001'$$,
   '22P02', null, 'machine_type only accepts bearing, gearbox or other');
 
+-- sensitivity (ADR-014)
+select is((select sensitivity from public.machines where id = 'a1000000-0000-0000-0000-000000000001'),
+  'standard', 'machine sensitivity defaults to standard');
+
+select lives_ok(
+  $$update public.machines set sensitivity = 'high' where id = 'a1000000-0000-0000-0000-000000000001'$$,
+  'A can set own machine to high sensitivity');
+
+select is((select sensitivity from public.machines where id = 'a1000000-0000-0000-0000-000000000001'),
+  'high', 'A sensitivity change was applied');
+
+select throws_ok(
+  $$update public.machines set sensitivity = 'extreme' where id = 'a1000000-0000-0000-0000-000000000001'$$,
+  '23514', null, 'sensitivity only accepts standard or high');
+
 select lives_ok(
   $$insert into public.machines (name, machine_type) values ('A gearbox', 'gearbox')$$,
   'A can create a typed machine');
@@ -284,6 +300,7 @@ select set_config('request.jwt.claims',
 
 select is((select name from public.machines), 'B gearbox', 'B machine name unchanged');
 select is((select machine_type::text from public.machines), 'other', 'B machine type unchanged by A');
+select is((select sensitivity from public.machines), 'standard', 'B machine sensitivity unchanged by A');
 select is((select count(*)::int from public.machines), 1, 'B machine not deleted and A machine hidden');
 select is((select count(*)::int from public.recordings), 1, 'B recording not deleted and A recordings hidden');
 select is((select value from public.context_readings), 230::double precision, 'B context unchanged');

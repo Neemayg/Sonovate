@@ -53,5 +53,24 @@ def recording_threshold(log_mean: float, log_std: float, windows: int, single_wi
     return log_mean + recording_spread(windows, single_window_spread) * log_std
 
 
+# ADR-014 (EXP-032): optional "High sensitivity" spreads, per machine type, for
+# 1 window (10-29 s), 3+ windows (30-59 s) and 6 windows (60 s). Selected on
+# development data and confirmed on held-out data for bundle sonovate-ast-head
+# 0.4.0 only: a spread belongs to a specific model, so any other model uses the
+# standard spreads.
+HIGH_SENSITIVITY_SPREADS: dict[tuple[str, str], dict[str, tuple[float, float, float]]] = {
+    ("sonovate-ast-head", "0.4.0"): {"gearbox": (1.00, 0.75, 0.50), "bearing": (1.25, 0.75, 0.50)},
+}
+
+
+def high_sensitivity_spread(model_name: str, model_version: str, machine_type: str, windows: int) -> float | None:
+    """The High-sensitivity spread, or None when it is not validated for this model and machine type."""
+    table = HIGH_SENSITIVITY_SPREADS.get((model_name, model_version), {}).get(machine_type)
+    if table is None:
+        return None
+    one, three, six = table
+    return six if windows >= 6 else three if windows >= 3 else one
+
+
 def decide(log_score: float, threshold: float) -> str:
     return "above_threshold" if log_score > threshold else "below_threshold"

@@ -36,7 +36,14 @@ from app.supabase_data import (
     SupabaseRecordingSource,
     UpstreamError,
 )
-from app.thresholds import BaselineThreshold, baseline_threshold, decide, recording_spread, recording_threshold
+from app.thresholds import (
+    BaselineThreshold,
+    baseline_threshold,
+    decide,
+    high_sensitivity_spread,
+    recording_spread,
+    recording_threshold,
+)
 
 logger = logging.getLogger("sonovate.inference")
 
@@ -93,6 +100,8 @@ class PredictionOut(BaseModel):
     window_count: int
     window_log_scores: list[float]
     threshold_spread: float
+    # ADR-014: the threshold setting used ("standard" or "high").
+    sensitivity: Literal["standard", "high"]
     model: ModelSummary
     limitations: list[str]
     created_at: datetime
@@ -329,16 +338,28 @@ def create_app(
             log_score = float(np.mean(window_logs))
             # One window: its score; several: the geometric mean of the window scores.
             score = window_scores[0] if len(window_scores) == 1 else math.exp(log_score)
-            spread = recording_spread(len(window_logs), model.rule.spread)
-            threshold = (
-                stats.threshold
-                if len(window_logs) == 1
-                else recording_threshold(stats.log_mean, stats.log_std, len(window_logs), model.rule.spread)
-            )
-            decision: Literal["below_threshold", "above_threshold"] = decide(log_score, threshold)  # type: ignore[assignment]
             info = model.info
+            high = (
+                high_sensitivity_spread(info.name, info.version, recording.machine_type, len(window_logs))
+                if recording.sensitivity == "high"
+                else None
+            )
+            sensitivity: Literal["standard", "high"] = "high" if high is not None else "standard"
+            if high is not None:
+                # ADR-014: same baseline statistics, looser spread for this analysis only.
+                spread = high
+                threshold = stats.log_mean + high * stats.log_std
+            else:
+                spread = recording_spread(len(window_logs), model.rule.spread)
+                threshold = (
+                    stats.threshold
+                    if len(window_logs) == 1
+                    else recording_threshold(stats.log_mean, stats.log_std, len(window_logs), model.rule.spread)
+                )
+            decision: Literal["below_threshold", "above_threshold"] = decide(log_score, threshold)  # type: ignore[assignment]
             stored = store.save(
-                recording, info.model_version_id, score, log_score, threshold, decision, len(baselines), window_logs
+                recording, info.model_version_id, score, log_score, threshold, decision, len(baselines), window_logs,
+                sensitivity,
             )
         except UpstreamError as exc:
             logger.warning("upstream failure: %s", exc)
@@ -357,6 +378,7 @@ def create_app(
                 window_count=len(window_logs),
                 window_log_scores=window_logs,
                 threshold_spread=spread,
+                sensitivity=sensitivity,
                 model=ModelSummary(
                     machine_type=recording.machine_type,
                     name=info.name,

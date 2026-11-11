@@ -47,10 +47,18 @@ function parseContext(rows: ContextRow[]): ContextInput[] | string {
   return out;
 }
 
+// "Now" in the format a datetime-local input expects (local time, minutes).
+function nowLocal(): string {
+  const d = new Date();
+  d.setSeconds(0, 0);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
 type Props = {
   machineId: string;
   machineType: MachineType;
   defaultKind?: RecordingKind;
+  // Called once per saved recording; several in a row for a batch of baselines.
   onUploaded: (r: Recording) => void;
 };
 
@@ -60,7 +68,17 @@ export function UploadForm({ machineId, machineType, defaultKind = "analysis", o
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [kind, setKind] = useState<RecordingKind>(defaultKind);
+  const [lastDefault, setLastDefault] = useState<RecordingKind>(defaultKind);
+  const [recordedAt, setRecordedAt] = useState<string>(nowLocal);
   const uid = useId();
+
+  // Follow a new default (e.g. analysis once the baseline is complete), but
+  // never switch the purpose in the middle of an upload.
+  if (defaultKind !== lastDefault && !busy) {
+    setLastDefault(defaultKind);
+    setKind(defaultKind);
+  }
 
   function updateRow(key: number, patch: Partial<ContextRow>) {
     setRows((current) => current.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -70,9 +88,9 @@ export function UploadForm({ machineId, machineType, defaultKind = "analysis", o
     event.preventDefault();
     const formEl = event.currentTarget;
     const form = new FormData(formEl);
-    const file = form.get("file");
-    if (!(file instanceof File) || file.size === 0) {
-      setError("Choose a recording or video to upload.");
+    const files = form.getAll("file").filter((f): f is File => f instanceof File && f.size > 0);
+    if (files.length === 0) {
+      setError(kind === "baseline" ? "Choose one or more recordings to upload." : "Choose a recording or video to upload.");
       return;
     }
     const typed = parseModelInputs(machineType, modelValues);
@@ -85,30 +103,43 @@ export function UploadForm({ machineId, machineType, defaultKind = "analysis", o
     setBusy(true);
     setError(null);
     setStatus(null);
-    try {
-      setStatus("Checking the recording…");
-      const prepared = await prepareRecording(file);
-      setStatus(prepared.note ? `${prepared.note} Uploading…` : "Uploading…");
-      const recordedAtRaw = String(form.get("recorded_at") ?? "");
-      const recording = await createRecording({
-        machineId,
-        file: prepared.file,
-        wav: prepared.info,
-        kind: String(form.get("kind")) as RecordingKind,
-        recordedAt: recordedAtRaw ? new Date(recordedAtRaw).toISOString() : null,
-        context,
-      });
-      formEl.reset();
-      setStatus(prepared.note);
-      setRows([]);
-      setModelValues({});
-      onUploaded(recording);
-    } catch (err) {
-      setStatus(null);
-      setError(err instanceof Error ? err.message : "Upload failed.");
-    } finally {
-      setBusy(false);
+    // Filled in with the upload time by default; the user can change it.
+    const recordedAtIso = recordedAt ? new Date(recordedAt).toISOString() : new Date().toISOString();
+    const failures: string[] = [];
+    let saved = 0;
+    let lastNote: string | null = null;
+    for (const [index, file] of files.entries()) {
+      const prefix = files.length > 1 ? `${index + 1} of ${files.length} · ${file.name}: ` : "";
+      try {
+        setStatus(`${prefix}Checking the recording…`);
+        const prepared = await prepareRecording(file);
+        setStatus(`${prefix}${prepared.note ? `${prepared.note} ` : ""}Uploading…`);
+        const recording = await createRecording({
+          machineId,
+          file: prepared.file,
+          wav: prepared.info,
+          kind,
+          recordedAt: recordedAtIso,
+          context,
+        });
+        saved++;
+        lastNote = prepared.note;
+        onUploaded(recording);
+      } catch (err) {
+        failures.push(`${file.name}: ${err instanceof Error ? err.message : "upload failed."}`);
+      }
     }
+    setBusy(false);
+    if (failures.length > 0) {
+      setStatus(saved > 0 ? `Saved ${saved} of ${files.length} recordings.` : null);
+      setError(failures.length === 1 && files.length === 1 ? failures[0] : `Not saved — ${failures.join(" · ")}`);
+      return;
+    }
+    formEl.reset();
+    setRows([]);
+    setModelValues({});
+    setRecordedAt(nowLocal());
+    setStatus(files.length > 1 ? `Saved all ${saved} recordings.` : lastNote);
   }
 
   return (
@@ -132,8 +163,15 @@ export function UploadForm({ machineId, machineType, defaultKind = "analysis", o
           name="file"
           type="file"
           accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.ogg,.opus,.mp4,.mov,.webm"
+          multiple={kind === "baseline"}
+          aria-describedby={`${uid}-file-help`}
           required
         />
+        <p id={`${uid}-file-help`} className="muted small">
+          {kind === "baseline"
+            ? "You can select several baseline recordings at once; they are saved one after another."
+            : "One recording per analysis. It is analysed as soon as it is uploaded."}
+        </p>
       </div>
       <div className="field-row">
         <div className="field">
@@ -141,7 +179,9 @@ export function UploadForm({ machineId, machineType, defaultKind = "analysis", o
           <select
             id={`${uid}-kind`}
             name="kind"
-            defaultValue={defaultKind}
+            value={kind}
+            onChange={(e) => setKind(e.target.value as RecordingKind)}
+            disabled={busy}
             aria-describedby={`${uid}-kind-help`}
           >
             <option value="analysis">Analysis</option>
@@ -152,10 +192,18 @@ export function UploadForm({ machineId, machineType, defaultKind = "analysis", o
           </p>
         </div>
         <div className="field">
-          <label htmlFor={`${uid}-recorded-at`}>
-            Recorded at <span className="muted">(optional)</span>
-          </label>
-          <input id={`${uid}-recorded-at`} name="recorded_at" type="datetime-local" />
+          <label htmlFor={`${uid}-recorded-at`}>Recorded at</label>
+          <input
+            id={`${uid}-recorded-at`}
+            name="recorded_at"
+            type="datetime-local"
+            value={recordedAt}
+            onChange={(e) => setRecordedAt(e.target.value)}
+            aria-describedby={`${uid}-recorded-at-help`}
+          />
+          <p id={`${uid}-recorded-at-help`} className="muted small">
+            Filled in with the current date and time. Change it if the recording was made earlier.
+          </p>
         </div>
       </div>
 
@@ -270,7 +318,7 @@ export function UploadForm({ machineId, machineType, defaultKind = "analysis", o
 
       <div className="actions">
         <button type="submit" disabled={busy}>
-          {busy ? "Uploading…" : "Upload recording"}
+          {busy ? "Uploading…" : kind === "baseline" ? "Upload baseline recordings" : "Upload and analyse"}
         </button>
       </div>
     </form>
