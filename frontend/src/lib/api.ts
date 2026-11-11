@@ -18,7 +18,28 @@ export type Machine = Tables["machines"]["Row"];
 export type Recording = Tables["recordings"]["Row"];
 export type ContextReading = Tables["context_readings"]["Row"];
 export type RecordingKind = Database["public"]["Enums"]["recording_kind"];
-export type MachineInput = Pick<Machine, "name" | "machine_type" | "location" | "notes">;
+export type MachineInput = Pick<Machine, "name" | "machine_type" | "location" | "notes" | "sensitivity">;
+
+// ADR-014 (EXP-032): the machine's threshold setting. Figures are held-out lab
+// results with 10 baselines (about 9% vs 13-19% of normal recordings flagged;
+// 1.4-1.6x as many anomalies caught).
+export type Sensitivity = "standard" | "high";
+export const SENSITIVITY_OPTIONS: { value: Sensitivity; label: string; help: string }[] = [
+  {
+    value: "standard",
+    label: "Standard (recommended)",
+    help: "Fewer false alarms: about 1 in 11 normal recordings is flagged. Misses more problems.",
+  },
+  {
+    value: "high",
+    label: "High sensitivity",
+    help: "Catches about 1.5 times as many problems in lab tests, but flags more normal recordings: about 1 in 6. Expect more machine alerts that turn out to be nothing.",
+  },
+];
+
+export function sensitivityLabel(value: string | null | undefined): string {
+  return value === "high" ? "High sensitivity" : "Standard";
+}
 export type ContextInput = { name: string; value: number; unit: string };
 
 export type Prediction = Tables["predictions"]["Row"] & {

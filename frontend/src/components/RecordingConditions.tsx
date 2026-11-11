@@ -51,9 +51,9 @@ export function parseConditions(type: MachineType, value: ConditionsValue): Cont
   return out;
 }
 
-/** The recorded-at field as an ISO timestamp, or null when left blank. */
-export function recordedAtIso(value: ConditionsValue): string | null {
-  return value.recordedAt ? new Date(value.recordedAt).toISOString() : null;
+/** The recorded-at field as an ISO timestamp; left blank, the upload time is stored. */
+export function recordedAtIso(value: ConditionsValue): string {
+  return value.recordedAt ? new Date(value.recordedAt).toISOString() : new Date().toISOString();
 }
 
 export function countEntered(value: ConditionsValue): number {
@@ -105,7 +105,11 @@ export function RecordingConditions({ machineType, value, onChange, disabled = f
             type="datetime-local"
             value={value.recordedAt}
             onChange={(e) => onChange({ ...value, recordedAt: e.target.value })}
+            aria-describedby={`${uid}-recorded-at-help`}
           />
+          <p id={`${uid}-recorded-at-help`} className="muted small">
+            Leave blank to use the upload time. Set it if the recording was made earlier.
+          </p>
         </div>
 
         {inputs.length > 0 && (

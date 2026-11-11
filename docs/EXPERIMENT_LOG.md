@@ -1350,3 +1350,38 @@ Status: **Complete: not adopted. Gain on MIMII DUE evaluation (+0.016, 4/6) but 
   - Development: lower in all 6 (for example 01 target 0.756 → 0.656).
 - **Error analysis:** as with LoRA (EXP-020), reshaping the embedding on MIMII DG training data, here with synthetic setup variation, does not transfer reliably to another recording campaign. The two MIMII DUE sets disagree in direction, so the development gain is not robust.
 - **Conclusion:** the shipped bundle 0.4.0 stays. Synthetic training data built from MIMII DG did not improve real-world ranking. The generators (`ml/synthetic.py`) are kept for future use with real own-machine recordings, where setup augmentation can be checked against that machine's real data.
+
+### EXP-032 — "High sensitivity" threshold setting (development selection, held-out check)
+Status: **Complete: a High-sensitivity spread selected for every machine type and recording length, and confirmed on held-out data.** This plan was written into the log before the run, but not committed separately (the user had not asked for a commit); run on `442611d` plus the uncommitted EXP-032 files. Requested by the user after manual tests in the app missed labelled anomalies. Accepted as ADR-014 (2026-11-11).
+- **Date:** 2026-11-11
+- **Research question:** For bundle 0.4.0, which looser threshold spread per machine type and recording length catches more anomalies while keeping false alarms at about 20% or below, for an optional per-machine "High sensitivity" setting?
+- **Model (unchanged):** bundle `sonovate-ast-head` 0.4.0. Gearbox: head log score (ADR-010). Bearing: head + frozen fusion z-sum (ADR-013). Recordings of 30 s / 60 s: mean of the 10 s window scores (ADR-012).
+- **Protocol:** as EXP-026 / EXP-029: per section-domain, 200 draws (seed 0) of N = 10 baselines (N = 30 reported alongside) from the labelled normal test clips; remaining normals and all anomalies scored; pseudo-recordings of k = 1, 3, 6 independent clips; threshold = mean + s × std of the baselines' leave-one-out scores; s ∈ {0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5}.
+- **Selection (development, MIMII DG `test`, 6 section-domains per machine type), at N = 10:** for each machine type and k, the smallest s below the standard spread (k = 1: 1.5, k = 3: 1.0, k = 6: 0.75) with mean FPR ≤ 0.20 and every section-domain FPR ≤ 0.30. The 20% limit is the trade-off the user chose ("about 15–20% false alarms instead of 9%").
+- **Confirmation (held-out, N = 10):** the selected s must give mean FPR ≤ 0.20, every section-domain ≤ 0.30, and recall above the standard spread at the same k.
+  - Gearbox: MIMII DUE evaluation sections 03–05 (fourth use: EXP-022, 025, 026).
+  - Bearing: DCASE 2022 evaluation bearing sections 03–05 (seventh use). Weak evidence; no untouched bearing set exists.
+- **What this cannot show:** real continuous recordings may gain less than pseudo-recordings of independent clips (EXP-025). No app change without approval of a new ADR.
+- **Reproduction:** `uv run python -m ml.sensitivity --config configs/sensitivity.json`
+- **Artifacts path:** `artifacts/EXP-032/`
+- **Selected spreads (development, N = 10):** gearbox 10 s 1.00, 30 s 0.75, 60 s 0.50; bearing 10 s 1.25, 30 s 0.75, 60 s 0.50. All six confirmed on held-out data.
+- **Results, held-out, N = 10 (mean FPR (max section-domain) / recall):**
+
+  | Machine | Length | Standard | High sensitivity |
+  |---|---|---|---|
+  | Gearbox (MIMII DUE eval) | 10 s | s 1.50: 0.09 (0.10) / 0.25 | **s 1.00: 0.19 (0.22) / 0.40** |
+  | | 30 s | s 1.00: 0.08 (0.09) / 0.33 | **s 0.75: 0.14 (0.15) / 0.45** |
+  | | 60 s | s 0.75: 0.09 (0.10) / 0.42 | **s 0.50: 0.17 (0.19) / 0.57** |
+  | Bearing (DCASE 2022 eval) | 10 s | s 1.50: 0.08 (0.12) / 0.18 | **s 1.25: 0.13 (0.16) / 0.27** |
+  | | 30 s | s 1.00: 0.08 (0.11) / 0.30 | **s 0.75: 0.14 (0.17) / 0.47** |
+  | | 60 s | s 0.75: 0.09 (0.13) / 0.43 | **s 0.50: 0.18 (0.21) / 0.62** |
+
+  - The standard rows reproduce EXP-026 (gearbox 10 s 0.086 / 0.254) and EXP-029 (bearing 60 s 0.087 / 0.433).
+  - **With 30 baselines (held-out, reported alongside):** 60 s High sensitivity gives gearbox 0.14 / 0.64 and bearing 0.14 / 0.79; 60 s Standard gives gearbox 0.05 / 0.46 and bearing 0.05 / 0.60.
+  - Development figures, all spreads and N = 30: `artifacts/EXP-032/SUMMARY.txt`.
+- **Error analysis:**
+  - High sensitivity roughly doubles false alarms (about 9% → 13–19%) for 1.4–1.6× the recall. It moves the threshold; it does not make the model rank better (AUC unchanged).
+  - The best combination is 60 s recordings with 30 baselines: at High sensitivity about two-thirds (gearbox) to four-fifths (bearing, weak evidence) of anomalous recordings are flagged, with about 1 in 7 normal recordings flagged.
+  - A false alarm rate of 1 in 5–7 means the "2 of the last 3" machine alert (ADR-009) will fire more often on a healthy machine; this was not re-simulated.
+- **Limitations:** pseudo-recordings of independent clips (EXP-025); held-out gearbox set used a fourth time, bearing set a seventh time (weak evidence); lab data only; FPR per draw estimated from few evaluation normals.
+- **Conclusion / next step:** propose ADR-014: an optional per-machine "High sensitivity" setting using these spreads, off by default, with the false-alarm trade-off shown in plain words where it is switched on. Needs approval before any app change; the ADR-009 alert rate under High sensitivity should be re-checked on simulated timelines first or stated as unverified.

@@ -1055,6 +1055,52 @@ button:disabled {
   margin-top: 0.2rem;
 }
 
+/* Plain-language result first; numbers live under "Technical details". */
+.plain-result {
+  border-left: 3px solid var(--info-line);
+  padding: 0.2rem 0 0.2rem 0.9rem;
+  margin: 0.4rem 0 0.9rem;
+}
+
+.plain-result-above {
+  border-left-color: var(--accent);
+}
+
+.plain-result p {
+  margin: 0 0 0.45rem;
+}
+
+.plain-result ul {
+  margin: 0.2rem 0 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+  color: var(--ink-2);
+}
+
+.technical-details {
+  margin-top: 0.9rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.7rem;
+}
+
+.technical-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.technical-details[open] > summary {
+  margin-bottom: 0.6rem;
+}
+
+.next-step {
+  margin-top: 0.75rem;
+}
+
+.next-step p {
+  margin: 0;
+}
+
 /* --- machines overview --------------------------------------------------- */
 
 .summary-strip {

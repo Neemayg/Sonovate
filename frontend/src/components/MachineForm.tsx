@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState, type FormEvent } from "react";
-import type { MachineInput } from "@/lib/api";
+import { SENSITIVITY_OPTIONS, type MachineInput, type Sensitivity } from "@/lib/api";
 import { MACHINE_TYPES, type MachineType } from "@/lib/modelInputs";
 import { ErrorMessage } from "./Status";
 
@@ -12,7 +12,7 @@ type Props = {
   onCancel?: () => void;
 };
 
-const blank: MachineInput = { name: "", machine_type: "other", location: null, notes: null };
+const blank: MachineInput = { name: "", machine_type: "other", location: null, notes: null, sensitivity: "standard" };
 
 function orNull(value: FormDataEntryValue | null): string | null {
   const text = String(value ?? "").trim();
@@ -22,6 +22,7 @@ function orNull(value: FormDataEntryValue | null): string | null {
 export function MachineForm({ initial = blank, submitLabel, onSubmit, onCancel }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [sensitivity, setSensitivity] = useState<Sensitivity>(initial.sensitivity === "high" ? "high" : "standard");
   // Unique per instance: a hidden, still-mounted route may hold another copy.
   const uid = useId();
 
@@ -42,8 +43,12 @@ export function MachineForm({ initial = blank, submitLabel, onSubmit, onCancel }
         machine_type: String(form.get("machine_type")) as MachineType,
         location: orNull(form.get("location")),
         notes: orNull(form.get("notes")),
+        sensitivity,
       });
-      if (!initial.name) formEl.reset();
+      if (!initial.name) {
+        formEl.reset();
+        setSensitivity("standard");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -83,6 +88,28 @@ export function MachineForm({ initial = blank, submitLabel, onSubmit, onCancel }
           </label>
           <input id={`${uid}-location`} name="location" maxLength={200} defaultValue={initial.location ?? ""} />
         </div>
+      </div>
+      <div className="field">
+        <label htmlFor={`${uid}-sensitivity`}>Sensitivity</label>
+        <select
+          id={`${uid}-sensitivity`}
+          name="sensitivity"
+          value={sensitivity}
+          onChange={(e) => setSensitivity(e.target.value as Sensitivity)}
+          aria-describedby={`${uid}-sensitivity-help`}
+        >
+          {SENSITIVITY_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <p
+          id={`${uid}-sensitivity-help`}
+          className={`small ${sensitivity === "high" ? "notice notice-warning" : "muted"}`}
+        >
+          {SENSITIVITY_OPTIONS.find((o) => o.value === sensitivity)?.help} Applies to new analyses only.
+        </p>
       </div>
       <div className="field">
         <label htmlFor={`${uid}-notes`}>

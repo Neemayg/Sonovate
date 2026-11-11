@@ -196,6 +196,13 @@ Only record accepted decisions here. Proposed options belong in an issue or task
   - Evidence for bearing rests on a reused held-out set; no untouched bearing data exists.
 - **Evidence:** EXP-027, EXP-028, EXP-029.
 
+## ADR-014 — Optional "High sensitivity" threshold per machine
+- **Status:** Accepted 2026-11-11 by the user, from EXP-032. Integrated locally (migration, backend, app); not deployed.
+- **Proposal:** each machine gets a sensitivity setting, **Standard** (default; ADR-011 / ADR-012 / ADR-013 spreads unchanged) or **High**. High uses spreads gearbox 1.00 / 0.75 / 0.50 and bearing 1.25 / 0.75 / 0.50 for 10 s / 30 s / 60 s recordings. Each stored prediction records which setting produced it.
+- **Evidence:** EXP-032, held-out, 10 baselines: recall 1.4–1.6× higher (for example gearbox 60 s 0.42 → 0.57, bearing 60 s 0.43 → 0.62) at about double the false alarms (about 9% → 13–19%).
+- **Trade-offs:** more anomalies caught, but roughly 1 in 5–7 normal recordings flagged, so the ADR-009 machine alert fires more often on healthy machines (not re-simulated). Bearing evidence is weak (reused held-out set). Lab data only.
+- **Implementation:** `machines.sensitivity` (`standard` | `high`, default `standard`) and `predictions.sensitivity` (the setting actually used). The High spreads are tied to bundle `sonovate-ast-head` 0.4.0 in `backend/app/thresholds.py`; any other model falls back to Standard and the prediction records `standard`. The stored machine threshold stays the Standard one; the High threshold is derived per analysis from the same baseline statistics.
+
 ## Pending decisions
 - Feature representation beyond the EXP-002 setup.
 - Recording hardware and context-sensor strategy.

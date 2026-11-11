@@ -1,0 +1,16 @@
+{
+  "experiment": "EXP-032",
+  "mimii_dg_config": "configs/mimii_dg.json",
+  "bundle_dir": "artifacts/bundles/sonovate-ast-head-0.4.0",
+  "output": "artifacts/EXP-032",
+  "device": "mps",
+  "batch_size": 8,
+  "simulation": {"sizes": [10, 30], "repeats": 200, "seed": 0},
+  "rule": {"max_mean_fpr": 0.20, "max_section_fpr": 0.30},
+  "fresh": {
+    "due_eval_root": "data/raw/mimii_due_eval/gearbox",
+    "due_eval_truth": "data/raw/mimii_due_eval/ground_truth",
+    "dcase22_root": "data/raw/dcase2022_eval",
+    "dcase22_truth": "data/raw/dcase2022_eval/ground_truth"
+  }
+}

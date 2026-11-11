@@ -5,7 +5,7 @@
 ## Current status
 - **Phase:** 5 done on simulation (EXP-011, ADR-009); 8 in progress (hardening PR #8 and deploy prep PR #9 merged; cloud deployment not done); ML Phase 9 (EXP-012 to EXP-016) done; ADR-010 accepted and integrated in the backend (bundle `sonovate-ast-head` 0.3.0); not deployed
 - **Status:** App runs the ADR-010/011 model with the ADR-009 machine alert; nothing deployed. Model work of 2026-11-09 (EXP-021 to EXP-026, branch `claude/model-localisation`): model unchanged; new analysis tool for audio and video (`ml/analyze.py`, `docs/ANALYZE.md`); recording-level rule for 30 s / 60 s recordings accepted and integrated in backend, database and app (ADR-012; local only)
-- **Last updated:** 2026-11-11 (Sonovate 1.0 Milestone 1: onboarding and recording workflow, frontend only; not committed)
+- **Last updated:** 2026-11-11 (EXP-032 and ADR-014 High sensitivity; local test-data seeder; Sonovate 1.0 Milestone 1 onboarding and recording workflow, merged to main)
 - **Current owner:** Team
 - **Working title:** Environment-Aware Acoustic Machine Health
 - **Repository:** Sonovate (`github.com/Neemayg/Sonovate`, public)
@@ -37,7 +37,7 @@ Deploy the hardened app to the cloud once accounts and hosting are approved.
 - [x] Threshold setting for the ADR-010 model (EXP-017, development): spread 1.5 gives FPR 0.089 / recall 0.328 at 10 baselines and 0.067 / 0.506 at 30 (now 0.039 / 0.191 at spread 2.0); awaiting confirmation on a fresh test set
 - [x] **Phase 9 model improvement (EXP-013 to EXP-016):** AST layer 4 with frequency-preserving pooling, plus a condition-classifier head trained on MIMII DG. Held-out DCASE 2022 sections 03–05: app-setup AUC 0.670 → 0.791, recall at the app threshold 0.065 → 0.266, official AUC 0.681 → 0.771 (95% gain +0.071 to +0.121). Integrated (ADR-010): bundle exported, backend loads it, migration adds the model version; local end-to-end walkthrough passed.
 - [x] Baseline count and sensitivity curve (EXP-012, development): 20–30 baselines rank better (mean AUC 0.716 → 0.770), but recall at the app threshold does not rise
-- [x] **Sonovate 1.0 Milestone 1 (2026-11-11, frontend only, branch `claude/context-md-file-769d86`, uncommitted):** two-step add-machine flow with no default type (`/machines/new`), first-run "Welcome to Sonovate" steps, batch baseline upload (multi-file, drag-and-drop, per-file status, retry of failed files only), machine check that uploads and analyses in one step with real stages, re-run with confirmation, operating conditions under "Advanced details" stated as not used by the model. No backend, schema, model or threshold change. Checked: typecheck, lint, `npm test` (10 passed), build, and the full flow in the browser against the local stack.
+- [x] **Sonovate 1.0 Milestone 1 (2026-11-11, frontend only, PR #13):** two-step add-machine flow with no default type (`/machines/new`), first-run "Welcome to Sonovate" steps, batch baseline upload (multi-file, drag-and-drop, per-file status, retry of failed files only), machine check that uploads and analyses in one step with real stages, re-run with confirmation, operating conditions under "Advanced details" stated as not used by the model. No backend, schema, model or threshold change. Checked: typecheck, lint, `npm test` (10 passed), build, and the full flow in the browser against the local stack.
 - [x] Hardening and ADR-009 alert in the app (PR #8): rate limits and caps, model versions in a migration, account deletion removes audio, https-only Supabase in production, security headers. Checked: 131 backend tests, frontend build, 74 database tests
 
 ## Current task
@@ -56,6 +56,7 @@ Phase 8 deployment: cloud Supabase project, frontend hosting, backend hosting fo
 5. **ADR-010:** decided (2026-11-07) and integrated — AST layer 4 with frequency pooling plus the condition head.
 4. **Proposed (EXP-012):** the app recommends 20–30 baseline recordings and keeps the minimum of 10. Awaiting approval.
 8. **Proposed (ADR-013, EXP-027 to EXP-029):** bearing fusion scoring, integrated locally as bundle 0.4.0. Awaiting approval.
+9. **ADR-014:** decided (2026-11-11) and integrated locally — optional per-machine "High sensitivity" threshold (EXP-032): 1.4–1.6× recall at about double the false alarms (9% → 13–19%). Standard stays the default.
 7. **ADR-012:** decided (2026-11-09) and integrated locally — recordings of 10–60 s, judged on the mean of their 10 s window scores (60 s: spread 0.75; 30 s: 1.0); the app recommends 60 s per check. Local end-to-end check passed.
 
 ## Next action
@@ -74,6 +75,7 @@ The app runs `sonovate-ast-head` 0.3.1 (ADR-010 model, ADR-011 threshold) from `
 - Not done (needs the user): cloud deployment (accounts), recordings of real machines, choosing between the two demo seeders (`npm run seed:demo` for the app demo account, `ml/demo_seed.py` for `docs/DEMO.md`).
 
 ## Latest verified results
+- **EXP-032 (High-sensitivity spreads, held-out, N = 10):** gearbox 60 s recall 0.42 → 0.57 at FPR 0.09 → 0.17; bearing 60 s 0.43 → 0.62 at 0.09 → 0.18 (weak evidence). With 30 baselines, 60 s High: gearbox 0.64, bearing 0.79 at FPR 0.14. Proposed as ADR-014.
 - **EXP-030 / EXP-031 (synthetic training data):** physically modelled pseudo-faults lowered real gearbox AUC (about −0.03, rejected). Setup-augmented normals helped gearbox on development (+0.020) and on MIMII DUE evaluation (+0.016) but fell on MIMII DUE development (−0.069), so not adopted. Bundle 0.4.0 unchanged.
 - **EXP-028 / EXP-029 (bearing fusion, held-out DCASE 2022 bearing, reused):** own10 AUC 0.671 → 0.701 (6/6 wins); 60 s recordings AUC 0.889, FPR 0.087, recall 0.433 (head alone 0.367). Integrated as bundle 0.4.0 (proposed ADR-013). Shift TTA gave no gain (EXP-027).
 - **EXP-026 (recording-level rule; fresh MIMII DUE gearbox evaluation, third use):** at about 9% false alarms, recall 0.254 (10 s) → 0.328 (30 s, spread 1.0) → 0.423 (60 s, spread 0.75); AUC 0.667 → 0.763 → 0.837. Pseudo-recordings from independent clips, so possibly optimistic.

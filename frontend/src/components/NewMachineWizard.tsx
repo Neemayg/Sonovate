@@ -121,6 +121,8 @@ export function NewMachineWizard() {
         machine_type: type,
         location: orNull(form.get("location")),
         notes: orNull(form.get("notes")),
+        // ADR-014: Standard is the default; High can be chosen later under Details → Edit.
+        sensitivity: "standard",
       });
       router.push(`/machines/${machine.id}?setup=1`);
     } catch (err) {

@@ -16,6 +16,7 @@ import {
   getMachine,
   getMachineAlert,
   listMachineHistory,
+  sensitivityLabel,
   updateMachine,
   type HistoryEntry,
   type Machine,
@@ -259,6 +260,8 @@ export function MachineDetail({ id }: { id: string }) {
             <dd>{machineTypeLabel(machine.machine_type)}</dd>
             <dt>Location</dt>
             <dd>{machine.location ?? "—"}</dd>
+            <dt>Sensitivity</dt>
+            <dd>{sensitivityLabel(machine.sensitivity)}</dd>
             <dt>Notes</dt>
             <dd>{machine.notes ?? "—"}</dd>
             <dt>Last updated</dt>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import math
 import uuid
 
@@ -226,7 +227,7 @@ def test_result_uses_this_machines_baseline_threshold(
     assert store.saved_rows == [
         {"score": target, "log_score": pytest.approx(math.log(target)),
          "threshold": pytest.approx(expected_threshold(BASELINE_SCORES)), "decision": decision, "baseline_count": 10,
-         "window_log_scores": [pytest.approx(math.log(target))]}
+         "window_log_scores": [pytest.approx(math.log(target))], "sensitivity": "standard"}
     ]
     assert p["window_count"] == 1 and p["threshold_spread"] == 2.0
     assert len(store.threshold_writes) == 1
@@ -261,6 +262,70 @@ def test_longer_recording_is_judged_on_the_window_mean(
     assert p["decision"] == ("above_threshold" if expected_log > mean + spread * std else "below_threshold")
     assert len(model.calls) == 10 + windows
     assert store.saved_rows[0]["window_log_scores"] == pytest.approx([math.log(s) for s in window_scores])
+
+
+def _as_shipped_bundle(model: FakeModel) -> FakeModel:
+    """The fake, renamed as bundle sonovate-ast-head 0.4.0, the model the High spreads belong to."""
+    model.info = dataclasses.replace(model.info, name="sonovate-ast-head", version="0.4.0")
+    return model
+
+
+@pytest.mark.parametrize(
+    ("machine_type", "seconds", "spread"),
+    [("bearing", 10, 1.25), ("gearbox", 10, 1.0), ("bearing", 30, 0.75), ("gearbox", 60, 0.5), ("bearing", 20, 1.25)],
+)
+def test_high_sensitivity_uses_the_adr014_spread(
+    source: FakeRecordingSource, verifier: TokenVerifier, machine_type: str, seconds: float, spread: float
+) -> None:
+    """ADR-014: a machine set to High is judged against mean + High spread x std of the same baselines."""
+    windows = int(seconds // 10)
+    model = _as_shipped_bundle(FakeModel(BASELINE_SCORES + [1.25] * windows, machine_type))  # type: ignore[arg-type]
+    client, store = make_app(source, verifier, model)
+    machine = source.add_baselines(USER_A, 10, machine_type)  # type: ignore[arg-type]
+    rid = source.add(USER_A, wav_bytes(seconds=seconds), machine_type, machine_id=machine,  # type: ignore[arg-type]
+                     sensitivity="high")
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 200, res.text
+    p = res.json()["prediction"]
+    mean, std = _log_stats(BASELINE_SCORES)
+    assert p["sensitivity"] == "high" and p["threshold_spread"] == spread
+    assert p["threshold"] == pytest.approx(mean + spread * std)
+    assert p["decision"] == ("above_threshold" if math.log(1.25) > mean + spread * std else "below_threshold")
+    assert store.saved_rows[0]["sensitivity"] == "high"
+    assert store.saved_rows[0]["threshold"] == pytest.approx(mean + spread * std)
+    # The stored machine threshold stays the standard one.
+    assert len(store.threshold_writes) == 1
+
+
+def test_high_sensitivity_flags_what_standard_does_not(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    """A score between the High and Standard thresholds is above only with High."""
+    mean, std = _log_stats(BASELINE_SCORES)
+    target = math.exp(mean + 1.4 * std)  # above mean + 1.25 std (High, bearing), below mean + 1.5 std
+    decisions = {}
+    for sensitivity in ("standard", "high"):
+        model = _as_shipped_bundle(FakeModel(BASELINE_SCORES + [target]))
+        model.rule = dataclasses.replace(model.rule, spread=1.5)
+        client, _ = make_app(source, verifier, model)
+        machine = source.add_baselines(USER_A, 10)
+        rid = source.add(USER_A, wav_bytes(), machine_id=machine, sensitivity=sensitivity)
+        res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+        assert res.status_code == 200, res.text
+        decisions[sensitivity] = res.json()["prediction"]["decision"]
+    assert decisions == {"standard": "below_threshold", "high": "above_threshold"}
+
+
+def test_high_sensitivity_falls_back_for_other_models(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    """High spreads are validated for bundle 0.4.0 only; other models use and record the standard setting."""
+    model = FakeModel(BASELINE_SCORES + [1.0])
+    client, store = make_app(source, verifier, model)
+    machine = source.add_baselines(USER_A, 10)
+    rid = source.add(USER_A, wav_bytes(), machine_id=machine, sensitivity="high")
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 200, res.text
+    p = res.json()["prediction"]
+    assert p["sensitivity"] == "standard" and p["threshold_spread"] == 2.0
+    assert p["threshold"] == pytest.approx(expected_threshold(BASELINE_SCORES))
+    assert store.saved_rows[0]["sensitivity"] == "standard"
 
 
 def test_long_baseline_contributes_one_window(source: FakeRecordingSource, verifier: TokenVerifier) -> None:

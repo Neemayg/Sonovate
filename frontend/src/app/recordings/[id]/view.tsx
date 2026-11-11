@@ -38,18 +38,14 @@ export function RecordingAnalysis({ id }: { id: string }) {
       const [r, p] = await Promise.all([getRecording(id), listPredictions(id)]);
       setRecording(r);
       setPredictions(p);
+      return { recording: r, predictions: p };
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Could not load this recording.");
+      return null;
     }
   }, [id]);
 
-  useEffect(() => {
-    // Initial fetch of external data; state is set after the request resolves.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load]);
-
-  async function runAnalysis() {
+  const runAnalysis = useCallback(async () => {
     if (runningRef.current) return;
     runningRef.current = true;
     setConfirmRerun(false);
@@ -63,7 +59,27 @@ export function RecordingAnalysis({ id }: { id: string }) {
       runningRef.current = false;
       setRunning(false);
     }
-  }
+  }, [id, load]);
+
+  // Effects can run twice (React strict mode); the ref keeps the automatic
+  // analysis to one request.
+  const autoAnalysed = useRef(false);
+  useEffect(() => {
+    // Initial fetch. Arriving with ?analyse=1 (e.g. from a seeder or an older
+    // link), the analysis then runs once and the flag is dropped, so a reload
+    // does not run it again. The machine page's check uploader analyses by itself.
+    const autoAnalyse =
+      !autoAnalysed.current && new URLSearchParams(window.location.search).get("analyse") === "1";
+    if (autoAnalyse) autoAnalysed.current = true;
+    if (autoAnalyse) router.replace(`/recordings/${id}`, { scroll: false });
+    // State is set after the requests resolve, as before this change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load().then((loaded) => {
+      if (autoAnalyse && loaded?.recording?.kind === "analysis" && loaded.predictions.length === 0) {
+        void runAnalysis();
+      }
+    });
+  }, [id, load, router, runAnalysis]);
 
   if (loadError) return <ErrorMessage>{loadError}</ErrorMessage>;
   if (recording === undefined) return <Loading label="Loading recording…" />;
