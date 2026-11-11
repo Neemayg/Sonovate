@@ -42,9 +42,8 @@ const LIMITS = [
   { title: "Low sensitivity", body: "At a low false-alarm rate it misses most faults. No alert does not mean no fault." },
 ];
 
-// Skips the intro on a second visit in the same tab. Runs before first paint;
-// the class it adds is the only effect, and storage errors are ignored.
-const INTRO_SCRIPT = `try{var k="sonovate-intro";if(sessionStorage.getItem(k)){document.documentElement.classList.add("intro-seen")}else{sessionStorage.setItem(k,"1")}}catch(e){}`;
+// The intro plays on every full page load, reloads included. Returning to this
+// page through client-side navigation skips it (see LandingEffects).
 
 function delay(ms: number): CSSProperties {
   return { "--d": `${ms}ms` } as CSSProperties;
@@ -158,7 +157,6 @@ function HeroInstrument() {
 export default function Landing() {
   return (
     <div className="landing theme-dark">
-      <script dangerouslySetInnerHTML={{ __html: INTRO_SCRIPT }} />
       <Intro />
       <LandingEffects />
       <a href="#main" className="skip-link">

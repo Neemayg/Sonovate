@@ -18,6 +18,7 @@ import {
   getMachine,
   getMachineAlert,
   listMachineHistory,
+  sensitivityLabel,
   updateMachine,
   type HistoryEntry,
   type Machine,
@@ -140,6 +141,8 @@ export function MachineDetail({ id }: { id: string }) {
                 <dd>{machineTypeLabel(machine.machine_type)}</dd>
                 <dt>Location</dt>
                 <dd>{machine.location ?? "—"}</dd>
+                <dt>Sensitivity</dt>
+                <dd>{sensitivityLabel(machine.sensitivity)}</dd>
                 <dt>Notes</dt>
                 <dd>{machine.notes ?? "—"}</dd>
                 <dt>Last updated</dt>
@@ -175,6 +178,14 @@ export function MachineDetail({ id }: { id: string }) {
                   Saved {lastBaseline} as a baseline recording.
                 </p>
               )}
+              {baselineReady && (
+                <div className="notice notice-info next-step">
+                  <p>
+                    <strong>Baseline ready.</strong> Next, record the machine as it runs now and upload it under{" "}
+                    <a href="#upload-title">Upload a recording</a>: it is analysed straight away.
+                  </p>
+                </div>
+              )}
               <p className="muted small">
                 Adding or removing a baseline recording changes the threshold used for the next analysis.
               </p>
@@ -184,18 +195,19 @@ export function MachineDetail({ id }: { id: string }) {
         <section className="card" aria-labelledby="upload-title">
           <h2 id="upload-title">Upload a recording</h2>
           <UploadForm
-            key={`${machine.machine_type}-${baselineReady}`}
+            key={machine.machine_type}
             machineId={machine.id}
             machineType={machine.machine_type}
             defaultKind={modelled && !baselineReady ? "baseline" : "analysis"}
             onUploaded={(r) => {
               if (r.kind === "baseline") {
-                // Stay here so several baseline recordings can be added in a row.
+                // Stay here; a batch of baselines calls this once per file.
                 setRecordings((current) => [{ ...r, context_readings: [], predictions: [] }, ...(current ?? [])]);
                 setLastBaseline(r.original_filename ?? "the recording");
                 void reloadHistory();
               } else {
-                router.push(`/recordings/${r.id}`);
+                // The recording page runs the analysis on arrival (?analyse=1).
+                router.push(`/recordings/${r.id}?analyse=1`);
               }
             }}
           />

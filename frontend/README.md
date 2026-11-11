@@ -37,13 +37,40 @@ npm run seed:demo -- --reset  # replaces the demo account's machines
 Demo account (local only): `demo@sonovate.test` / `local-demo-password-1`
 (override with `SONOVATE_DEMO_EMAIL` / `SONOVATE_DEMO_PASSWORD`).
 
-- **Gearbox, line 2**: 10 baselines, then 2 normal and 3 anomaly clips analysed.
-- **Pump bearing**: 10 baselines, then normal and anomaly clips analysed.
+- **Gearbox, line 2**: 30 baselines, then 3 normal and 3 anomaly checks analysed (one of each 60 s).
+- **Pump bearing**: 30 baselines, then 3 normal and 3 anomaly checks analysed (one of each 60 s).
 - **Conveyor bearing (new)**: 4 of 10 baselines, to show the "needs baseline" state.
 
 Every stored result is the real model output. Clip file names carry the dataset label (normal or
 anomaly), so a presenter can show hits and misses. Demo results are not an evaluation. The
 in-app **Guide** tab (`/guide`) is the step-by-step user manual.
+
+## Test data for manual end-to-end testing (local)
+
+`npm run seed:test-data` needs no local dataset. It downloads only the MIMII DG clips it uses
+(84 clips: about 17 MB to download, 27 MB on disk) from Zenodo record 6529888 by HTTP range requests, checks each against
+the archive's CRC-32, and caches them in `data/raw/mimii_dg_subset/` (copied from
+`data/raw/mimii_dg` instead when the full dataset is prepared). It then:
+
+- creates `testdata@sonovate.test` (local only; password in `scripts/seed-test-data.mjs`, override
+  with `SONOVATE_TEST_DATA_EMAIL` / `SONOVATE_TEST_DATA_PASSWORD`),
+- creates **Test data · Bearing (MIMII DG)** and **Test data · Gearbox (MIMII DG)** with 10 normal
+  baselines each (10/10),
+- uploads 3 normal and 3 anomaly checks per machine (one of each 60 s) and has the inference service
+  analyse them, which sets the threshold and stores the real result,
+- writes 12 more files that were never uploaded to `data/interim/manual_uploads/<type>/` for manual
+  uploads, with their dataset labels in `data/interim/manual_uploads/MANIFEST.json`.
+
+```bash
+npm run seed:test-data             # idempotent: does nothing more once seeded
+npm run seed:test-data -- --reset  # replaces the test account's machines only
+```
+
+All clips are section 00, source domain, `test` split (unseen by the model), drawn with a fixed
+seed, and each is used once. 60 s files join six different 10 s clips of one label (MIMII DG has
+no 60 s recordings). The dataset label is ground truth, not a model prediction: the model misses
+many anomalies. The service allows 20 analyses per 10 minutes per user; the seeder waits when it
+hits that limit.
 
 ## Google sign-in (optional, local)
 

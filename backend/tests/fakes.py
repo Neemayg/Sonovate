@@ -86,6 +86,7 @@ class FakeRecordingSource:
         context: dict[str, ContextValue] | None = None,
         kind: str = "analysis",
         machine_id: uuid.UUID | None = None,
+        sensitivity: str = "standard",
     ) -> uuid.UUID:
         rid = uuid.uuid4()
         mid = machine_id or uuid.uuid4()
@@ -98,6 +99,7 @@ class FakeRecordingSource:
             kind=kind,
             original_filename=f"{rid}.wav",
             context=context or {},
+            sensitivity=sensitivity,  # type: ignore[arg-type]
         )
         self.rows[rid] = (rec, data)
         return rid
@@ -214,11 +216,13 @@ class RecordingPredictionStore:
         decision: str,
         baseline_count: int,
         window_log_scores: list[float] | None = None,
+        sensitivity: str = "standard",
     ) -> StoredPrediction:
         self.saved.append((recording.id, score, decision))
         self.saved_rows.append(
             {"score": score, "log_score": log_score, "threshold": threshold, "decision": decision,
-             "baseline_count": baseline_count, "window_log_scores": window_log_scores or [log_score]}
+             "baseline_count": baseline_count, "window_log_scores": window_log_scores or [log_score],
+             "sensitivity": sensitivity}
         )
         return StoredPrediction(id=uuid.uuid4(), created_at=datetime.now(timezone.utc))
 

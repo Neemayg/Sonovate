@@ -61,7 +61,7 @@ def test_storage_denial_is_not_found() -> None:
 
 def test_reads_machine_type_and_context_from_embedded_rows() -> None:
     def handler(req: httpx.Request) -> httpx.Response:
-        assert "machines(machine_type)" in req.url.params["select"]
+        assert "machines(machine_type,sensitivity)" in req.url.params["select"]
         r = row(USER_A) | {
             "machines": {"machine_type": "bearing"},
             "context_readings": [{"name": "speed", "value": 12, "unit": "krpm"}],
@@ -77,6 +77,15 @@ def test_unknown_machine_type_is_treated_as_other() -> None:
     r = row(USER_A) | {"machines": {"machine_type": "turbine"}, "context_readings": []}
     rec = source_for(lambda req: httpx.Response(200, json=[r])).get_recording(USER, uuid.uuid4())
     assert rec.machine_type == "other"
+
+
+@pytest.mark.parametrize(("value", "expected"), [("high", "high"), ("standard", "standard"), (None, "standard"),
+                                               ("extreme", "standard")])
+def test_reads_machine_sensitivity(value: object, expected: str) -> None:
+    """ADR-014: only an explicit 'high' selects High sensitivity; anything else is standard."""
+    r = row(USER_A) | {"machines": {"machine_type": "bearing", "sensitivity": value}, "context_readings": []}
+    rec = source_for(lambda req: httpx.Response(200, json=[r])).get_recording(USER, uuid.uuid4())
+    assert rec.sensitivity == expected
 
 
 def test_list_baselines_filters_by_machine_and_kind_with_user_token() -> None:
