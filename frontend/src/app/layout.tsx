@@ -26,9 +26,16 @@ const serif = Instrument_Serif({
   display: "swap",
 });
 
+// Absolute URLs for social cards come from the deployed origin; locally the
+// default is the dev server.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+
 export const metadata: Metadata = {
-  title: { default: "Sonovate — acoustic machine screening", template: "%s · Sonovate" },
-  description: "Acoustic anomaly screening for bearings and gearboxes (research prototype).",
+  metadataBase: new URL(SITE_URL),
+  title: { default: "Sonovate — Acoustic Machine Monitoring", template: "%s · Sonovate" },
+  description:
+    "Acoustic anomaly screening for bearings and gearboxes: compare new machine recordings with each machine's own normal sound (research prototype).",
+  applicationName: "Sonovate",
 };
 
 export const viewport: Viewport = {

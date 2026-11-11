@@ -75,6 +75,10 @@ type Props = {
   /** Re-reads the machine's recordings from the database. */
   reload: () => Promise<void>;
   initialTab?: WorkbenchTab;
+  /** A request from elsewhere on the page to open a tab; `n` changes on every request. */
+  request?: { tab: WorkbenchTab; n: number };
+  /** The page already shows baseline progress above (setup state). */
+  hideBaselineProgress?: boolean;
 };
 
 // The two upload tasks on a machine page, as separate tabs: building the
@@ -87,6 +91,8 @@ export function RecordingWorkbench({
   baselineCount,
   reload,
   initialTab,
+  request,
+  hideBaselineProgress = false,
 }: Props) {
   const [tab, setTab] = useState<WorkbenchTab>(
     initialTab ?? (analysable && baselineCount < BASELINE_REQUIRED ? "baseline" : "check"),
@@ -109,6 +115,17 @@ export function RecordingWorkbench({
     window.addEventListener("hashchange", fromHash);
     return () => window.removeEventListener("hashchange", fromHash);
   }, []);
+
+  // Buttons elsewhere on the page (setup module, monitoring header) open a tab
+  // here: the tab follows a new request during render, the scroll happens after.
+  const [seenRequest, setSeenRequest] = useState(request?.n ?? 0);
+  if (request && request.n !== seenRequest) {
+    setSeenRequest(request.n);
+    setTab(request.tab);
+  }
+  useEffect(() => {
+    if (request) sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [request]);
 
   if (!analysable) {
     return (
@@ -148,12 +165,18 @@ export function RecordingWorkbench({
 
       {tab === "baseline" ? (
         <div className="workbench-body" key="baseline">
-          <h3 className="workbench-title">Establish your machine&apos;s normal sound</h3>
-          <p className="workbench-lead">
-            Upload recordings captured while your machine is operating normally. Sonovate uses these recordings to
-            establish a machine-specific acoustic reference.
-          </p>
-          <BaselineProgress count={baselineCount} />
+          {hideBaselineProgress ? (
+            <h3 className="workbench-title">Upload normal recordings</h3>
+          ) : (
+            <>
+              <h3 className="workbench-title">Establish your machine&apos;s normal sound</h3>
+              <p className="workbench-lead">
+                Upload recordings captured while your machine is operating normally. Sonovate uses these recordings to
+                establish a machine-specific acoustic reference.
+              </p>
+            </>
+          )}
+          {!hideBaselineProgress && <BaselineProgress count={baselineCount} />}
           {reachedMinimum && (
             <div className="notice bprog-done" role="status">
               <p>

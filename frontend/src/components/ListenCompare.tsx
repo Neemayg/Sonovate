@@ -24,6 +24,7 @@ import {
   type Loudness,
 } from "@/lib/audioFeatures";
 import { MODEL_INPUTS, type MachineType } from "@/lib/modelInputs";
+import { recordingNumbers, recordingLabel } from "@/lib/monitoring";
 
 // Listen to an analysed recording next to one of the same machine's baseline
 // recordings. Both play in sync and the A/B buttons switch between them at the
@@ -88,6 +89,10 @@ type Props = {
   machineId: string;
   machineType: MachineType;
   recording: {
+    id: string;
+    kind: string;
+    created_at: string;
+    recorded_at: string | null;
     storage_path: string;
     original_filename: string | null;
     context_readings: ContextReading[];
@@ -96,6 +101,7 @@ type Props = {
 
 export function ListenCompare({ machineId, machineType, recording }: Props) {
   const [baselines, setBaselines] = useState<HistoryEntry[] | null>(null);
+  const [numbers, setNumbers] = useState<Map<string, number>>(new Map());
   const [selected, setSelected] = useState<string>("");
   const [tracks, setTracks] = useState<{ a: Track | null; b: Track | null }>({
     a: null,
@@ -142,6 +148,7 @@ export function ListenCompare({ machineId, machineType, recording }: Props) {
               contextKey(y.context_readings, machineType) === target ? 0 : 1;
             return sx - sy || x.created_at.localeCompare(y.created_at);
           });
+        setNumbers(recordingNumbers(entries));
         setBaselines(list);
         if (list.length > 0) setSelected(list[0].id);
       })
@@ -319,6 +326,7 @@ export function ListenCompare({ machineId, machineType, recording }: Props) {
     const all = [...a.profile, ...b.profile];
     return {
       levelDiff: a.loud.rmsDb - b.loud.rmsDb,
+      bandIndex: idx,
       band: BANDS[idx],
       bandDiff: diffs[idx] - mean,
       min: Math.floor(Math.min(...all) / 10) * 10,
@@ -342,17 +350,15 @@ export function ListenCompare({ machineId, machineType, recording }: Props) {
   };
 
   const targetKey = contextKey(recording.context_readings, machineType);
-  const name = recording.original_filename ?? "This recording";
+  const name = recordingLabel(recording);
 
   const rows: { key: Key; title: string; sub: string; track: Track | null }[] =
     [
-      { key: "a", title: "A · This recording", sub: name, track: tracks.a },
+      { key: "a", title: "This check", sub: name, track: tracks.a },
       {
         key: "b",
-        title: "B · Baseline",
-        sub: baseline
-          ? (baseline.original_filename ?? "Baseline recording")
-          : "…",
+        title: "Normal reference",
+        sub: baseline ? recordingLabel(baseline, numbers.get(baseline.id)) : "…",
         track: tracks.b,
       },
     ];
@@ -382,7 +388,7 @@ export function ListenCompare({ machineId, machineType, recording }: Props) {
               aria-pressed={active === key}
               onClick={() => choose(key)}
             >
-              {key === "a" ? "A · This recording" : "B · Baseline"}
+              {key === "a" ? "This check" : "Normal reference"}
             </button>
           ))}
         </div>
@@ -393,7 +399,7 @@ export function ListenCompare({ machineId, machineType, recording }: Props) {
 
       <div className="lc-options">
         <label className="lc-select">
-          <span>Compare with</span>
+          <span>Normal reference</span>
           <select
             value={selected}
             onChange={(e) => {
@@ -410,7 +416,7 @@ export function ListenCompare({ machineId, machineType, recording }: Props) {
                 contextKey(b.context_readings, machineType) === targetKey;
               return (
                 <option key={b.id} value={b.id}>
-                  {b.original_filename ?? "Baseline"}
+                  {recordingLabel(b, numbers.get(b.id))}
                   {ctx ? ` · ${ctx}` : ""}
                   {same ? " · same setting" : ""}
                 </option>
@@ -452,12 +458,7 @@ export function ListenCompare({ machineId, machineType, recording }: Props) {
                 {title}
               </button>
               <span className="muted small lc-row-sub">{sub}</span>
-              {track && (
-                <span className="muted small num lc-row-loud">
-                  RMS {fmtDb(track.loud.rmsDb)} · peak{" "}
-                  {fmtDb(track.loud.peakDb)}
-                </span>
-              )}
+
             </div>
             <div
               className="lc-wave"
@@ -520,8 +521,9 @@ export function ListenCompare({ machineId, machineType, recording }: Props) {
           <figcaption>
             <strong>Average frequency profile</strong>
             <span className="lc-legend">
-              <span className="lc-key is-a" /> A · this recording{" "}
-              <span className="lc-key is-b" /> B · baseline
+              <span className="lc-key is-a" /> This check{" "}
+              <span className="lc-key is-b" /> Normal reference{" "}
+              <span className="lc-key is-band" /> Largest difference
             </span>
           </figcaption>
           <ProfileChart
@@ -529,17 +531,18 @@ export function ListenCompare({ machineId, machineType, recording }: Props) {
             b={tracks.b.profile}
             min={comparison.min}
             max={comparison.max}
+            highlight={comparison.bandIndex}
           />
           <p className="small">
-            Overall, this recording is{" "}
+            Overall, this check is{" "}
             <strong className="num">
               {Math.abs(comparison.levelDiff).toFixed(1)} dB{" "}
               {comparison.levelDiff >= 0 ? "louder" : "quieter"}
             </strong>{" "}
-            than this baseline. Apart from loudness, the shapes differ most
-            around{" "}
+            than this normal reference. Apart from loudness, the shapes differ
+            most around{" "}
             <strong className="num">{formatHz(comparison.band.centre)}</strong>,
-            where this recording has{" "}
+            where this check has{" "}
             <strong className="num">
               {Math.abs(comparison.bandDiff).toFixed(1)} dB{" "}
               {comparison.bandDiff >= 0 ? "more" : "less"}
@@ -547,10 +550,24 @@ export function ListenCompare({ machineId, machineType, recording }: Props) {
             energy.
           </p>
           <p className="small muted">
-            Measured from the two files in your browser. The model does not use
-            these figures, and one baseline is a single example of normal sound:
-            a difference here is a reason to listen closely, not a diagnosis.
+            A descriptive comparison measured from the two files in your
+            browser. It is not used by the model to produce the result, and one
+            normal reference is a single example of normal sound: a difference
+            here is a reason to listen closely, not a diagnosis.
           </p>
+          <details className="lc-loudness">
+            <summary className="small">Loudness details</summary>
+            <dl className="details small">
+              <dt>This check</dt>
+              <dd className="num">
+                RMS {fmtDb(tracks.a.loud.rmsDb)} · peak {fmtDb(tracks.a.loud.peakDb)}
+              </dd>
+              <dt>Normal reference</dt>
+              <dd className="num">
+                RMS {fmtDb(tracks.b.loud.rmsDb)} · peak {fmtDb(tracks.b.loud.peakDb)}
+              </dd>
+            </dl>
+          </details>
         </figure>
       )}
     </div>
@@ -562,11 +579,13 @@ function ProfileChart({
   b,
   min,
   max,
+  highlight,
 }: {
   a: number[];
   b: number[];
   min: number;
   max: number;
+  highlight?: number;
 }) {
   const W = 600;
   const H = 160;
@@ -621,6 +640,15 @@ function ProfileChart({
           {formatHz(hz)}
         </text>
       ))}
+      {highlight !== undefined && (
+        <rect
+          x={xHz(BANDS[highlight].low)}
+          y={pad.t}
+          width={Math.max(4, xHz(BANDS[highlight].high) - xHz(BANDS[highlight].low))}
+          height={H - pad.t - pad.b}
+          className="lc-band"
+        />
+      )}
       <path d={line(b)} className="lc-line is-b" />
       <path d={line(a)} className="lc-line is-a" />
     </svg>

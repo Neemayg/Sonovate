@@ -30,7 +30,7 @@ to set, and the service only receives a JSON body with a recording id. Local val
 |---|---|---|
 | Schema and reference data | `supabase db reset` (migrations + seed) | Apply **migrations only** (`supabase db push`). **Never run `supabase/seed.sql`**: it creates a test user with a published password. Model versions come from the `deploy_hardening` migration. |
 | Auth → Site URL | `http://localhost:3000` | The production frontend origin (https). |
-| Auth → Redirect URLs | `http://localhost:3000/auth/callback`, `http://127.0.0.1:3000/auth/callback` | Only `https://<frontend>/auth/callback`. Remove the localhost entries. |
+| Auth → Redirect URLs | `http://localhost:3000/auth/callback`, `http://127.0.0.1:3000/auth/callback` | `https://<frontend>/auth/callback` and `https://<frontend>/auth/reset` (password-reset links). Remove the localhost entries. |
 | Auth → Email confirmations | off | **On.** Configure a real SMTP provider. |
 | Auth → Minimum password length | 10 | 10 or more, with character requirements. |
 | Auth → Leaked-password protection | n/a locally | **On** (rejects passwords found in breaches). |
@@ -65,6 +65,7 @@ a shared store would be needed to make them global. See `backend/README.md`.
 | `NEXT_PUBLIC_SUPABASE_URL` | The project URL (https). Also used for the CSP `connect-src`. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | The publishable key. Never a secret key. |
 | `NEXT_PUBLIC_INFERENCE_API_URL` | The inference service URL (https). Also used for the CSP `connect-src`. |
+| `NEXT_PUBLIC_SITE_URL` | The public frontend origin (https), used for absolute social-sharing image URLs on the landing page. |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | The Cloudflare Turnstile site key, matching the secret key set in Supabase Auth → CAPTCHA. Turns on the sign-in widget and adds `challenges.cloudflare.com` to the CSP. |
 
 Build with `NODE_ENV=production` (`npm run build`) so the CSP drops `unsafe-eval` and

@@ -12,7 +12,8 @@ function Arrow() {
 }
 
 // Calls to action on the public pages. Signed-in visitors go straight to
-// their machines; everyone else goes to sign-in or account creation.
+// their machines; everyone else goes to account creation (which lands on the
+// first-run steps from Milestone 1) or sign-in.
 export function SessionCta({ variant }: { variant: "nav" | "hero" | "pair" }) {
   const { session, loading } = useAuth();
   const signedIn = !loading && session !== null;
@@ -42,15 +43,8 @@ export function SessionCta({ variant }: { variant: "nav" | "hero" | "pair" }) {
     );
   }
   return (
-    <>
-      <Link href="/login?mode=sign-up" className="btn btn-primary btn-lg">
-        Create an account <Arrow />
-      </Link>
-      {variant === "pair" && (
-        <Link href="/login" className="btn btn-ghost btn-lg">
-          Sign in
-        </Link>
-      )}
-    </>
+    <Link href="/login?mode=sign-up" className="btn btn-primary btn-lg">
+      {variant === "hero" ? "Start monitoring" : "Get started"} <Arrow />
+    </Link>
   );
 }

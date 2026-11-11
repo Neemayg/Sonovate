@@ -8,15 +8,19 @@ import { Brand } from "@/components/Brand";
 import { SignalBars, SignalTrace } from "@/components/Decor";
 import { ErrorMessage } from "@/components/Status";
 import { Turnstile } from "@/components/Turnstile";
-import { isGoogleSignInEnabled, signIn, signInWithGoogle, signUp, TURNSTILE_SITE_KEY } from "@/lib/api";
+import { isGoogleSignInEnabled, requestPasswordReset, signIn, signInWithGoogle, signUp, TURNSTILE_SITE_KEY } from "@/lib/api";
 
-type Mode = "sign-in" | "sign-up";
+type Mode = "sign-in" | "sign-up" | "reset";
 
 const PANEL_POINTS = [
   "Each machine is compared only with its own normal recordings.",
-  "Results read as above or below that machine's baseline threshold.",
+  "Record with a phone: audio and video are converted in your browser.",
   "Your machines, recordings and results are visible only to you.",
 ];
+
+function initialMode(value: string | null): Mode {
+  return value === "sign-up" ? "sign-up" : value === "reset" ? "reset" : "sign-in";
+}
 
 function GoogleMark() {
   return (
@@ -49,7 +53,7 @@ function AuthForm() {
   const { session } = useAuth();
   const router = useRouter();
   const params = useSearchParams();
-  const [mode, setMode] = useState<Mode>(params.get("mode") === "sign-up" ? "sign-up" : "sign-in");
+  const [mode, setMode] = useState<Mode>(initialMode(params.get("mode")));
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -90,8 +94,12 @@ function AuthForm() {
     const form = new FormData(event.currentTarget);
     const email = String(form.get("email") ?? "").trim();
     const password = String(form.get("password") ?? "");
-    if (!email || !password) {
-      setError("Enter your email and password.");
+    if (!email || (mode !== "reset" && !password)) {
+      setError(mode === "reset" ? "Enter the email address of your account." : "Enter your email and password.");
+      return;
+    }
+    if (mode === "sign-up" && password.length < 10) {
+      setError("Choose a password of at least 10 characters.");
       return;
     }
     if (TURNSTILE_SITE_KEY && !captchaToken) {
@@ -102,7 +110,10 @@ function AuthForm() {
     setError(null);
     setInfo(null);
     try {
-      if (mode === "sign-in") {
+      if (mode === "reset") {
+        await requestPasswordReset(email, captchaToken ?? undefined);
+        setInfo("If an account exists for that email, a link to set a new password is on its way. It expires after a while, so use it soon.");
+      } else if (mode === "sign-in") {
         await signIn(email, password, captchaToken ?? undefined);
       } else {
         const { needsConfirmation } = await signUp(email, password, captchaToken ?? undefined);
@@ -118,31 +129,36 @@ function AuthForm() {
   }
 
   const signingIn = mode === "sign-in";
-  const title = signingIn ? "Welcome back" : "Create your account";
-  const action = signingIn ? "Sign in" : "Create account";
+  const resetting = mode === "reset";
+  const title = resetting ? "Reset your password" : signingIn ? "Welcome back" : "Create your account";
+  const action = resetting ? "Send reset link" : signingIn ? "Sign in" : "Create account";
 
   return (
     <section className="auth-card" aria-labelledby="auth-title">
-      <div className="segmented" role="group" aria-label="Choose sign in or create an account">
-        <button type="button" aria-pressed={signingIn} onClick={() => switchMode("sign-in")}>
-          Sign in
-        </button>
-        <button type="button" aria-pressed={!signingIn} onClick={() => switchMode("sign-up")}>
-          Create account
-        </button>
-        <span className="segmented-thumb" data-pos={signingIn ? "0" : "1"} aria-hidden="true" />
-      </div>
+      {!resetting && (
+        <div className="segmented" role="group" aria-label="Choose sign in or create an account">
+          <button type="button" aria-pressed={signingIn} onClick={() => switchMode("sign-in")}>
+            Sign in
+          </button>
+          <button type="button" aria-pressed={!signingIn} onClick={() => switchMode("sign-up")}>
+            Create account
+          </button>
+          <span className="segmented-thumb" data-pos={signingIn ? "0" : "1"} aria-hidden="true" />
+        </div>
+      )}
 
       <h1 id="auth-title" className="auth-title">
         {title}
       </h1>
       <p className="auth-sub">
-        {signingIn
-          ? "Sign in to see your machines and their latest comparisons."
-          : "Set up an account, then add your first machine and its baseline."}
+        {resetting
+          ? "Enter your account's email and we will send you a link to choose a new password."
+          : signingIn
+            ? "Sign in to see your machines and their latest checks."
+            : "Create an account, then register your first machine and record its normal sound."}
       </p>
 
-      {googleEnabled && (
+      {googleEnabled && !resetting && (
         <>
           <button type="button" className="btn btn-outline btn-block" onClick={handleGoogle} disabled={busy}>
             <GoogleMark /> Continue with Google
@@ -162,8 +178,16 @@ function AuthForm() {
           <label htmlFor="email">Email</label>
           <input id="email" name="email" type="email" autoComplete="email" placeholder="you@company.com" required />
         </div>
+        {!resetting && (
         <div className="field">
-          <label htmlFor="password">Password</label>
+          <div className="field-label-row">
+            <label htmlFor="password">Password</label>
+            {signingIn && (
+              <button type="button" className="button-link small" onClick={() => switchMode("reset")}>
+                Forgot password?
+              </button>
+            )}
+          </div>
           <div className="input-affix">
             <input
               id="password"
@@ -191,6 +215,7 @@ function AuthForm() {
             </p>
           )}
         </div>
+        )}
         {TURNSTILE_SITE_KEY && (
           <Turnstile
             siteKey={TURNSTILE_SITE_KEY}
@@ -211,9 +236,13 @@ function AuthForm() {
       </form>
 
       <p className="auth-switch">
-        {signingIn ? "New to Sonovate?" : "Already have an account?"}{" "}
-        <button type="button" className="button-link" onClick={() => switchMode(signingIn ? "sign-up" : "sign-in")}>
-          {signingIn ? "Create an account" : "Sign in instead"}
+        {resetting ? "Remembered it?" : signingIn ? "New to Sonovate?" : "Already have an account?"}{" "}
+        <button
+          type="button"
+          className="button-link"
+          onClick={() => switchMode(resetting ? "sign-in" : signingIn ? "sign-up" : "sign-in")}
+        >
+          {resetting ? "Back to sign in" : signingIn ? "Create an account" : "Sign in instead"}
         </button>
       </p>
     </section>
@@ -233,7 +262,7 @@ export default function LoginPage() {
             Research prototype
           </p>
           <h2>
-            Listen for what <em>changed</em> in a machine&apos;s sound.
+            Every machine has a sound. <em>Know when it changes.</em>
           </h2>
           <ul className="auth-points">
             {PANEL_POINTS.map((p) => (
