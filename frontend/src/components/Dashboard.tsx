@@ -108,13 +108,11 @@ export function DashHero({
   machines,
   service,
   model,
-  onAdd,
 }: {
   email: string | undefined;
   machines: MachineOverview[] | null;
   service: ServiceStatus | "checking";
   model: ModelVersionInfo | null;
-  onAdd: () => void;
 }) {
   const alerts = machines?.filter((m) => m.alert?.alert).length ?? 0;
   const waiting = machines?.filter((m) => machineStatus(m) === "needs_baseline").length ?? 0;
@@ -159,9 +157,9 @@ export function DashHero({
           </span>
         </div>
         <div className="dash-hero-actions">
-          <button type="button" className="btn btn-primary" onClick={onAdd}>
+          <Link href="/machines/new" className="btn btn-primary">
             {Icons.plus} Add machine
-          </button>
+          </Link>
           <Link href="/guide" className="btn btn-ghost">
             User guide
           </Link>
@@ -315,22 +313,22 @@ function nextSteps(machines: MachineOverview[]): Step[] {
         tone: "info",
         title: <>Record {left} more baseline{left === 1 ? "" : "s"}</>,
         detail: `${m.name} · ${m.baselineCount}/${BASELINE_REQUIRED} so far`,
-        href: `/machines/${m.id}`,
+        href: `/machines/${m.id}#baseline`,
       });
     } else if (status === "ready") {
       steps.push({
         key: `ready-${m.id}`,
         tone: "plain",
-        title: <>Analyse a new recording</>,
+        title: <>Run the first check</>,
         detail: `${m.name} · baseline ready, no analysis yet`,
-        href: `/machines/${m.id}`,
+        href: `/machines/${m.id}#check`,
       });
     }
   }
   return steps.slice(0, 4);
 }
 
-export function NextStepsPanel({ machines, onAdd }: { machines: MachineOverview[]; onAdd: () => void }) {
+export function NextStepsPanel({ machines }: { machines: MachineOverview[] }) {
   const steps = nextSteps(machines);
   return (
     <section className="panel" aria-labelledby="next-title">
@@ -338,16 +336,16 @@ export function NextStepsPanel({ machines, onAdd }: { machines: MachineOverview[
         <h2 id="next-title">Next steps</h2>
       </div>
       {machines.length === 0 ? (
-        <button type="button" className="step-item step-item-button" onClick={onAdd}>
+        <Link href="/machines/new" className="step-item">
           <span className="step-dot is-info" aria-hidden="true" />
           <span>
             <strong>Add your first machine</strong>
             <span>A bearing or gearbox you can record</span>
           </span>
           {Icons.arrow}
-        </button>
+        </Link>
       ) : steps.length === 0 ? (
-        <p className="muted small panel-empty">Nothing waiting. Upload new recordings from a machine&apos;s page.</p>
+        <p className="muted small panel-empty">Nothing waiting. Run new checks from a machine&apos;s page.</p>
       ) : (
         <ul className="step-list">
           {steps.map((s) => (
@@ -495,6 +493,117 @@ export function ModelPanel({ model, error }: { model: ModelVersionInfo | null | 
         </>
       )}
       <p className="panel-foot">Each result records the model version that produced it.</p>
+    </section>
+  );
+}
+
+// --- getting started ---------------------------------------------------------------
+// Three steps from a new account to the first check. Each step's state is
+// read from the user's stored machines and results; nothing is assumed.
+
+type StartStep = { n: number; title: string; detail: string; href: string; state: "done" | "current" | "todo" };
+
+export function gettingStartedSteps(machines: MachineOverview[], analysesTotal: number): StartStep[] {
+  const analysable = machines.filter((m) => machineStatus(m) !== "unsupported");
+  const needsBaseline = analysable.find((m) => m.baselineCount < BASELINE_REQUIRED);
+  const ready = analysable.find((m) => m.baselineCount >= BASELINE_REQUIRED);
+  const registered = machines.length > 0;
+  const baselineDone = ready !== undefined;
+  const checked = analysesTotal > 0;
+
+  const step2Target = needsBaseline ?? analysable[0];
+  const steps: Omit<StartStep, "state">[] = [
+    {
+      n: 1,
+      title: "Register your machine",
+      detail: registered
+        ? `${machines.length} machine${machines.length === 1 ? "" : "s"} registered`
+        : "Choose a bearing or gearbox and give it a name",
+      href: "/machines/new",
+    },
+    {
+      n: 2,
+      title: "Upload normal operating recordings",
+      detail: baselineDone
+        ? `${ready!.name} has ${ready!.baselineCount} baseline recordings`
+        : step2Target
+          ? `${step2Target.name}: ${step2Target.baselineCount}/${BASELINE_REQUIRED} so far`
+          : `At least ${BASELINE_REQUIRED} recordings of a bearing or gearbox running normally`,
+      href: step2Target ? `/machines/${step2Target.id}#baseline` : "/machines/new",
+    },
+    {
+      n: 3,
+      title: "Run your first acoustic check",
+      detail: checked
+        ? "First check done"
+        : ready
+          ? `${ready.name} is ready for its first check`
+          : "Available once a machine has its baseline",
+      href: ready ? `/machines/${ready.id}#check` : step2Target ? `/machines/${step2Target.id}#baseline` : "/machines/new",
+    },
+  ];
+  const done = [registered, baselineDone, checked];
+  const current = done.findIndex((d) => !d);
+  return steps.map((s, i) => ({ ...s, state: done[i] ? "done" : i === current ? "current" : "todo" }));
+}
+
+export function GettingStarted({
+  machines,
+  analysesTotal,
+  variant,
+}: {
+  machines: MachineOverview[];
+  analysesTotal: number;
+  variant: "welcome" | "strip";
+}) {
+  const steps = gettingStartedSteps(machines, analysesTotal);
+  const doneCount = steps.filter((s) => s.state === "done").length;
+  const welcome = variant === "welcome";
+  return (
+    <section className={`card getting-started${welcome ? " is-welcome" : ""}`} aria-labelledby="gs-title">
+      <div className="gs-head">
+        <div>
+          {welcome && <p className="eyebrow">First steps</p>}
+          <h2 id="gs-title">{welcome ? "Welcome to Sonovate" : "Getting started"}</h2>
+          <p className="muted">
+            {welcome
+              ? "Start monitoring a machine in three simple steps."
+              : "Finish setting up to run your first acoustic check."}
+          </p>
+        </div>
+        <span className="gs-count num" aria-label={`${doneCount} of 3 steps done`}>
+          {doneCount}/3
+        </span>
+      </div>
+      <ol className="gs-steps">
+        {steps.map((s) => (
+          <li key={s.n} className={`gs-step is-${s.state}`}>
+            <Link href={s.href} className="gs-link" aria-current={s.state === "current" ? "step" : undefined}>
+              <span className="gs-mark num" aria-hidden="true">
+                {s.state === "done" ? "✓" : s.n}
+              </span>
+              <span className="gs-text">
+                <strong>{s.title}</strong>
+                <span className="muted small">{s.detail}</span>
+              </span>
+              <span className="visually-hidden">
+                {s.state === "done" ? "(done)" : s.state === "current" ? "(next step)" : ""}
+              </span>
+              {Icons.arrow}
+            </Link>
+          </li>
+        ))}
+      </ol>
+      {welcome && (
+        <div className="actions">
+          <Link href="/machines/new" className="btn btn-primary">
+            {Icons.plus} Add your first machine
+          </Link>
+          <Link href="/guide" className="btn btn-ghost">
+            Read the guide
+          </Link>
+        </div>
+      )}
     </section>
   );
 }

@@ -93,6 +93,7 @@ returns the browser to `/auth/callback`, which finishes sign-in and opens `/mach
 ```bash
 npm run typecheck
 npm run lint
+npm test          # node --test on the pure helpers in src/lib (batch upload state, error messages)
 npm run build
 ```
 
@@ -106,10 +107,12 @@ npm run build
   inference service re-validates the stored file.
 - `src/lib/database.types.ts` — generated with
   `npx supabase@2.122.0 gen types typescript --local --schema public`.
-- `src/lib/modelInputs.ts` — machine types and the operating inputs each model understands, with
-  training ranges used for the out-of-range notices.
-- `src/app/` — routes: `/` (public landing page), `/login`, `/guide` (user manual), `/auth/callback`, `/machines`, `/machines/[id]`,
-  `/machines/[id]/history`, `/recordings/[id]`.
+- `src/lib/modelInputs.ts` — machine types and the operating inputs stored per type, with the
+  ranges in the test data used for the out-of-range notices (the model does not use these values).
+- `src/lib/batch.ts` — state helpers for the batch baseline uploader (pure; tested in `tests/`).
+- `src/lib/analysisMessages.ts` — plain-language text for the inference service's error codes.
+- `src/app/` — routes: `/` (public landing page), `/login`, `/guide` (user manual), `/auth/callback`, `/machines`,
+  `/machines/new` (two-step add-machine flow), `/machines/[id]`, `/machines/[id]/history`, `/recordings/[id]`.
 
 Pages are client-rendered; the Supabase session lives in the browser and row-level
 security decides what each user can read or write. Only the publishable key is used

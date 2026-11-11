@@ -14,7 +14,7 @@ const SECTIONS = [
   { id: "before", title: "Before you start" },
   { id: "add-machine", title: "1. Add a machine" },
   { id: "baseline", title: "2. Record a baseline" },
-  { id: "analyse", title: "3. Analyse a new recording" },
+  { id: "analyse", title: "3. Run a machine check" },
   { id: "results", title: "4. Read the result" },
   { id: "alerts", title: "5. Alerts and history" },
   { id: "manage", title: "6. Edit and delete" },
@@ -25,8 +25,8 @@ const SECTIONS = [
 const QUICK = [
   { n: "1", title: "Add a machine", href: "#add-machine" },
   { n: "2", title: `Upload ${BASELINE_REQUIRED} baselines`, href: "#baseline" },
-  { n: "3", title: "Upload a new clip", href: "#analyse" },
-  { n: "4", title: "Run analysis", href: "#analyse" },
+  { n: "3", title: "Run a check", href: "#analyse" },
+  { n: "4", title: "Listen & compare", href: "#results" },
   { n: "5", title: "Read & track", href: "#results" },
 ];
 
@@ -182,20 +182,21 @@ function GuideView() {
           <Section id="add-machine" title="1. Add a machine">
             <Steps>
               <li>
-                Open <Link href="/machines">Machines</Link> and press <Ui>+ Add machine</Ui>. The{" "}
-                <Ui>Add a machine</Ui> panel opens below your machine list.
+                Open <Link href="/machines">Machines</Link> and press <Ui>+ Add machine</Ui>.
               </li>
               <li>
-                Enter a <Ui>Name</Ui> you will recognise, for example &ldquo;Pump bearing, room 3&rdquo;.
+                Choose the machine type card (see below) and press <Ui>Continue</Ui>. Nothing is selected until you
+                choose.
               </li>
               <li>
-                Choose the <Ui>Machine type</Ui> from the drop-down menu (see below).
+                Enter a <Ui>Machine name</Ui> you will recognise, for example &ldquo;Main Water Pump&rdquo;, and
+                optionally a <Ui>Location</Ui> and <Ui>Notes</Ui>.
               </li>
               <li>
-                Optionally add a <Ui>Location</Ui> and <Ui>Notes</Ui>, then press <Ui>Add machine</Ui>.
+                Press <Ui>Create machine</Ui>. The new machine&apos;s page opens, ready for its baseline recordings.
               </li>
             </Steps>
-            <Mock label="Machine type drop-down">
+            <Mock label="Machine type cards">
               <div className="mock-select">
                 <div className="mock-option">
                   <strong>Bearing</strong>
@@ -223,24 +224,26 @@ function GuideView() {
               you know the machine is running well.
             </p>
             <Steps>
-              <li>Open the machine from your machine list.</li>
               <li>
-                In <Ui>Upload a recording</Ui>, choose your <Ui>Recording file</Ui>.
+                Open the machine and choose <Ui>Add baseline recordings</Ui> (it opens there until the baseline is
+                complete).
               </li>
               <li>
-                Set <Ui>Purpose</Ui> to <Ui>Baseline (machine running normally)</Ui>. It is pre-selected until the
-                baseline is complete.
+                Drag your recordings onto the upload area, or press <Ui>Choose files</Ui> and select several at once.
+                You can remove a file from the list before uploading.
               </li>
               <li>
-                Optionally set <Ui>Recorded at</Ui> and fill in <Ui>Operating conditions</Ui> (below).
+                Optionally open <Ui>Advanced details</Ui> to store operating conditions or the recording time (below).
+                They apply to every file in that batch.
               </li>
               <li>
-                Press <Ui>Upload recording</Ui>. You stay on the page, so you can add the next one straight away.
+                Press <Ui>Upload</Ui>. Files upload one after another, each with its own status. If one fails, the
+                others are kept; press <Ui>Retry</Ui> to send only the failed ones again.
               </li>
               <li>
-                Repeat until the meter shows <span className="num">{BASELINE_REQUIRED}/{BASELINE_REQUIRED}</span>.
-                Analysis is available only after that. About <span className="num">30</span> baselines catch more
-                problems; only the first 10 s of each baseline recording is used.
+                Checks are available once the machine has <span className="num">{BASELINE_REQUIRED}</span> baseline
+                recordings. About <span className="num">30</span> give the baseline wider coverage of normal operation
+                (not a guarantee of better fault detection); only the first 10 s of each baseline recording is used.
               </li>
             </Steps>
             <Mock label="Baseline progress">
@@ -254,12 +257,16 @@ function GuideView() {
               </p>
             </Mock>
             <h3>Operating conditions</h3>
-            <p>These optional fields depend on the machine type. Leave them blank if you do not know them.</p>
+            <p>
+              These optional fields, under <Ui>Advanced details</Ui>, depend on the machine type. They are stored for
+              your records and comparisons and are not used by the acoustic model, so leaving them blank does not
+              change any result.
+            </p>
             <div className="guide-table" role="table" aria-label="Operating conditions by machine type">
               <div role="row" className="guide-table-head">
                 <span role="columnheader">Machine type</span>
                 <span role="columnheader">Field</span>
-                <span role="columnheader">Validated range</span>
+                <span role="columnheader">Range in the test data</span>
               </div>
               {(["bearing", "gearbox"] as const).flatMap((type) =>
                 MODEL_INPUTS[type].map((input) => (
@@ -276,23 +283,29 @@ function GuideView() {
               )}
             </div>
             <p className="muted small">
-              A value outside its range is accepted, with a notice. You can also add <Ui>Other readings</Ui> with any
-              name, value and unit. The current model listens to audio only; the conditions are stored with each
-              recording for your records.
+              A value outside this range is accepted, with a notice that it falls outside the conditions represented
+              in the test data. You can also add <Ui>Other readings</Ui> with any name, value and unit.
             </p>
             <Tip>Adding or removing a baseline recording changes the threshold used for the next analysis.</Tip>
           </Section>
 
-          <Section id="analyse" title="3. Analyse a new recording">
+          <Section id="analyse" title="3. Run a machine check">
             <Steps>
               <li>
-                On the machine&apos;s page, upload a new recording (60 s is best) with <Ui>Purpose</Ui> set to{" "}
-                <Ui>Analysis</Ui>.
+                On the machine&apos;s page, choose <Ui>Run a machine check</Ui> and pick one recording (60 s is best).
+                You can listen to it before uploading.
               </li>
-              <li>The recording page opens, with the waveform and a player so you can listen to it.</li>
               <li>
-                Press <Ui>Run analysis</Ui>. Each 10 s window is compared with the baseline; a 30–60 s recording
-                is judged on the average of its windows, which catches noticeably more problems than one 10 s clip.
+                Press <Ui>Upload and run check</Ui>. The steps are shown as they happen: preparing audio, uploading,
+                comparing against the machine&apos;s baseline and generating the result.
+              </li>
+              <li>
+                The result page opens. Each 10 s window is compared with the baseline; a 30–60 s recording is judged on
+                the average of its windows, which catches noticeably more problems than one 10 s clip.
+              </li>
+              <li>
+                <Ui>Re-run analysis</Ui> on the result page asks for confirmation, because it adds another result for
+                the same recording.
               </li>
             </Steps>
             <Tip title="Good to know">
@@ -415,8 +428,8 @@ function GuideView() {
               <div>
                 <dt>Analysis says a baseline is required</dt>
                 <dd>
-                  The machine has fewer than {BASELINE_REQUIRED} baseline recordings. Upload more with Purpose set to
-                  Baseline.
+                  The machine has fewer than {BASELINE_REQUIRED} baseline recordings. Upload more under Add baseline
+                  recordings.
                 </dd>
               </div>
               <div>

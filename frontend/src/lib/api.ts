@@ -534,7 +534,29 @@ export type AnalysisResult =
   | { status: "baseline_recording"; message: string }
   | { status: "error"; code: string; message: string };
 
+// Recordings with an analysis request in flight from this tab. A second call
+// for the same recording while one is running is refused here, so repeated
+// clicks never store extra predictions; the service also allows only one
+// analysis per user at a time (analysis_in_progress).
+const analysesInFlight = new Set<string>();
+
 export async function requestAnalysis(recordingId: string): Promise<AnalysisResult> {
+  if (analysesInFlight.has(recordingId)) {
+    return {
+      status: "error",
+      code: "analysis_in_progress",
+      message: "An analysis of this recording is already running.",
+    };
+  }
+  analysesInFlight.add(recordingId);
+  try {
+    return await sendAnalysisRequest(recordingId);
+  } finally {
+    analysesInFlight.delete(recordingId);
+  }
+}
+
+async function sendAnalysisRequest(recordingId: string): Promise<AnalysisResult> {
   if (!INFERENCE_API_URL) {
     return { status: "error", code: "not_configured", message: "The inference service URL is not configured." };
   }

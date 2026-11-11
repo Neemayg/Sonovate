@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import {
   DashHero,
-  Icons,
+  GettingStarted,
+  gettingStartedSteps,
   KpiTiles,
   MachineFilters,
   matchesFilter,
@@ -15,15 +17,12 @@ import {
   type MachineFilter,
 } from "@/components/Dashboard";
 import { MachineCard } from "@/components/MachineCard";
-import { MachineForm } from "@/components/MachineForm";
 import { ErrorMessage } from "@/components/Status";
 import {
   checkAnalysisService,
-  createMachine,
   getProductModel,
   listMachineOverviews,
   listRecentAnalyses,
-  summarise,
   type MachineOverview,
   type ModelVersionInfo,
   type RecentAnalysis,
@@ -56,15 +55,10 @@ function Overview() {
   const [modelError, setModelError] = useState<string | null>(null);
   const [service, setService] = useState<ServiceStatus | "checking">("checking");
   const [filter, setFilter] = useState<MachineFilter>("all");
-  const [formOpen, setFormOpen] = useState(false);
-  const formRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     listMachineOverviews()
-      .then((list) => {
-        setMachines(list);
-        if (list.length === 0) setFormOpen(true);
-      })
+      .then(setMachines)
       .catch((err: Error) => setError(err.message));
     listRecentAnalyses(5)
       .then(setRecent)
@@ -75,22 +69,30 @@ function Overview() {
     checkAnalysisService().then(setService);
   }, []);
 
-  function openForm() {
-    setFormOpen(true);
-    // Wait for the panel to render open before scrolling and focusing.
-    requestAnimationFrame(() => {
-      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      formRef.current?.querySelector<HTMLInputElement>("input[name=name]")?.focus({ preventScroll: true });
-    });
+  const visible = machines?.filter((m) => matchesFilter(m, filter)) ?? [];
+
+  // A brand-new account sees the three first steps instead of an empty
+  // dashboard full of zeros.
+  if (machines?.length === 0) {
+    return (
+      <div className="dash">
+        <GettingStarted machines={machines} analysesTotal={recent?.total ?? 0} variant="welcome" />
+      </div>
+    );
   }
 
-  const visible = machines?.filter((m) => matchesFilter(m, filter)) ?? [];
+  const setupDone =
+    machines && recent ? gettingStartedSteps(machines, recent.total).every((s) => s.state === "done") : true;
 
   return (
     <div className="dash">
-      <DashHero email={session?.user.email} machines={machines} service={service} model={model ?? null} onAdd={openForm} />
+      <DashHero email={session?.user.email} machines={machines} service={service} model={model ?? null} />
 
       {error && <ErrorMessage>{error}</ErrorMessage>}
+
+      {machines && recent && !setupDone && (
+        <GettingStarted machines={machines} analysesTotal={recent.total} variant="strip" />
+      )}
 
       {machines && (
         <KpiTiles
@@ -113,26 +115,6 @@ function Overview() {
 
           {!error && machines === null && <MachinesSkeleton />}
 
-          {machines?.length === 0 && (
-            <div className="card empty-state">
-              <div className="empty-mark" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
-              <div>
-                <p className="empty-title">No machines yet</p>
-                <p className="muted">Add a bearing or gearbox, then record its normal sound as a baseline.</p>
-                <ol className="empty-steps">
-                  <li>Add a machine</li>
-                  <li>Upload 10 baseline recordings</li>
-                  <li>Upload a new recording to compare</li>
-                </ol>
-              </div>
-            </div>
-          )}
-
           {machines && machines.length > 0 && (
             <ul className="machine-grid" key={filter}>
               {visible.map((m) => (
@@ -143,46 +125,23 @@ function Overview() {
             </ul>
           )}
 
-          <section
-            ref={formRef}
-            className={`card add-machine${formOpen ? " is-open" : ""}`}
-            aria-labelledby="machine-create-title"
-          >
-            <button
-              type="button"
-              className="add-machine-toggle"
-              aria-expanded={formOpen}
-              aria-controls="machine-create-body"
-              onClick={() => setFormOpen((v) => !v)}
-            >
+          <Link href="/machines/new" className="card add-machine add-machine-link">
+            <span className="add-machine-toggle">
               <span className="add-machine-icon" aria-hidden="true">
-                {Icons.plus}
+                <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                  <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
               </span>
               <span>
-                <span id="machine-create-title" className="add-machine-title">
-                  Add a machine
-                </span>
-                <span className="muted small">Register it, then upload its baseline recordings from its page.</span>
+                <span className="add-machine-title">Add a machine</span>
+                <span className="muted small">Choose its type, name it, then upload its baseline recordings.</span>
               </span>
-              <span className="add-machine-chevron" aria-hidden="true" />
-            </button>
-            {formOpen && (
-              <div id="machine-create-body" className="add-machine-body">
-                <MachineForm
-                  submitLabel="Add machine"
-                  onSubmit={async (input) => {
-                    const created = await createMachine(input);
-                    setMachines((current) => [summarise(created), ...(current ?? [])]);
-                    setFilter("all");
-                  }}
-                />
-              </div>
-            )}
-          </section>
+            </span>
+          </Link>
         </section>
 
         <aside className="dash-side" aria-label="Activity and model">
-          {machines && <NextStepsPanel machines={machines} onAdd={openForm} />}
+          {machines && <NextStepsPanel machines={machines} />}
           <RecentAnalysesPanel items={recent?.items ?? null} error={recentError} />
           <ModelPanel model={model} error={modelError} />
         </aside>
