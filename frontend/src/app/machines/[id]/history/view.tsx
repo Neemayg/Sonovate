@@ -67,7 +67,7 @@ export function MachineHistory({ id }: { id: string }) {
                   <Link href={`/recordings/${e.id}`} className="num">
                     {formatDateTime(e.recorded_at ?? e.created_at)}
                   </Link>{" "}
-                  <span className={`tag tag-${e.kind}`}>{e.kind === "baseline" ? "Baseline" : "Analysis"}</span>
+                  <span className={`tag tag-${e.kind}`}>{e.kind === "baseline" ? "Baseline" : "Check"}</span>
                 </h3>
                 <p className="muted small">
                   {e.original_filename ?? "Recording"}

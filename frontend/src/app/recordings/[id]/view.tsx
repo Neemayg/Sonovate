@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BaselineMeter } from "@/components/BaselineMeter";
 import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { ListenCompare } from "@/components/ListenCompare";
@@ -19,6 +19,7 @@ import {
   type Prediction,
   type RecordingDetail,
 } from "@/lib/api";
+import { friendlyAnalysisError } from "@/lib/analysisMessages";
 import { machineTypeLabel } from "@/lib/modelInputs";
 
 export function RecordingAnalysis({ id }: { id: string }) {
@@ -28,6 +29,9 @@ export function RecordingAnalysis({ id }: { id: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [confirmRerun, setConfirmRerun] = useState(false);
+  // Guards against a second request from a fast double click before React re-renders.
+  const runningRef = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -46,12 +50,19 @@ export function RecordingAnalysis({ id }: { id: string }) {
   }, [load]);
 
   async function runAnalysis() {
+    if (runningRef.current) return;
+    runningRef.current = true;
+    setConfirmRerun(false);
     setRunning(true);
     setResult(null);
-    const outcome = await requestAnalysis(id);
-    setResult(outcome);
-    setRunning(false);
-    if (outcome.status === "completed") await load();
+    try {
+      const outcome = await requestAnalysis(id);
+      setResult(outcome);
+      if (outcome.status === "completed") await load();
+    } finally {
+      runningRef.current = false;
+      setRunning(false);
+    }
   }
 
   if (loadError) return <ErrorMessage>{loadError}</ErrorMessage>;
@@ -76,7 +87,7 @@ export function RecordingAnalysis({ id }: { id: string }) {
           { href: "/machines", label: "Machines" },
           ...(machine ? [{ href: `/machines/${machine.id}`, label: machine.name }] : []),
         ]}
-        eyebrow={recording.kind === "baseline" ? "Baseline recording" : "Analysis recording"}
+        eyebrow={recording.kind === "baseline" ? "Baseline recording" : "Machine check"}
         title={recording.original_filename ?? "Recording"}
         meta={`Uploaded ${formatDateTime(recording.created_at)}`}
       />
@@ -92,7 +103,7 @@ export function RecordingAnalysis({ id }: { id: string }) {
               <dt>File</dt>
               <dd>{recording.original_filename ?? "—"}</dd>
               <dt>Purpose</dt>
-              <dd>{recording.kind === "baseline" ? "Baseline (known normal operation)" : "Analysis"}</dd>
+              <dd>{recording.kind === "baseline" ? "Baseline (known normal operation)" : "Machine check"}</dd>
               <dt>Recorded at</dt>
               <dd>{formatDateTime(recording.recorded_at)}</dd>
               <dt>Uploaded</dt>
@@ -184,7 +195,7 @@ export function RecordingAnalysis({ id }: { id: string }) {
                 </p>
                 {machine && (
                   <p>
-                    <Link href={`/machines/${machine.id}`}>Upload baseline recordings</Link>
+                    <Link href={`/machines/${machine.id}#baseline`}>Upload baseline recordings</Link>
                   </p>
                 )}
                 <BaselineMeter count={result.count} required={result.required} />
@@ -199,13 +210,18 @@ export function RecordingAnalysis({ id }: { id: string }) {
 
             {result?.status === "error" && (
               <ErrorMessage>
-                {result.message}
-                {result.code === "unauthenticated" && (
-                  <>
-                    {" "}
-                    <Link href="/login">Sign in</Link>
-                  </>
-                )}
+                <p>
+                  <strong>{friendlyAnalysisError(result.code, result.message).title}</strong>
+                </p>
+                <p>
+                  {friendlyAnalysisError(result.code, result.message).message}
+                  {result.code === "unauthenticated" && (
+                    <>
+                      {" "}
+                      <Link href="/login">Sign in</Link>
+                    </>
+                  )}
+                </p>
               </ErrorMessage>
             )}
 
@@ -215,11 +231,37 @@ export function RecordingAnalysis({ id }: { id: string }) {
               </div>
             )}
 
-            <div className="actions">
-              <button type="button" onClick={runAnalysis} disabled={running}>
-                {running ? "Analysing…" : "Run analysis"}
-              </button>
-            </div>
+            {predictions && predictions.length > 0 ? (
+              confirmRerun ? (
+                <div className="notice rerun-confirm" role="group" aria-label="Confirm re-run">
+                  <p>
+                    Re-running adds <strong>another analysis result</strong> for this recording. The{" "}
+                    {predictions.length === 1 ? "existing result is" : `${predictions.length} existing results are`} kept.
+                  </p>
+                  <div className="actions">
+                    <button type="button" onClick={runAnalysis} disabled={running}>
+                      Re-run analysis
+                    </button>
+                    <button type="button" className="button-secondary" onClick={() => setConfirmRerun(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="actions">
+                  <button type="button" className="button-secondary" onClick={() => setConfirmRerun(true)} disabled={running}>
+                    {running ? "Analysing…" : "Re-run analysis"}
+                  </button>
+                  <span className="muted small">Creates another analysis result; earlier results are kept.</span>
+                </div>
+              )
+            ) : (
+              <div className="actions">
+                <button type="button" onClick={runAnalysis} disabled={running}>
+                  {running ? "Analysing…" : "Run analysis"}
+                </button>
+              </div>
+            )}
           </section>
         )}
       </div>

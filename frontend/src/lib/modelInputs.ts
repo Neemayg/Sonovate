@@ -53,5 +53,5 @@ export function rangeNotice(type: MachineType, name: string, value: number, unit
   const input = modelInputFor(type, name);
   if (!input || unit !== input.unit || !Number.isFinite(value)) return null;
   if (value >= input.min && value <= input.max) return null;
-  return `Outside the range the ${type} model was validated on (${input.min}–${input.max} ${input.unit}). Any future result for this recording would be less reliable.`;
+  return `Outside the conditions represented in the ${type} test data (${input.min}–${input.max} ${input.unit}). The value is stored as entered; the acoustic model does not use it.`;
 }
