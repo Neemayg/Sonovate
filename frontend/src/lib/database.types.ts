@@ -153,14 +153,14 @@ isOneToOne: false
                   ]
                 },"recordings": {
                   Row: {
-                    "channels": number | null,"created_at": string,"duration_seconds": number | null,"id": string,"kind": Database["public"]['Enums']["recording_kind"],"machine_id": string,"original_filename": string | null,"owner_id": string,"recorded_at": string | null,"sample_rate_hz": number | null,"size_bytes": number | null,"storage_path": string
+                    "channels": number | null,"created_at": string,"duration_seconds": number | null,"id": string,"kind": Database["public"]['Enums']["recording_kind"],"machine_id": string,"original_filename": string | null,"owner_id": string,"recorded_at": string | null,"sample_rate_hz": number | null,"size_bytes": number | null,"storage_path": string,"upload_completed_at": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "channels"?: number | null,"created_at"?: string,"duration_seconds"?: number | null,"id"?: string,"kind"?: Database["public"]['Enums']["recording_kind"],"machine_id": string,"original_filename"?: string | null,"owner_id"?: string,"recorded_at"?: string | null,"sample_rate_hz"?: number | null,"size_bytes"?: number | null,"storage_path": string
+                    "channels"?: number | null,"created_at"?: string,"duration_seconds"?: number | null,"id"?: string,"kind"?: Database["public"]['Enums']["recording_kind"],"machine_id": string,"original_filename"?: string | null,"owner_id"?: string,"recorded_at"?: string | null,"sample_rate_hz"?: number | null,"size_bytes"?: number | null,"storage_path": string,"upload_completed_at"?: string | null
                   }
                   Update: {
-                    "channels"?: number | null,"created_at"?: string,"duration_seconds"?: number | null,"id"?: string,"kind"?: Database["public"]['Enums']["recording_kind"],"machine_id"?: string,"original_filename"?: string | null,"owner_id"?: string,"recorded_at"?: string | null,"sample_rate_hz"?: number | null,"size_bytes"?: number | null,"storage_path"?: string
+                    "channels"?: number | null,"created_at"?: string,"duration_seconds"?: number | null,"id"?: string,"kind"?: Database["public"]['Enums']["recording_kind"],"machine_id"?: string,"original_filename"?: string | null,"owner_id"?: string,"recorded_at"?: string | null,"sample_rate_hz"?: number | null,"size_bytes"?: number | null,"storage_path"?: string,"upload_completed_at"?: string | null
                   }
                   Relationships: [
                     {

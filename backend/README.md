@@ -75,6 +75,7 @@ say why.
 | 422 | `baseline_recording` | The recording is a baseline; baselines set the threshold and are not analysed |
 | 409 | `baseline_required` | Fewer than 10 baseline recordings; `details` has `baseline_count` and `baseline_required` |
 | 422 | `baseline_invalid` | A baseline recording's file is missing or fails the input contract, or two baselines are identical |
+| 409 | `upload_incomplete` | The recording's audio file was never stored (interrupted upload); upload it again |
 | 422 | `same_as_baseline` | The recording is identical to one of the machine's baseline recordings |
 | 503 | `no_validated_model` | No validated model is registered for any type (current behaviour for bearing and gearbox) |
 | 429 | `analysis_in_progress` | Another analysis of this user is still running |

@@ -28,6 +28,7 @@ to set, and the service only receives a JSON body with a recording id. Local val
 
 | Setting | Local value | Production |
 |---|---|---|
+| Upload clean-up job | `pg_cron` job created by migration `upload_completion` | Created by the same migration (`pg_cron` is available on Supabase Cloud). After the first push, check `select * from cron.job;` shows `sonovate-discard-incomplete-uploads`. |
 | Schema and reference data | `supabase db reset` (migrations + seed) | Apply **migrations only** (`supabase db push`). **Never run `supabase/seed.sql`**: it creates a test user with a published password. Model versions come from the `deploy_hardening` migration. |
 | Auth → Site URL | `http://localhost:3000` | The production frontend origin (https). |
 | Auth → Redirect URLs | `http://localhost:3000/auth/callback`, `http://127.0.0.1:3000/auth/callback` | `https://<frontend>/auth/callback` and `https://<frontend>/auth/reset` (password-reset links). Remove the localhost entries. |

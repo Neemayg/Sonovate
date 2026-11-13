@@ -95,7 +95,7 @@ export function RecordingAnalysis({ id }: { id: string }) {
   if (recording === null) {
     return (
       <>
-        <ErrorMessage>Recording not found. It may have been removed, or it belongs to another account.</ErrorMessage>
+        <ErrorMessage>Recording not found. It may have been removed, its upload may not have finished, or it belongs to another account.</ErrorMessage>
         <p>
           <Link href="/machines">Back to machines</Link>
         </p>

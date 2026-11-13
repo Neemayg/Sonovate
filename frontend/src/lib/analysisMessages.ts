@@ -51,6 +51,11 @@ const MESSAGES: Record<string, FriendlyError> = {
     message: "The recording is larger than 2 MiB. Upload a recording of 60 seconds or less.",
     retryable: false,
   },
+  upload_incomplete: {
+    title: "The upload did not finish",
+    message: "This recording's audio never finished uploading, so it cannot be analysed. Upload the recording again.",
+    retryable: false,
+  },
   same_as_baseline: {
     title: "Identical to a baseline",
     message: "This recording is identical to one of the machine's baseline recordings, so it cannot be compared.",
