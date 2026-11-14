@@ -14,6 +14,21 @@ class ConfigError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class SmtpSettings:
+    """SMTP account used for machine-alert emails (app/alerts.py)."""
+
+    host: str
+    port: int
+    username: str
+    password: str
+    sender: str
+    sender_name: str = "Sonovate"
+
+    def __repr__(self) -> str:  # never print the password
+        return f"SmtpSettings(host={self.host!r}, port={self.port}, sender={self.sender!r})"
+
+
+@dataclass(frozen=True)
 class Settings:
     supabase_url: str
     # Publishable (formerly anon) key: sent as `apikey` alongside the user's
@@ -32,6 +47,11 @@ class Settings:
     rate_window_seconds: int = 600
     embed_concurrency: int = 1
     embed_wait_seconds: float = 30.0
+    # Machine-alert email (app/alerts.py). Without SMTP settings alerts are still
+    # recorded, with email status "skipped_unconfigured".
+    smtp: SmtpSettings | None = None
+    # Public frontend origin, for links in alert emails.
+    site_url: str = "http://localhost:3000"
 
     @property
     def jwks_url(self) -> str:
@@ -90,4 +110,25 @@ def load_settings() -> Settings:
         analyses_per_window=_int_env("SONOVATE_ANALYSES_PER_WINDOW", 20, 1),
         rate_window_seconds=_int_env("SONOVATE_RATE_WINDOW_SECONDS", 600, 1),
         embed_concurrency=_int_env("SONOVATE_EMBED_CONCURRENCY", 1, 1),
+        smtp=_smtp_settings(),
+        site_url=os.environ.get("SITE_URL", "http://localhost:3000").rstrip("/"),
+    )
+
+
+def _smtp_settings() -> SmtpSettings | None:
+    """SMTP for alert emails: all of SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD and
+    ALERT_EMAIL_FROM, or none of them."""
+    names = ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "ALERT_EMAIL_FROM")
+    values = {n: os.environ.get(n, "").strip() for n in names}
+    if not any(values.values()):
+        return None
+    missing = [n for n, v in values.items() if not v]
+    if missing:
+        raise ConfigError(f"Alert email needs {', '.join(missing)} as well (or none of the SMTP settings).")
+    return SmtpSettings(
+        host=values["SMTP_HOST"],
+        port=_int_env("SMTP_PORT", 465, 1),
+        username=values["SMTP_USERNAME"],
+        password=values["SMTP_PASSWORD"],
+        sender=values["ALERT_EMAIL_FROM"],
     )

@@ -12,13 +12,14 @@ from typing import Annotated, Any, Literal
 
 import httpx
 import numpy as np
-from fastapi import Depends, FastAPI, Header, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.alerts import AlertNotifier, SmtpMailer, SupabaseAlertStore
 from app.audio import AudioValidationError, ValidatedAudio, split_windows, validate_wav
 from app.auth import AuthenticatedUser, AuthError, JwksKeyResolver, TokenVerifier
 from app.config import ConfigError, Settings, load_settings
@@ -155,6 +156,7 @@ def create_app(
     limiter: UserLimiter | None = None,
     embed_gate: EmbedGate | None = None,
     account_admin: AccountAdmin | None = None,
+    alert_notifier: AlertNotifier | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     registry = registry or default_registry(settings)
@@ -165,6 +167,12 @@ def create_app(
     recording_source = recording_source or SupabaseRecordingSource(settings, http)
     limiter = limiter or UserLimiter(settings.analyses_per_window, settings.rate_window_seconds)
     embed_gate = embed_gate or EmbedGate(settings.embed_concurrency, settings.embed_wait_seconds)
+    if alert_notifier is None and settings.supabase_secret_key and prediction_store is None:
+        alert_notifier = AlertNotifier(
+            SupabaseAlertStore(settings.supabase_url, settings.supabase_secret_key, http),
+            SmtpMailer(settings.smtp) if settings.smtp else None,
+            settings.site_url,
+        )
 
     app = FastAPI(title="Sonovate inference", version="0.1.0", docs_url=None, redoc_url=None)
     app.add_middleware(
@@ -209,10 +217,11 @@ def create_app(
     def create_analysis(
         body: AnalysisRequest,
         user: Annotated[AuthenticatedUser, Depends(current_user)],
+        background: BackgroundTasks,
     ) -> AnalysisResponse:
         try:
             with limiter.analysis(user.id):
-                return run_analysis(body, user)
+                return run_analysis(body, user, background)
         except AnalysisInProgress:
             raise ApiError(
                 429, "analysis_in_progress", "An analysis of yours is already running. Wait for it to finish."
@@ -256,7 +265,7 @@ def create_app(
             )
         return Response(status_code=204)
 
-    def run_analysis(body: AnalysisRequest, user: AuthenticatedUser) -> AnalysisResponse:
+    def run_analysis(body: AnalysisRequest, user: AuthenticatedUser, background: BackgroundTasks) -> AnalysisResponse:
         try:
             recording = recording_source.get_recording(user, body.recording_id)
             data = recording_source.download(user, recording)
@@ -371,6 +380,13 @@ def create_app(
         except UpstreamError as exc:
             logger.warning("upstream failure: %s", exc)
             raise ApiError(502, "upstream_unavailable", "The result could not be computed or saved. Please try again.")
+
+        if alert_notifier is not None:
+            # ADR-009 alert bookkeeping: the database decides whether this result started
+            # an alert; the owner's email goes out after the response (app/alerts.py).
+            episode = alert_notifier.after_prediction(recording.machine_id, stored.id)
+            if episode is not None:
+                background.add_task(alert_notifier.notify, episode)
 
         return AnalysisResponse(
             status="completed",
