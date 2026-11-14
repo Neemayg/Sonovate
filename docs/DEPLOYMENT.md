@@ -1,6 +1,6 @@
 # Deployment checklist
 
-Nothing is deployed yet and no cloud project exists. This lists what a public deployment
+Supabase Cloud (`elvxwxgbtcfzviyzmktx`) and the inference service on Modal are deployed; the frontend is not yet. This lists what a public deployment
 must change from the local defaults.
 
 ## Chosen hosts (proposal, 2026-11-03)
@@ -9,20 +9,34 @@ must change from the local defaults.
 |---|---|---|
 | Database, Auth, Storage | Supabase cloud, free tier | Migrations only (see below). |
 | Frontend | Vercel, free tier | Built with the production `NEXT_PUBLIC_*` values. |
-| Inference service | Hugging Face Docker Space, free CPU Basic (2 vCPU, 16 GB) | Must be **public** so browsers can call it; the image then holds only our code, the first 4 layers of the AST weights (BSD-3, credited in the Space README), our head weights (trained on CC-BY-4.0 MIMII DG) and synthetic parity tones. Secrets go in the Space's secret settings. A free Space sleeps after 48 h without traffic; the first request after that waits for a restart. |
+| Inference service | Modal, Starter plan ($30/month free credit, no card) | Changed 2026-11-14: Hugging Face now requires PRO for Docker Spaces and Google Cloud Run needs a card, which the owner declined. Same app, locked dependencies and bundle as `backend/Dockerfile`, run by `backend/deploy/modal_app.py`. Without a card, Modal stops the app when the monthly credit is used up instead of billing. |
 
-Space deployment:
+Inference service deployment (Modal):
 
 ```bash
-backend/deploy/stage_space.sh artifacts/bundles <empty-dir>
-hf upload <user>/<space> <empty-dir> . --repo-type space
+uv tool install modal          # isolated CLI; not a backend dependency
+modal token new                # owner approves in the browser
+SONOVATE_BUNDLES_SRC=<dir holding sonovate-ast-head-0.4.0> \
+    modal deploy backend/deploy/modal_app.py
 ```
 
-Set `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` (secret) and
-`CORS_ORIGINS` in the Space settings. The image sets `SONOVATE_BUNDLES_DIR` itself and runs one
-worker. Hugging Face's proxy terminates TLS; its request timeout and body limit are not ours
-to set, and the service only receives a JSON body with a recording id. Local values live in `supabase/config.toml`,
-`backend/.env.example` and `frontend/.env.example`; none of them are production-safe as is.
+- URL: `https://neemay-gupta2007--sonovate-inference.us-east.modal.run` (Modal US East; the
+  database is in Tokyo, `ap-northeast-1`).
+- Secrets (Modal dashboard → Secrets): `sonovate-config` holds the public `SUPABASE_URL`,
+  `SUPABASE_PUBLISHABLE_KEY` and `CORS_ORIGINS`; `custom-secret` holds only
+  `SUPABASE_SECRET_KEY` and was entered by the owner. Change `CORS_ORIGINS` with
+  `modal secret create sonovate-config ... --force`, then redeploy.
+- Resources: 2 CPU, 4 GiB, one container (the abuse limits are per process), scales to zero
+  after 5 idle minutes. Modal's web endpoints answer within 150 s, so the function timeout is 150 s.
+- Measured 2026-11-14: cold start 10–21 s; warm health check about 1 s from Delhi; first
+  analysis of a 60 s recording on a new machine 33.1 s (embedding 10 baselines once at about
+  2.2 s each, plus 6 windows). With 30 baselines the first check should take roughly 80 s
+  (estimate, not measured), still inside the 150 s limit. All 30 tests that apply to bundle
+  0.4.0 pass on Modal's CPU (parity included); tests for older bundles fail there only
+  because those bundles are not shipped.
+
+The Hugging Face Space files (`backend/deploy/stage_space.sh`, `space_README.md`, updated to
+0.4.0 with the AST BSD-3 licence) are kept in case a PRO Space is used later.
 
 ## Supabase project
 
