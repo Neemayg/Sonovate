@@ -1,6 +1,9 @@
 # Deployment checklist
 
-Supabase Cloud (`elvxwxgbtcfzviyzmktx`) and the inference service on Modal are deployed; the frontend is not yet. This lists what a public deployment
+Deployed (2026-11-14): Supabase Cloud (`elvxwxgbtcfzviyzmktx`), the inference service on Modal and the
+frontend on Vercel Hobby at `https://sonovate-mauve.vercel.app`. Auth Site URL is that origin; redirect
+URLs are `/auth/callback` and `/auth/reset` on it (no localhost). Modal `CORS_ORIGINS` is that origin only.
+Vercel `NEXT_PUBLIC_*` variables are Config type, Production only. This lists what a public deployment
 must change from the local defaults.
 
 ## Chosen hosts (proposal, 2026-11-03)
