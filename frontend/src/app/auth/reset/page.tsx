@@ -7,6 +7,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { Brand } from "@/components/Brand";
 import { ErrorMessage, Loading } from "@/components/Status";
 import { updatePassword } from "@/lib/api";
+import { PASSWORD_HINT, passwordProblem } from "@/lib/authMessages";
 
 // The password-reset email links here. The Supabase client exchanges the
 // one-time code in the URL for a short recovery session on load (PKCE); with
@@ -35,8 +36,9 @@ export default function ResetPasswordPage() {
     const form = new FormData(event.currentTarget);
     const password = String(form.get("password") ?? "");
     const confirm = String(form.get("confirm") ?? "");
-    if (password.length < 10) {
-      setError("Choose a password of at least 10 characters.");
+    const weak = passwordProblem(password);
+    if (weak) {
+      setError(weak);
       return;
     }
     if (password !== confirm) {
@@ -103,7 +105,7 @@ export default function ResetPasswordPage() {
                 aria-describedby="new-password-hint"
               />
               <p id="new-password-hint" className="muted small">
-                At least 10 characters.
+                {PASSWORD_HINT}
               </p>
             </div>
             <div className="field">

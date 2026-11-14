@@ -9,7 +9,7 @@ const BY_CODE: Record<string, string> = {
   email_not_confirmed: "Confirm your email address first: open the link we sent you, then sign in.",
   user_already_exists: "An account with this email already exists. Sign in instead, or reset your password.",
   email_exists: "An account with this email already exists. Sign in instead, or reset your password.",
-  weak_password: "Choose a stronger password: at least 10 characters, ideally a mix of words, numbers and symbols.",
+  weak_password: "Choose a stronger password: at least 10 characters, with both letters and numbers, and not a commonly used one.",
   same_password: "Choose a password different from your current one.",
   over_request_rate_limit: "Too many attempts in a short time. Wait a minute, then try again.",
   over_email_send_rate_limit: "Too many emails sent recently. Wait a few minutes before asking for another one.",
@@ -35,4 +35,15 @@ export function friendlyAuthError(code: string | undefined | null, message: stri
   if (code && BY_CODE[code]) return BY_CODE[code];
   for (const [pattern, text] of BY_MESSAGE) if (message && pattern.test(message)) return text;
   return "Something went wrong while signing in. Please try again.";
+}
+
+// Mirrors the production Supabase Auth password policy (minimum 10
+// characters, letters and digits required), so the form can explain a
+// problem before the server rejects it. The server remains the authority.
+export const PASSWORD_HINT = "At least 10 characters, with letters and numbers.";
+
+export function passwordProblem(password: string): string | null {
+  if (password.length < 10) return "Choose a password of at least 10 characters.";
+  if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) return "Use both letters and numbers in your password.";
+  return null;
 }

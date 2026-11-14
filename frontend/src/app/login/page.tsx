@@ -9,6 +9,7 @@ import { SignalBars, SignalTrace } from "@/components/Decor";
 import { ErrorMessage } from "@/components/Status";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { Turnstile } from "@/components/Turnstile";
+import { PASSWORD_HINT, passwordProblem } from "@/lib/authMessages";
 import { isGoogleSignInEnabled, requestPasswordReset, signIn, signInWithGoogle, signUp, TURNSTILE_SITE_KEY } from "@/lib/api";
 
 type Mode = "sign-in" | "sign-up" | "reset";
@@ -99,8 +100,9 @@ function AuthForm() {
       setError(mode === "reset" ? "Enter the email address of your account." : "Enter your email and password.");
       return;
     }
-    if (mode === "sign-up" && password.length < 10) {
-      setError("Choose a password of at least 10 characters.");
+    const weak = mode === "sign-up" ? passwordProblem(password) : null;
+    if (weak) {
+      setError(weak);
       return;
     }
     if (TURNSTILE_SITE_KEY && !captchaToken) {
@@ -212,7 +214,7 @@ function AuthForm() {
           </div>
           {!signingIn && (
             <p id="password-hint" className="muted small">
-              At least 10 characters.
+              {PASSWORD_HINT}
             </p>
           )}
         </div>
