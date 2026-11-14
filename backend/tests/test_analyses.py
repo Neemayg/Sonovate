@@ -564,3 +564,58 @@ def test_interrupted_baseline_uploads_do_not_count(source: FakeRecordingSource, 
     assert error["code"] == "baseline_required"
     assert error["details"] == {"baseline_count": 9, "baseline_required": 10}
 
+
+
+# --- ADR-015: Standard spreads by baseline count (bundle 0.4.0) ------------------------------------
+
+@pytest.mark.parametrize(
+    ("machine_type", "count", "seconds", "spread"),
+    [
+        ("bearing", 30, 60, 0.60), ("bearing", 30, 10, 1.30), ("bearing", 30, 30, 0.85), ("bearing", 20, 60, 0.65),
+        ("gearbox", 20, 10, 1.40), ("gearbox", 25, 30, 0.85), ("gearbox", 45, 60, 0.60),
+        ("bearing", 19, 60, 0.75), ("gearbox", 19, 10, 1.5), ("bearing", 30, 20, 1.30),
+    ],
+)
+def test_standard_spread_follows_the_baseline_count(
+    source: FakeRecordingSource, verifier: TokenVerifier, machine_type: str, count: int, seconds: float, spread: float
+) -> None:
+    """ADR-015: with 20+ baselines the Standard threshold uses the smaller EXP-033 spreads; 10-19 keep ADR-011/012."""
+    windows = int(seconds // 10)
+    baseline_scores = (BASELINE_SCORES * 5)[:count]
+    model = _as_shipped_bundle(FakeModel(baseline_scores + [1.1] * windows, machine_type))  # type: ignore[arg-type]
+    model.rule = dataclasses.replace(model.rule, spread=1.5)
+    client, store = make_app(source, verifier, model)
+    machine = source.add_baselines(USER_A, count, machine_type)  # type: ignore[arg-type]
+    rid = source.add(USER_A, wav_bytes(seconds=seconds), machine_type, machine_id=machine)  # type: ignore[arg-type]
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 200, res.text
+    p = res.json()["prediction"]
+    mean, std = _log_stats(baseline_scores)
+    assert p["sensitivity"] == "standard" and p["baseline_count"] == count
+    assert p["threshold_spread"] == spread
+    assert p["threshold"] == pytest.approx(mean + spread * std)
+    assert store.saved_rows[0]["threshold"] == pytest.approx(mean + spread * std)
+
+
+def test_count_spreads_apply_only_to_the_shipped_bundle(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    baseline_scores = (BASELINE_SCORES * 3)[:30]
+    model = FakeModel(baseline_scores + [1.0])  # test-only fake, not bundle 0.4.0
+    client, _ = make_app(source, verifier, model)
+    machine = source.add_baselines(USER_A, 30)
+    rid = source.add(USER_A, wav_bytes(), machine_id=machine)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 200, res.text
+    assert res.json()["prediction"]["threshold_spread"] == 2.0
+
+
+def test_high_sensitivity_is_unchanged_with_many_baselines(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    """ADR-014's High spreads are not affected by ADR-015."""
+    baseline_scores = (BASELINE_SCORES * 3)[:30]
+    model = _as_shipped_bundle(FakeModel(baseline_scores + [1.0] * 6))
+    client, _ = make_app(source, verifier, model)
+    machine = source.add_baselines(USER_A, 30)
+    rid = source.add(USER_A, wav_bytes(seconds=60), machine_id=machine, sensitivity="high")
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 200, res.text
+    p = res.json()["prediction"]
+    assert p["sensitivity"] == "high" and p["threshold_spread"] == 0.5
