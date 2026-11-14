@@ -8,7 +8,13 @@ import httpx
 import pytest
 
 from app.auth import AuthenticatedUser
-from app.supabase_data import Recording, RecordingNotFound, RecordingTooLarge, SupabaseRecordingSource
+from app.supabase_data import (
+    Recording,
+    RecordingNotFound,
+    RecordingTooLarge,
+    SupabaseRecordingSource,
+    UploadIncomplete,
+)
 from tests.conftest import SETTINGS
 from tests.fakes import USER_A, USER_B
 
@@ -21,7 +27,13 @@ def source_for(handler) -> SupabaseRecordingSource:
 
 def row(owner: uuid.UUID) -> dict[str, str]:
     rid, mid = uuid.uuid4(), uuid.uuid4()
-    return {"id": str(rid), "owner_id": str(owner), "machine_id": str(mid), "storage_path": f"{owner}/{mid}/{rid}.wav"}
+    return {
+        "id": str(rid),
+        "owner_id": str(owner),
+        "machine_id": str(mid),
+        "storage_path": f"{owner}/{mid}/{rid}.wav",
+        "upload_completed_at": "2026-11-13T09:00:00+00:00",
+    }
 
 
 def test_queries_with_the_users_own_token() -> None:
@@ -183,3 +195,27 @@ def test_baseline_embedding_writes_upsert_with_the_secret_key() -> None:
     assert req.headers["apikey"] == "test-secret" and "authorization" not in req.headers
     assert req.url.params["on_conflict"] == "recording_id,model_version_id"
     assert b'"owner_id":"' + str(USER_A).encode() in req.content
+
+
+def test_recording_whose_upload_never_finished_is_incomplete() -> None:
+    def handler(req: httpx.Request) -> httpx.Response:
+        assert "upload_completed_at" in req.url.params["select"]
+        return httpx.Response(200, json=[row(USER_A) | {"upload_completed_at": None}])
+
+    with pytest.raises(UploadIncomplete):
+        source_for(handler).get_recording(USER, uuid.uuid4())
+
+
+def test_list_baselines_asks_only_for_completed_uploads_and_drops_others() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        done = row(USER_A) | {"kind": "baseline"}
+        interrupted = row(USER_A) | {"kind": "baseline", "upload_completed_at": None}
+        return httpx.Response(200, json=[done, interrupted])
+
+    found = source_for(handler).list_baselines(USER, uuid.uuid4())
+    assert seen[0].url.params["upload_completed_at"] == "not.is.null"
+    assert len(found) == 1, "an incomplete row is dropped even if the server returned it"
+

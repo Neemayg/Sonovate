@@ -247,6 +247,8 @@ export async function listMachineOverviews(): Promise<MachineOverview[]> {
   const { data, error } = await supabase()
     .from("machines")
     .select("*, recordings(id, kind, created_at, predictions(decision, created_at))")
+    // Upload integrity: recordings whose audio file never arrived do not count.
+    .not("recordings.upload_completed_at", "is", null)
     .order("created_at", { ascending: false });
   if (error) fail("Could not load machines.", error);
   const alerts = await machineAlerts();
@@ -305,6 +307,7 @@ export async function listRecordings(machineId: string): Promise<Recording[]> {
     .from("recordings")
     .select("*")
     .eq("machine_id", machineId)
+    .not("upload_completed_at", "is", null)
     .order("created_at", { ascending: false });
   if (error) fail("Could not load recordings.", error);
   return data;
@@ -315,6 +318,8 @@ export async function getRecording(id: string): Promise<RecordingDetail | null> 
     .from("recordings")
     .select("*, machines(id, name, machine_type), context_readings(*)")
     .eq("id", id)
+    // A recording whose upload never finished is treated as not found.
+    .not("upload_completed_at", "is", null)
     .maybeSingle();
   if (error) fail("Could not load this recording.", error);
   return data as RecordingDetail | null;
@@ -446,6 +451,7 @@ export async function listMachineHistory(machineId: string): Promise<HistoryEntr
       "*, context_readings(*), predictions(*, model_versions(name, version, preprocessing_version, machine_type, limitations))",
     )
     .eq("machine_id", machineId)
+    .not("upload_completed_at", "is", null)
     .order("created_at", { ascending: false })
     .order("created_at", { referencedTable: "predictions", ascending: false });
   if (error) fail("Could not load the machine history.", error);

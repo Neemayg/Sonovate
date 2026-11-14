@@ -44,6 +44,7 @@ Model bundle (git-ignored, SONOVATE_BUNDLES_DIR) -> allow-list + sha256 checks -
 - `profiles` — one per auth user, created by a trigger.
 - `machines` — owned by a user (`owner_id`); `machine_type` is `bearing` | `gearbox` | `other` (default `other`), which selects the per-type model.
 - `recordings` — belongs to a machine; `kind` is `baseline` (the machine running normally; sets its threshold, never analysed) or `analysis`. Holds the storage path, original filename, size and the duration/sample rate/channels read from the WAV header by the client (display only).
+- Upload integrity (migration `upload_completion`): `recordings.upload_completed_at` is set by a trigger on `storage.objects` when the audio file is stored and cleared if the file is deleted; users can read it but not write it (insert is a column grant without it). The app and the inference service use only completed recordings, so an interrupted upload never counts toward the baseline or blocks analysis; analysing one returns `409 upload_incomplete`. A `pg_cron` job (`sonovate-discard-incomplete-uploads`, every 15 minutes) deletes recordings still incomplete after one hour that have no stored file.
 - `context_readings` — name, numeric value, unit, `source = 'user_entered'` (the only source today).
 - `model_versions` — global catalog, read-only to users. Each row cites its evidence (`evidence_ref`) and carries the machine type, the bundle's limitations and the `bundle.json` sha256. The `deploy_hardening` migration inserts them as reference data (the local seed only adds the test user): `sonovate-ast-knn` 0.2.0 (serves bearing and gearbox, so `machine_type` is null), citing EXP-007, EXP-009 and EXP-010 with its limitations verbatim, and keeps the superseded autoencoder rows (bearing, gearbox 0.1.0) so older predictions still resolve. The `ast_head_model` migration adds `sonovate-ast-head` 0.3.0 (ADR-010), citing EXP-013, EXP-014 and EXP-016. The `ast_head_threshold` migration adds the current product model, 0.3.1: the same weights with threshold spread 1.5 (ADR-011), citing EXP-017 and EXP-020.
 - `predictions` — recording, model version, raw uncalibrated score, log score, the machine's threshold (log space), decision (`below_threshold` | `above_threshold`, checked to agree with `log_score > threshold`), baseline count, `created_at`. Readable by the owner, writable only by the inference service (secret key).
@@ -95,7 +96,7 @@ Tests: `supabase/tests/database/rls.test.sql` (pgTAP: isolation, caps, alerts, a
 - See `docs/DEPLOYMENT.md` for the settings a public deployment must change.
 
 ### Known limits
-- The client-side upload is three steps (row, file, context) with best-effort rollback, not a transaction.
+- The client-side upload is three steps (row, file, context) with best-effort rollback, not a transaction. A row whose file never arrives is ignored everywhere and removed by the cleanup job after an hour.
 - Thresholds are recomputed lazily, on the next analysis after the baseline set changes; a stored threshold row stays until then (it is never shown, and it is removed with its machine).
 - Deletes run in the browser as two steps (files, then row), not one transaction.
 - Ten baseline recordings give an unstable threshold (EXP-005: false-alarm rate up to 0.20–0.33 at the 95th percentile).

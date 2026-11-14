@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(79);
+select plan(86);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (as postgres, bypassing RLS). Fixed ids keep failures readable.
@@ -445,6 +445,65 @@ select is(
   + (select count(*)::int from public.recordings where owner_id = 'cccccccc-0000-0000-0000-000000000003')
   + (select count(*)::int from public.predictions where owner_id = 'cccccccc-0000-0000-0000-000000000003'),
   0, 'deleting the auth user cascades through profile, machines, recordings and predictions');
+
+-- ---------------------------------------------------------------------------
+-- Upload integrity (migration upload_completion)
+-- ---------------------------------------------------------------------------
+reset role;
+
+select ok(
+  (select upload_completed_at is not null from public.recordings where id = 'a2000000-0000-0000-0000-000000000001'),
+  'storing a recording''s audio file marks the recording complete');
+
+insert into public.recordings (id, machine_id, owner_id, storage_path, created_at)
+values
+  ('a3000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001',
+   'aaaaaaaa-0000-0000-0000-000000000001',
+   'aaaaaaaa-0000-0000-0000-000000000001/a1000000-0000-0000-0000-000000000001/a3000000-0000-0000-0000-000000000001.wav',
+   now() - interval '2 hours'),
+  ('a4000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001',
+   'aaaaaaaa-0000-0000-0000-000000000001',
+   'aaaaaaaa-0000-0000-0000-000000000001/a1000000-0000-0000-0000-000000000001/a4000000-0000-0000-0000-000000000001.wav',
+   now());
+
+select ok(
+  (select upload_completed_at is null from public.recordings where id = 'a3000000-0000-0000-0000-000000000001'),
+  'a recording without a stored file stays incomplete');
+
+set local role authenticated;
+select set_config('request.jwt.claims',
+  '{"sub":"aaaaaaaa-0000-0000-0000-000000000001","role":"authenticated"}', true);
+
+select throws_ok(
+  $$update public.recordings set upload_completed_at = now() where id = 'a3000000-0000-0000-0000-000000000001'$$,
+  '42501', null, 'a user cannot mark an upload complete themselves');
+
+select throws_ok(
+  $$insert into public.recordings (machine_id, owner_id, storage_path, upload_completed_at)
+    values ('a1000000-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000001',
+    'aaaaaaaa-0000-0000-0000-000000000001/a1000000-0000-0000-0000-000000000001/forged.wav', now())$$,
+  '42501', null, 'a user cannot insert a recording that claims to be complete');
+
+reset role;
+
+select is(private.discard_incomplete_uploads(), 1,
+  'cleanup removes exactly the stale incomplete recording');
+
+select is(
+  (select array_agg(id::text order by id) from public.recordings
+   where id in ('a2000000-0000-0000-0000-000000000001', 'a3000000-0000-0000-0000-000000000001',
+                'a4000000-0000-0000-0000-000000000001')),
+  array['a2000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000001'],
+  'cleanup keeps completed recordings and uploads still in progress');
+
+-- Deleting the file (as the Storage API does) makes the recording incomplete.
+set local storage.allow_delete_query = 'true';
+delete from storage.objects
+where bucket_id = 'recordings'
+  and name = 'aaaaaaaa-0000-0000-0000-000000000001/a1000000-0000-0000-0000-000000000001/a2000000-0000-0000-0000-000000000001.wav';
+select ok(
+  (select upload_completed_at is null from public.recordings where id = 'a2000000-0000-0000-0000-000000000001'),
+  'removing the audio file marks the recording incomplete again');
 
 select * from finish();
 rollback;

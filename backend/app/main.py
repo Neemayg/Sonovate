@@ -31,6 +31,7 @@ from app.supabase_data import (
     RecordingNotFound,
     RecordingSource,
     RecordingTooLarge,
+    UploadIncomplete,
     SupabaseAccountAdmin,
     SupabasePredictionStore,
     SupabaseRecordingSource,
@@ -261,6 +262,12 @@ def create_app(
             data = recording_source.download(user, recording)
         except RecordingNotFound:
             raise ApiError(404, "recording_not_found", "Recording not found.")
+        except UploadIncomplete:
+            raise ApiError(
+                409,
+                "upload_incomplete",
+                "This recording's upload did not finish, so it cannot be analysed. Upload it again.",
+            )
         except RecordingTooLarge:
             raise ApiError(422, "recording_too_large", "Recording is larger than the 2 MiB limit.")
         except UpstreamError as exc:

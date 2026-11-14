@@ -539,3 +539,28 @@ def test_stored_baseline_embeddings_of_other_users_are_not_used(
     res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
     assert res.status_code == 200
     assert len(store.embedding_writes) == 10 and other not in store.embedding_writes
+
+
+def test_interrupted_upload_cannot_be_analysed(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    client, store = make_app(source, verifier, FakeModel(1.0))
+    machine = source.add_baselines(USER_A, 10)
+    rid = source.add(USER_A, wav_bytes(), machine_id=machine)
+    source.incomplete.add(rid)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 409
+    assert res.json()["error"]["code"] == "upload_incomplete"
+
+
+def test_interrupted_baseline_uploads_do_not_count(source: FakeRecordingSource, verifier: TokenVerifier) -> None:
+    client, store = make_app(source, verifier, FakeModel(1.0))
+    machine = source.add_baselines(USER_A, 10)
+    # One of the ten baselines never got its audio file.
+    broken = next(r.id for r, _ in source.rows.values() if r.machine_id == machine)
+    source.incomplete.add(broken)
+    rid = source.add(USER_A, wav_bytes(), machine_id=machine)
+    res = client.post("/v1/analyses", json={"recording_id": str(rid)}, headers=auth())
+    assert res.status_code == 409
+    error = res.json()["error"]
+    assert error["code"] == "baseline_required"
+    assert error["details"] == {"baseline_count": 9, "baseline_required": 10}
+

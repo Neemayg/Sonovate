@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from app.audio import ValidatedAudio
 from app.auth import AuthenticatedUser
 from app.registry import AnomalyModel, ContextValue, MachineType, ModelInfo
-from app.supabase_data import Recording, RecordingNotFound, StoredPrediction, StoredThreshold
+from app.supabase_data import Recording, RecordingNotFound, StoredPrediction, StoredThreshold, UploadIncomplete
 from app.thresholds import BaselineThreshold, ThresholdRule
 
 ISSUER = "http://supabase.test/auth/v1"
@@ -77,6 +77,8 @@ class FakeRecordingSource:
         self.rows: dict[uuid.UUID, tuple[Recording, bytes]] = {}
         self.thresholds: dict[tuple[uuid.UUID, uuid.UUID], StoredThreshold] = {}
         self.embeddings: dict[tuple[uuid.UUID, uuid.UUID], np.ndarray] = {}
+        # Recordings whose audio file was never stored (interrupted uploads).
+        self.incomplete: set[uuid.UUID] = set()
 
     def add(
         self,
@@ -121,6 +123,8 @@ class FakeRecordingSource:
         entry = self.rows.get(recording_id)
         if entry is None or entry[0].owner_id != user.id:
             raise RecordingNotFound()
+        if recording_id in self.incomplete:
+            raise UploadIncomplete()
         return entry[0]
 
     def download(self, user: AuthenticatedUser, recording: Recording) -> bytes:
@@ -130,6 +134,7 @@ class FakeRecordingSource:
         found = [
             r for r, _ in self.rows.values()
             if r.machine_id == machine_id and r.kind == "baseline" and r.owner_id == user.id
+            and r.id not in self.incomplete
         ]
         return sorted(found, key=lambda r: r.id)
 

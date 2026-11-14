@@ -34,6 +34,11 @@ class RecordingTooLarge(Exception):
     pass
 
 
+class UploadIncomplete(Exception):
+    """The recording row exists but its audio file was never stored (the
+    upload was interrupted). Such rows are ignored and cleaned up."""
+
+
 class UpstreamError(Exception):
     pass
 
@@ -141,7 +146,7 @@ class SupabaseRecordingSource:
             {
                 "id": f"eq.{recording_id}",
                 "select": (
-                    "id,owner_id,machine_id,storage_path,kind,original_filename,"
+                    "id,owner_id,machine_id,storage_path,kind,original_filename,upload_completed_at,"
                     "machines(machine_type,sensitivity),context_readings(name,value,unit)"
                 ),
             },
@@ -152,6 +157,8 @@ class SupabaseRecordingSource:
         # Defence in depth: do not rely on RLS alone.
         if recording.owner_id != user.id:
             raise RecordingNotFound()
+        if rows[0].get("upload_completed_at") is None:
+            raise UploadIncomplete()
         return recording
 
     def list_baselines(self, user: AuthenticatedUser, machine_id: uuid.UUID) -> list[Recording]:
@@ -161,11 +168,14 @@ class SupabaseRecordingSource:
             {
                 "machine_id": f"eq.{machine_id}",
                 "kind": "eq.baseline",
-                "select": "id,owner_id,machine_id,storage_path,kind,original_filename,machines(machine_type)",
+                # Only baselines whose audio file was stored count (upload integrity).
+                "upload_completed_at": "not.is.null",
+                "select": "id,owner_id,machine_id,storage_path,kind,original_filename,upload_completed_at,machines(machine_type)",
                 "order": "id",
             },
         )
-        return [r for r in map(_recording, rows) if r.owner_id == user.id]
+        complete = [row for row in rows if row.get("upload_completed_at") is not None]
+        return [r for r in map(_recording, complete) if r.owner_id == user.id]
 
     def get_threshold(
         self, user: AuthenticatedUser, machine_id: uuid.UUID, model_version_id: uuid.UUID
