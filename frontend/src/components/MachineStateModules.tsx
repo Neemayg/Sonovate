@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BASELINE_RECOMMENDED, BASELINE_REQUIRED, type HistoryEntry, type Machine, type MachineAlert } from "@/lib/api";
+import { BASELINE_RECOMMENDED, BASELINE_REQUIRED, type HistoryEntry, type Machine, type AlertEmail, type MachineAlert } from "@/lib/api";
 import { machineTypeLabel } from "@/lib/modelInputs";
 import { stateSummary, type MonitoringState } from "@/lib/monitoring";
 import { analysedPoints } from "./MachineInsights";
@@ -163,9 +163,25 @@ export function AlertPanel({ alert, entries }: { alert: MachineAlert; entries: H
         )}
         <HowAlertsWork compact />
       </div>
+      {alert.email && <p className="muted small">{alertEmailLine(alert.email)}</p>}
       <p className="muted small">This is not a diagnosis or a failure prediction.</p>
     </section>
   );
+}
+
+function alertEmailLine(email: AlertEmail): string {
+  switch (email.status) {
+    case "sent":
+      return `Alert email sent to you${email.attempted_at ? ` on ${formatDateTime(email.attempted_at)}` : ""}.`;
+    case "pending":
+      return "Sending you an alert email…";
+    case "failed":
+      return "The alert email could not be delivered. The alert itself is unaffected.";
+    case "skipped_preference":
+      return "No alert email was sent: alert emails are off in your account settings.";
+    case "skipped_unconfigured":
+      return "No alert email was sent: email is not set up for this service.";
+  }
 }
 
 export function LatestResultCard({ entries }: { entries: HistoryEntry[] }) {

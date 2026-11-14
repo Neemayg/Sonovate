@@ -51,6 +51,32 @@ isOneToOne: false
       referencedColumns: ["id","owner_id"]
     }
                   ]
+                },"machine_alert_episodes": {
+                  Row: {
+                    "email_attempted_at": string | null,"email_error": string | null,"email_status": string,"ended_at": string | null,"id": string,"machine_id": string,"owner_id": string,"started_at": string,"started_by_prediction_id": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "email_attempted_at"?: string | null,"email_error"?: string | null,"email_status"?: string,"ended_at"?: string | null,"id"?: string,"machine_id": string,"owner_id": string,"started_at"?: string,"started_by_prediction_id"?: string | null
+                  }
+                  Update: {
+                    "email_attempted_at"?: string | null,"email_error"?: string | null,"email_status"?: string,"ended_at"?: string | null,"id"?: string,"machine_id"?: string,"owner_id"?: string,"started_at"?: string,"started_by_prediction_id"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "machine_alert_episodes_machine_id_owner_id_fkey"
+      columns: ["machine_id","owner_id"]
+isOneToOne: false
+      referencedRelation: "machines"
+      referencedColumns: ["id","owner_id"]
+    },{
+      foreignKeyName: "machine_alert_episodes_started_by_prediction_id_fkey"
+      columns: ["started_by_prediction_id"]
+isOneToOne: false
+      referencedRelation: "predictions"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"machine_thresholds": {
                   Row: {
                     "baseline_count": number,"baseline_recording_ids": (string)[],"computed_at": string,"log_mean": number,"log_std": number,"machine_id": string,"model_version_id": string,"owner_id": string,"spread": number,"threshold": number
@@ -139,14 +165,14 @@ isOneToOne: false
                   ]
                 },"profiles": {
                   Row: {
-                    "created_at": string,"display_name": string | null,"id": string
+                    "alert_emails": boolean,"created_at": string,"display_name": string | null,"id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"display_name"?: string | null,"id": string
+                    "alert_emails"?: boolean,"created_at"?: string,"display_name"?: string | null,"id": string
                   }
                   Update: {
-                    "created_at"?: string,"display_name"?: string | null,"id"?: string
+                    "alert_emails"?: boolean,"created_at"?: string,"display_name"?: string | null,"id"?: string
                   }
                   Relationships: [
                     
@@ -191,7 +217,14 @@ isOneToOne: false
                 }
           }
           Functions: {
-            [_ in never]: never
+            "alert_email_target":
+{ Args: { "p_episode_id": string }; Returns: {
+              "above_threshold_count": number,"alert_emails": boolean,"analyses_considered": number,"email": string,"machine_id": string,"machine_name": string
+            }[]
+                           },
+"sync_machine_alert":
+{ Args: { "p_machine_id": string,"p_prediction_id": string }; Returns: string
+                           }
           }
           Enums: {
             "machine_type": "bearing"|"gearbox"|"other","recording_kind": "baseline"|"analysis"

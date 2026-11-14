@@ -206,7 +206,14 @@ export type MachineAlert = {
   above_threshold_count: number;
   alert: boolean;
   last_analysed_at: string;
+  /** Owner email for the open alert, when loaded for one machine (getMachineAlert). */
+  email?: AlertEmail | null;
 };
+
+// One email per alert, sent by the inference service when the alert starts
+// (public.machine_alert_episodes; users can read but not change it).
+export type AlertEmailStatus = "pending" | "sent" | "failed" | "skipped_preference" | "skipped_unconfigured";
+export type AlertEmail = { status: AlertEmailStatus; attempted_at: string | null; started_at: string };
 
 async function machineAlerts(machineId?: string): Promise<Map<string, MachineAlert>> {
   let query = supabase()
@@ -229,7 +236,37 @@ async function machineAlerts(machineId?: string): Promise<Map<string, MachineAle
 }
 
 export async function getMachineAlert(machineId: string): Promise<MachineAlert | null> {
-  return (await machineAlerts(machineId)).get(machineId) ?? null;
+  const [alerts, episode] = await Promise.all([machineAlerts(machineId), openAlertEpisode(machineId)]);
+  const alert = alerts.get(machineId);
+  return alert ? { ...alert, email: episode } : null;
+}
+
+async function openAlertEpisode(machineId: string): Promise<AlertEmail | null> {
+  const { data, error } = await supabase()
+    .from("machine_alert_episodes")
+    .select("email_status, email_attempted_at, started_at")
+    .eq("machine_id", machineId)
+    .is("ended_at", null)
+    .maybeSingle();
+  if (error) fail("Could not load the alert email status.", error);
+  return data
+    ? { status: data.email_status as AlertEmailStatus, attempted_at: data.email_attempted_at, started_at: data.started_at }
+    : null;
+}
+
+// --- alert email preference -------------------------------------------------
+
+export async function getAlertEmailPreference(): Promise<boolean> {
+  const { data, error } = await supabase().from("profiles").select("alert_emails").maybeSingle();
+  if (error) fail("Could not load your email settings.", error);
+  return data?.alert_emails ?? true;
+}
+
+export async function setAlertEmailPreference(enabled: boolean): Promise<void> {
+  const { data: auth } = await supabase().auth.getUser();
+  if (!auth.user) throw new Error("Sign in again to change your email settings.");
+  const { error } = await supabase().from("profiles").update({ alert_emails: enabled }).eq("id", auth.user.id);
+  if (error) fail("Could not save your email settings.", error);
 }
 
 type OverviewRow = Machine & {
