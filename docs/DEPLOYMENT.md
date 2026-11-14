@@ -41,6 +41,37 @@ SONOVATE_BUNDLES_SRC=<dir holding sonovate-ast-head-0.4.0> \
 The Hugging Face Space files (`backend/deploy/stage_space.sh`, `space_README.md`, updated to
 0.4.0 with the AST BSD-3 licence) are kept in case a PRO Space is used later.
 
+## Email and abuse protection (Stage 6, 2026-11-14)
+
+- **Auth email:** custom SMTP in Supabase Auth through Gmail (`smtp.gmail.com`, port 465, sender
+  name "Sonovate", the owner's Gmail with an app password entered by the owner). Resend was not used:
+  without an owned domain it only delivers to the account owner. Supabase raises the auth email limit
+  to 30 per hour with custom SMTP; Gmail allows about 500 a day.
+- **Templates:** `supabase/templates/*.html` (confirm sign-up, reset password, change email, magic
+  link), wired in `supabase/config.toml` and pasted into the cloud project.
+- **CAPTCHA:** Cloudflare Turnstile (managed mode, hostname `sonovate-mauve.vercel.app`). Site key in
+  Vercel `NEXT_PUBLIC_TURNSTILE_SITE_KEY`; secret key in Supabase Auth → Attack Protection.
+  Verified: sign-in, sign-up and password reset without a valid token return `captcha_failed`.
+- **Leaked-password protection:** not enabled; Supabase offers it on the Pro plan only.
+- **Machine-alert email:** migration `alert_email` adds `machine_alert_episodes` (one open alert per
+  machine, email delivery status) and `profiles.alert_emails` (owner preference, default on). The
+  inference service emails the machine owner once when an ADR-009 alert starts (`app/alerts.py`),
+  after the response, and records `sent`, `failed`, `skipped_preference` or `skipped_unconfigured`.
+  The alert rule itself is unchanged. The app shows the setting on Account and the status on the
+  machine's alert card. No in-app notification centre.
+
+## MCP evaluation (2026-11-14)
+
+Which Model Context Protocol connectors helped the deployment, and which were not worth adding.
+No new connector was connected without the owner's approval and no MCP address was guessed.
+
+| Connector | Used for | Verdict |
+|---|---|---|
+| Supabase (connected) | SQL checks, publishable keys, security advisor, auth logs, docs search | Most useful. It can also write to production (`execute_sql`, migrations), so use it read-mostly and apply schema changes only as reviewed migrations. It cannot change Auth settings, so URL, SMTP, template and CAPTCHA settings went through the dashboard. |
+| Gmail (connected) | Not used | Could confirm that a test email arrived, but it reads the owner's personal inbox; use only with explicit permission per check. Not needed for sending (Supabase and the service send through SMTP). |
+| Vercel, Modal, Hugging Face | Not connected | Their CLIs were enough (env vars, redeploys, secrets). Vercel's CLI refuses to delete variables without a person confirming, which is a useful safeguard. |
+| Resend, Cloudflare | Not connected | Resend is not used (no domain). Turnstile is a one-time widget; an MCP adds risk without benefit. |
+
 ## Supabase project
 
 | Setting | Local value | Production |
@@ -68,6 +99,8 @@ The Hugging Face Space files (`backend/deploy/stage_space.sh`, `space_README.md`
 | `CORS_ORIGINS` | Only the production frontend origin. |
 | `SONOVATE_ANALYSES_PER_WINDOW`, `SONOVATE_RATE_WINDOW_SECONDS` | Per-user analysis rate limit (default 20 per 600 s), per process. |
 | `SONOVATE_EMBED_CONCURRENCY` | Transformer passes run at once per process (default 1). |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `ALERT_EMAIL_FROM` | Machine-alert email (all or none). Production: Gmail SMTP (`smtp.gmail.com`, 465) with an app password; the password lives only in the Modal secret `sonovate-smtp`. Without them alerts are recorded with email status `skipped_unconfigured`. |
+| `SITE_URL` | Public frontend origin, for links in alert emails. |
 
 Run a **fixed number of workers** behind a reverse proxy that terminates TLS and enforces a
 **request timeout** (for example 120 s) and a body-size limit. The limits are kept in process
