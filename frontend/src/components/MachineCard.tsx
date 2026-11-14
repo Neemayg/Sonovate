@@ -16,7 +16,7 @@ export function machineStatus(m: MachineOverview): MachineStatus {
 
 /** Plain wording for a stored decision. */
 export function resultWord(decision: string): string {
-  return decision === "above_threshold" ? "Unusual compared with normal" : "Similar to normal";
+  return decision === "above_threshold" ? "Above threshold" : "Within threshold";
 }
 
 // One machine in the overview. It answers: what is its status, what did the
@@ -67,7 +67,7 @@ export function MachineCard({ machine: m }: { machine: MachineOverview }) {
               {latestCheck ? (
                 <>
                   <span className={latestCheck.above ? "mcard-above" : undefined}>
-                    {latestCheck.above ? "Unusual compared with normal" : "Similar to normal"}
+                    {latestCheck.above ? "Above threshold" : "Within threshold"}
                   </span>
                   <span className="muted small"> · {formatDateTime(latestCheck.created_at)}</span>
                 </>

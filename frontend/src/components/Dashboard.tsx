@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import {
   BASELINE_RECOMMENDED,
   BASELINE_REQUIRED,
+  type AlertEpisode,
   type MachineOverview,
   type ModelVersionInfo,
   type RecentAnalysis,
@@ -17,6 +18,19 @@ import {
 } from "@/lib/api";
 import { machineTypeLabel } from "@/lib/modelInputs";
 import { ATTENTION_ORDER, nextAction, stateSummary, type MonitoringState } from "@/lib/monitoring";
+import {
+  ABOVE_LABEL,
+  ATTENTION_TEXT,
+  WITHIN_LABEL,
+  accountNextAction,
+  activityFeed,
+  attentionReason,
+  groupBaselineUploads,
+  overviewCounts,
+  type Activity,
+  type AttentionReason,
+  type DashMachine,
+} from "@/lib/results";
 import { machineStatus } from "./MachineCard";
 import { EmptyState, HowAlertsWork, PrototypeNotice, SkeletonBlock, StatusBadge, overviewState } from "./MonitoringStatus";
 import { formatDateTime } from "./Status";
@@ -329,7 +343,7 @@ export function RecentAnalysesPanel({
                   <span className="feed-top">
                     <strong>{a.machine?.name ?? "Machine"}</strong>
                     <span className={`decision-pill${above ? " is-above" : ""}`}>
-                      {above ? "Unusual" : "Similar to normal"}
+                      {above ? "Above threshold" : "Within threshold"}
                     </span>
                   </span>
                   <span className="feed-meta">
@@ -500,4 +514,323 @@ export function GettingStarted({
       )}
     </section>
   );
+}
+
+// --- operator overview (Milestone: usable results) ------------------------------------
+// Four counts that are exact from stored rows, one recommended next step, a
+// compact machine table and an activity list. Nothing here is a health level.
+
+export function toDashMachine(m: MachineOverview): DashMachine {
+  const last = m.recent[m.recent.length - 1] ?? null;
+  return {
+    id: m.id,
+    name: m.name,
+    analysable: overviewState(m) !== "records_only",
+    baselineCount: m.baselineCount,
+    alert: m.alert?.alert === true,
+    latestCheck: last ? { above: last.above, created_at: last.created_at, recording_id: last.recording_id } : null,
+  };
+}
+
+export function OverviewStrip({ machines, recentAnalyses }: { machines: MachineOverview[]; recentAnalyses: number | null }) {
+  const c = overviewCounts(machines.map(toDashMachine));
+  const tiles: { label: string; value: ReactNode; note: string; warn?: boolean }[] = [
+    { label: "Machines", value: c.machines, note: "Registered" },
+    {
+      label: "Needing attention",
+      value: c.attention,
+      note: "Machine alert or latest check above threshold",
+      warn: c.attention > 0,
+    },
+    { label: "Recent analyses", value: recentAnalyses ?? "—", note: "In the last 7 days" },
+    { label: "Ready for a check", value: c.ready, note: `Baseline of ${BASELINE_REQUIRED}+ normal recordings` },
+  ];
+  return (
+    <ul className="ov-strip" aria-label="Overview">
+      {tiles.map((t) => (
+        <li key={t.label} className={t.warn ? "is-warn" : undefined}>
+          <span className="ov-value num">{t.value}</span>
+          <span className="ov-label">{t.label}</span>
+          <span className="ov-note muted small">{t.note}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function NextStepCard({ machines }: { machines: MachineOverview[] }) {
+  const action = accountNextAction(machines.map(toDashMachine));
+  let title: string;
+  let body: string;
+  let primary: { href: string; label: string } | null = null;
+  let secondary: { href: string; label: string } | null = null;
+  switch (action.kind) {
+    case "register":
+      title = "Register your first machine";
+      body = "Choose a bearing or gearbox and give it a name. Then record its normal sound.";
+      primary = { href: "/machines/new", label: "Add machine" };
+      break;
+    case "attention": {
+      const m = action.machine;
+      title = `Review ${m.name}`;
+      body = m.alert
+        ? "Repeated checks were above this machine's threshold. Open its latest result, listen to it, and inspect the machine. This is not a diagnosis."
+        : "Its latest check was above this machine's threshold: unusual compared with its baseline. Open the result and listen to it; one unusual check does not confirm a fault.";
+      primary = action.recordingId
+        ? { href: `/recordings/${action.recordingId}`, label: "Open latest result" }
+        : { href: `/machines/${m.id}`, label: "Open machine" };
+      if (action.recordingId) secondary = { href: `/machines/${m.id}`, label: "Open machine" };
+      break;
+    }
+    case "baseline": {
+      const m = action.machine;
+      const left = Math.max(0, BASELINE_REQUIRED - m.baselineCount);
+      title = `Continue baseline setup for ${m.name}`;
+      body = `${m.baselineCount} of ${BASELINE_REQUIRED} normal recordings so far. Add ${left} more, made while it runs as usual, before its first check.`;
+      primary = { href: `/machines/${m.id}#baseline`, label: "Add baseline recordings" };
+      break;
+    }
+    case "first_check":
+      title = `Analyse a first recording of ${action.machine.name}`;
+      body = "Its baseline is ready. Upload a recording (60 seconds recommended) to compare it with the baseline.";
+      primary = { href: `/machines/${action.machine.id}#check`, label: "Analyse a recording" };
+      break;
+    case "check":
+      title = "No machine needs attention right now";
+      body = `${action.machine.name} was checked longest ago. Analyse a new recording to keep monitoring. No attention flag does not confirm a machine is fault-free.`;
+      primary = { href: `/machines/${action.machine.id}#check`, label: `Analyse ${action.machine.name}` };
+      break;
+    case "records_only":
+      title = "Nothing to analyse";
+      body = "Your machines are stored for record keeping only. Add a bearing or gearbox to use acoustic checks.";
+      primary = { href: "/machines/new", label: "Add machine" };
+      break;
+  }
+  const warn = action.kind === "attention";
+  return (
+    <section className={`card next-step${warn ? " is-warn" : ""}`} aria-labelledby="next-step-title">
+      <p className="eyebrow">Next step</p>
+      <h2 id="next-step-title">{title}</h2>
+      <p className="muted">{body}</p>
+      <div className="actions">
+        {primary && (
+          <Link href={primary.href} className="btn btn-primary btn-sm">
+            {primary.label} {Icons.arrow}
+          </Link>
+        )}
+        {secondary && (
+          <Link href={secondary.href} className="btn btn-outline btn-sm">
+            {secondary.label}
+          </Link>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function baselineStatus(m: MachineOverview): { text: string; done: boolean } {
+  if (m.baselineCount >= BASELINE_REQUIRED) return { text: `Complete · ${m.baselineCount}`, done: true };
+  return { text: `${m.baselineCount} of ${BASELINE_REQUIRED}`, done: false };
+}
+
+/** The machine's row action: what to do next for it. */
+function rowAction(m: MachineOverview): { href: string; label: string; primary: boolean } {
+  const d = toDashMachine(m);
+  const reason = attentionReason(d);
+  if (reason && d.latestCheck) return { href: `/recordings/${d.latestCheck.recording_id}`, label: "Open result", primary: true };
+  if (!d.analysable) return { href: `/machines/${m.id}`, label: "Open", primary: false };
+  if (m.baselineCount < BASELINE_REQUIRED) return { href: `/machines/${m.id}#baseline`, label: "Add baselines", primary: false };
+  if (!d.latestCheck) return { href: `/machines/${m.id}#check`, label: "Analyse", primary: false };
+  return { href: `/machines/${m.id}`, label: "Open", primary: false };
+}
+
+export function MachineTable({ machines }: { machines: MachineOverview[] }) {
+  const rows = [...machines].sort((a, b) => {
+    const ra = attentionReason(toDashMachine(a));
+    const rb = attentionReason(toDashMachine(b));
+    const rank = (r: AttentionReason | null) => (r === "alert" ? 0 : r === "latest_above" ? 1 : 2);
+    return rank(ra) - rank(rb) || a.name.localeCompare(b.name);
+  });
+  return (
+    <div className="mtable-wrap">
+      <table className="mtable">
+        <thead>
+          <tr>
+            <th scope="col">Machine</th>
+            <th scope="col">Baseline</th>
+            <th scope="col">Latest analysis</th>
+            <th scope="col">Last analysed</th>
+            <th scope="col">
+              <span className="visually-hidden">Action</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((m) => {
+            const d = toDashMachine(m);
+            const reason = attentionReason(d);
+            const base = baselineStatus(m);
+            const action = rowAction(m);
+            return (
+              <tr key={m.id} className={reason ? "is-attention" : undefined}>
+                <th scope="row" data-label="Machine">
+                  <Link href={`/machines/${m.id}`} className="mtable-name">
+                    {m.name}
+                  </Link>
+                  <span className="muted small mtable-type">{machineTypeLabel(m.machine_type)}</span>
+                  {reason && (
+                    <span className="attention-flag small">
+                      {Icons.alert}
+                      {reason === "alert" ? "Machine alert" : "Needs attention"}
+                      <span className="visually-hidden">: {ATTENTION_TEXT[reason]}</span>
+                    </span>
+                  )}
+                </th>
+                <td data-label="Baseline">
+                  {d.analysable ? (
+                    <span className={base.done ? undefined : "mtable-pending"}>{base.text}</span>
+                  ) : (
+                    <span className="muted">Records only</span>
+                  )}
+                </td>
+                <td data-label="Latest analysis">
+                  {d.latestCheck ? (
+                    <span className={`decision-pill${d.latestCheck.above ? " is-above" : ""}`}>
+                      {d.latestCheck.above ? ABOVE_LABEL : WITHIN_LABEL}
+                    </span>
+                  ) : (
+                    <span className="muted small">{d.analysable ? "Not analysed yet" : "—"}</span>
+                  )}
+                </td>
+                <td data-label="Last analysed" className="small">
+                  {d.latestCheck ? (
+                    <span title={formatDateTime(d.latestCheck.created_at)}>{relativeTime(d.latestCheck.created_at)}</span>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+                <td className="mtable-action">
+                  <Link
+                    href={action.href}
+                    className={`btn btn-sm ${action.primary ? "btn-primary" : "btn-outline"}`}
+                    aria-label={`${action.label}: ${m.name}`}
+                  >
+                    {action.label}
+                  </Link>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function ActivityPanel({ items, error }: { items: Activity[] | null; error: string | null }) {
+  return (
+    <section className="panel" aria-labelledby="activity-title">
+      <div className="panel-head">
+        <h2 id="activity-title">Recent activity</h2>
+        <span className="muted small">Latest first</span>
+      </div>
+      {error && <p className="small panel-empty">{error}</p>}
+      {!error && items === null && <SkeletonBlock lines={3} />}
+      {items?.length === 0 && (
+        <EmptyState title="Nothing yet">Analyses, machine alerts and baseline uploads will appear here.</EmptyState>
+      )}
+      {items && items.length > 0 && (
+        <ul className="feed">
+          {items.map((a) => {
+            const key = `${a.kind}-${a.at}-${a.machineId}`;
+            if (a.kind === "analysis") {
+              return (
+                <li key={key}>
+                  <Link href={`/recordings/${a.recordingId}`} className="feed-item">
+                    <span className="feed-top">
+                      <strong>{a.machineName}</strong>
+                      <span className={`decision-pill${a.above ? " is-above" : ""}`}>{a.above ? ABOVE_LABEL : WITHIN_LABEL}</span>
+                    </span>
+                    <span className="feed-meta">
+                      <span>Check analysed</span>
+                      <span title={formatDateTime(a.at)}>{relativeTime(a.at)}</span>
+                      <span>Open result</span>
+                    </span>
+                  </Link>
+                </li>
+              );
+            }
+            if (a.kind === "alert") {
+              return (
+                <li key={key}>
+                  <Link href={`/machines/${a.machineId}#alert`} className="feed-item">
+                    <span className="feed-top">
+                      <strong>{a.machineName}</strong>
+                      <span className="decision-pill is-above">Machine alert</span>
+                    </span>
+                    <span className="feed-meta">
+                      <span>{a.ended ? "Alert started (since cleared)" : "Alert started"}</span>
+                      <span title={formatDateTime(a.at)}>{relativeTime(a.at)}</span>
+                    </span>
+                  </Link>
+                </li>
+              );
+            }
+            return (
+              <li key={key}>
+                <Link href={`/machines/${a.machineId}#baseline`} className="feed-item">
+                  <span className="feed-top">
+                    <strong>{a.machineName}</strong>
+                    <span className="decision-pill">Baseline</span>
+                  </span>
+                  <span className="feed-meta">
+                    <span>
+                      {a.count} normal recording{a.count === 1 ? "" : "s"} added
+                    </span>
+                    <span title={formatDateTime(a.at)}>{relativeTime(a.at)}</span>
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+export function buildActivity(
+  machines: MachineOverview[],
+  analyses: RecentAnalysis[],
+  episodes: AlertEpisode[],
+  limit = 8,
+): Activity[] {
+  const names = new Map(machines.map((m) => [m.id, m.name]));
+  const items: Activity[] = [
+    ...analyses.map(
+      (a): Activity => ({
+        kind: "analysis",
+        at: a.created_at,
+        machineId: a.machine?.id ?? null,
+        machineName: a.machine?.name ?? "Machine",
+        recordingId: a.recording_id,
+        above: a.decision === "above_threshold",
+      }),
+    ),
+    ...episodes
+      .filter((e) => names.has(e.machine_id))
+      .map(
+        (e): Activity => ({
+          kind: "alert",
+          at: e.started_at,
+          machineId: e.machine_id,
+          machineName: names.get(e.machine_id)!,
+          ended: e.ended_at !== null,
+        }),
+      ),
+    ...groupBaselineUploads(
+      machines.flatMap((m) => m.baselineAddedAt.map((at) => ({ machineId: m.id, machineName: m.name, created_at: at }))),
+    ),
+  ];
+  return activityFeed(items, limit);
 }

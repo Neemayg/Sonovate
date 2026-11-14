@@ -43,8 +43,7 @@ from app.thresholds import (
     baseline_threshold,
     decide,
     high_sensitivity_spread,
-    recording_spread,
-    recording_threshold,
+    standard_spread,
 )
 
 logger = logging.getLogger("sonovate.inference")
@@ -366,11 +365,14 @@ def create_app(
                 spread = high
                 threshold = stats.log_mean + high * stats.log_std
             else:
-                spread = recording_spread(len(window_logs), model.rule.spread)
+                # ADR-011 / ADR-012, with ADR-015's smaller spreads for 20+ baselines.
+                spread = standard_spread(
+                    info.name, info.version, recording.machine_type, len(window_logs), stats.count, model.rule.spread
+                )
                 threshold = (
                     stats.threshold
-                    if len(window_logs) == 1
-                    else recording_threshold(stats.log_mean, stats.log_std, len(window_logs), model.rule.spread)
+                    if len(window_logs) == 1 and spread == model.rule.spread
+                    else stats.log_mean + spread * stats.log_std
                 )
             decision: Literal["below_threshold", "above_threshold"] = decide(log_score, threshold)  # type: ignore[assignment]
             stored = store.save(

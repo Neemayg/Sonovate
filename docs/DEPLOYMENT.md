@@ -60,6 +60,28 @@ The Hugging Face Space files (`backend/deploy/stage_space.sh`, `space_README.md`
   The alert rule itself is unchanged. The app shows the setting on Account and the status on the
   machine's alert card. No in-app notification centre.
 
+## Production verification (Stage 7, 2026-11-14)
+
+All checks ran against the live stack. Database checks ran as the real `authenticated` role with
+simulated JWT claims inside transactions that were rolled back (pgTAP cannot run on the cloud).
+
+| Check | Result |
+|---|---|
+| Headers on `/`, `/login`, `/machines`, `/guide`, `/account`, `/auth/reset` | HSTS, `X-Frame-Options: DENY`, `nosniff`, CSP, referrer and permissions policies on all |
+| Transport | `http://` redirects to `https://` (308); CSP has no `unsafe-eval` or websockets |
+| Frontend bundles (13 chunks) | No secret key, service role, SMTP password or JWT; source maps return 403 |
+| Anonymous (publishable key) | Every table and view `42501`; both alert functions `42501`; storage lists nothing; public object URLs fail |
+| Second user vs the owner's data | Sees 0 profiles, machines, recordings, predictions, thresholds, embeddings, context, alerts, episodes and audio objects (only the 6 shared model versions); cannot update or delete the owner's machine, delete their recordings, add a recording to their machine, upload into their storage folder or write a prediction; has no update right on recordings at all |
+| Owner (positive control) | Sees their own 1 machine, 11 recordings, 1 prediction, 11 objects |
+| Auth | Email confirmation on; passwords 10+ with letters and digits; Turnstile required for sign-in, sign-up and reset (`captcha_failed` without it) |
+| Inference service | Requests without or with an invalid token get 401; CORS allows only the frontend origin |
+| Upload clean-up | The abandoned upload row from the first test was removed by the cron job |
+| Advisors | Security: only "leaked password protection disabled" (Pro plan only). Performance: info only (one uncovered foreign key on `machine_alert_episodes (machine_id, owner_id)`; unused indexes with one user) |
+
+**Not verified (owner chose to skip):** a live browser test with a second real account, account
+deletion end to end on the deployed stack, and one real alert email from a live analysis (SMTP login
+from the service was verified; nothing was sent).
+
 ## MCP evaluation (2026-11-14)
 
 Which Model Context Protocol connectors helped the deployment, and which were not worth adding.

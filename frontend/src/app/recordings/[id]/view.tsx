@@ -9,25 +9,31 @@ import { ListenCompare } from "@/components/ListenCompare";
 import { PageHead } from "@/components/PageHead";
 import { EmptyState, PageSkeleton, PrototypeNotice } from "@/components/MonitoringStatus";
 import { ContextList, NextStepsCard, TechnicalDetails, VerdictCard, WindowChart } from "@/components/RecordingDetails";
+import { ResultsComparison, checkName } from "@/components/ResultsComparison";
 import { ErrorMessage, Loading, formatDateTime } from "@/components/Status";
 import { Waveform } from "@/components/Waveform";
 import {
   deleteRecording,
   getRecording,
+  listMachineHistory,
   listPredictions,
   requestAnalysis,
   type AnalysisResult,
+  type HistoryEntry,
   type Prediction,
   type RecordingDetail,
 } from "@/lib/api";
 import { friendlyAnalysisError } from "@/lib/analysisMessages";
 import { machineTypeLabel } from "@/lib/modelInputs";
-import { formatDuration, recordingLabel } from "@/lib/monitoring";
+import { formatDuration, recordingLabel, recordingNumbers } from "@/lib/monitoring";
+import { checkResults, neighbours } from "@/lib/results";
 
 export function RecordingAnalysis({ id }: { id: string }) {
   const router = useRouter();
   const [recording, setRecording] = useState<RecordingDetail | null | undefined>(undefined);
   const [predictions, setPredictions] = useState<Prediction[] | null>(null);
+  // The machine's other recordings, for the comparison chart and previous/next.
+  const [history, setHistory] = useState<HistoryEntry[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -40,6 +46,12 @@ export function RecordingAnalysis({ id }: { id: string }) {
       const [r, p] = await Promise.all([getRecording(id), listPredictions(id)]);
       setRecording(r);
       setPredictions(p);
+      // History is secondary: if it fails, the result itself still shows.
+      if (r?.machines) {
+        listMachineHistory(r.machines.id)
+          .then(setHistory)
+          .catch(() => setHistory([]));
+      }
       return { recording: r, predictions: p };
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Could not load this recording.");
@@ -97,7 +109,7 @@ export function RecordingAnalysis({ id }: { id: string }) {
       <>
         <ErrorMessage>Recording not found. It may have been removed, its upload may not have finished, or it belongs to another account.</ErrorMessage>
         <p>
-          <Link href="/machines">Back to machines</Link>
+          <Link href="/machines">Back to dashboard</Link>
         </p>
       </>
     );
@@ -107,7 +119,35 @@ export function RecordingAnalysis({ id }: { id: string }) {
   const isCheck = recording.kind === "analysis";
   const latest = predictions && predictions.length > 0 ? predictions[0] : null;
   const earlier = predictions ? predictions.slice(1) : [];
-  const title = recordingLabel(recording);
+  const numbers = history ? recordingNumbers(history) : null;
+  const number = numbers?.get(recording.id);
+  const title = recordingLabel(recording, number);
+  const results = history && numbers ? checkResults(history, numbers) : null;
+  const nav = results ? neighbours(results, recording.id) : null;
+  const machineHref = machine ? `/machines/${machine.id}` : "/machines";
+
+  const checkNav = isCheck && nav && results && results.length > 1 && (
+    <nav className="check-nav" aria-label="Other checks of this machine">
+      {nav.previous ? (
+        <Link href={`/recordings/${nav.previous.recordingId}`} className="btn btn-sm btn-outline">
+          ← {checkName(nav.previous)}
+        </Link>
+      ) : (
+        <span className="btn btn-sm btn-outline" aria-disabled="true">
+          ← Previous
+        </span>
+      )}
+      {nav.next ? (
+        <Link href={`/recordings/${nav.next.recordingId}`} className="btn btn-sm btn-outline">
+          {checkName(nav.next)} →
+        </Link>
+      ) : (
+        <span className="btn btn-sm btn-outline" aria-disabled="true">
+          Next →
+        </span>
+      )}
+    </nav>
+  );
 
   const statusNotices = (
     <>
@@ -220,16 +260,36 @@ export function RecordingAnalysis({ id }: { id: string }) {
     <>
       <PageHead
         crumbs={[
-          { href: "/machines", label: "Machines" },
-          ...(machine ? [{ href: `/machines/${machine.id}`, label: machine.name }] : []),
+          { href: "/machines", label: "Dashboard" },
+          ...(machine ? [{ href: machineHref, label: machine.name }] : []),
         ]}
-        eyebrow={isCheck ? "Machine check" : "Normal reference recording"}
+        eyebrow={
+          isCheck
+            ? `Check result${nav && nav.index >= 0 && results ? ` · ${nav.index + 1} of ${results.length} analysed` : ""}`
+            : "Normal reference recording"
+        }
         title={title}
         meta={recording.original_filename ? `File: ${recording.original_filename}` : undefined}
+        actions={checkNav || undefined}
       />
       {isCheck && <PrototypeNotice />}
 
-      {isCheck && latest && <VerdictCard p={latest} />}
+      {isCheck && latest && <VerdictCard p={latest} durationSeconds={recording.duration_seconds} />}
+
+      {isCheck && latest && machine && (
+        <section className="card" aria-labelledby="machine-checks-title">
+          <div className="card-header">
+            <div>
+              <h2 id="machine-checks-title">This machine&apos;s checks</h2>
+              <p className="muted small">This recording compared with the other analysed checks of {machine.name}.</p>
+            </div>
+            <Link href={machineHref}>Open machine</Link>
+          </div>
+          {results ? <ResultsComparison results={results} currentId={recording.id} listLimit={5} /> : <Loading label="Loading this machine's checks…" />}
+        </section>
+      )}
+
+      {isCheck && latest && <NextStepsCard p={latest} machineId={machine?.id} recordingId={recording.id} />}
 
       {isCheck && !latest && (
         <section className="card" aria-labelledby="analysis-title" aria-busy={running}>
@@ -247,7 +307,7 @@ export function RecordingAnalysis({ id }: { id: string }) {
           <div className="card-header">
             <div>
               <h2 id="listen-title">Listen &amp; compare</h2>
-              <p className="muted small">Hear this check next to a normal reference from the same machine.</p>
+              <p className="muted small">Play this recording next to a normal reference from the same machine.</p>
             </div>
           </div>
           <ListenCompare machineId={machine.id} machineType={machine.machine_type} recording={recording} />
@@ -256,7 +316,7 @@ export function RecordingAnalysis({ id }: { id: string }) {
 
       <div className="columns result-columns">
         <section className="card" aria-labelledby="overview-title">
-          <h2 id="overview-title">Recording overview</h2>
+          <h2 id="overview-title">Recording</h2>
           <Waveform storagePath={recording.storage_path} label={title} />
           <dl className="details">
             <dt>Recorded</dt>
@@ -297,13 +357,18 @@ export function RecordingAnalysis({ id }: { id: string }) {
         </section>
 
         <section className="card" aria-labelledby="context-title">
-          <h2 id="context-title">Operating conditions</h2>
+          <h2 id="context-title">
+            Operating conditions <span className="info-tag">Informational</span>
+          </h2>
           {recording.context_readings.length === 0 ? (
             <EmptyState title="None entered">Operating conditions are optional and are not used by the model.</EmptyState>
           ) : (
             <>
               <ContextList readings={recording.context_readings} machineType={machine?.machine_type ?? "other"} />
-              <p className="muted small">Entered when uploading; stored for your records, not used by the model.</p>
+              <p className="muted small">
+                Entered when uploading and kept for your records. They are not model inputs: the analysis compares the
+                sound only.
+              </p>
             </>
           )}
           {!isCheck && machine && (
@@ -315,7 +380,6 @@ export function RecordingAnalysis({ id }: { id: string }) {
       </div>
 
       {isCheck && latest && <WindowChart p={latest} />}
-      {isCheck && latest && <NextStepsCard p={latest} />}
 
       {isCheck && latest && (
         <>
@@ -347,6 +411,15 @@ export function RecordingAnalysis({ id }: { id: string }) {
           </dd>
         </dl>
       </details>
+
+      <nav className="result-footer-nav" aria-label="Where to go next">
+        <Link href={machineHref} className="btn btn-sm btn-outline">
+          ← Back to {machine ? machine.name : "machine"}
+        </Link>
+        <Link href="/machines" className="btn btn-sm btn-quiet">
+          Dashboard
+        </Link>
+      </nav>
 
       <section className="card danger-zone" aria-labelledby="delete-recording-title">
         <h2 id="delete-recording-title">Danger zone</h2>

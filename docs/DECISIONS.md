@@ -203,6 +203,16 @@ Only record accepted decisions here. Proposed options belong in an issue or task
 - **Trade-offs:** more anomalies caught, but roughly 1 in 5–7 normal recordings flagged, so the ADR-009 machine alert fires more often on healthy machines (not re-simulated). Bearing evidence is weak (reused held-out set). Lab data only.
 - **Implementation:** `machines.sensitivity` (`standard` | `high`, default `standard`) and `predictions.sensitivity` (the setting actually used). The High spreads are tied to bundle `sonovate-ast-head` 0.4.0 in `backend/app/thresholds.py`; any other model falls back to Standard and the prediction records `standard`. The stored machine threshold stays the Standard one; the High threshold is derived per analysis from the same baseline statistics.
 
+## ADR-015 — Threshold spread by baseline count (20+ baselines)
+- **Status:** Accepted 2026-11-14 by the user ("Yes, integrate"), from EXP-033. Integrated locally (backend `app/thresholds.py` `standard_spread`, `app/main.py`; guide note); not deployed. No schema change.
+- **Proposal:** keep the ADR-011 / ADR-012 / ADR-013 standard rule (mean + spread × std of the baseline leave-one-out scores) and its spreads for 10–19 baselines, but use smaller spreads with more baselines, chosen by ADR-011's false-alarm rule on development data:
+  - gearbox, 20–29 baselines: 10 s 1.40, 30 s 0.85, 60 s 0.65; 30+ baselines: 1.30, 0.80, 0.60;
+  - bearing, 20–29 baselines: 10 s 1.35, 30 s 0.80, 60 s 0.65; 30+ baselines: 1.30, 0.85, 0.60.
+  - Tied to bundle `sonovate-ast-head` 0.4.0, like ADR-014; High sensitivity (ADR-014) unchanged.
+- **Evidence:** EXP-033, held-out: with 30 baselines, 60 s recall gearbox 0.46 → 0.57 and bearing 0.60 → 0.72, 10 s bearing 0.19 → 0.31, with false alarms rising from about 5% to about 9% (the 10-baseline level). Robust estimators (median/MAD, trimmed) were worse and are rejected.
+- **Trade-offs:** about twice as many false alarms for machines with many baselines than today (still about 1 in 11, the level 10-baseline machines already have); it does not help machines with 10–19 baselines; bearing evidence comes from a heavily reused set; lab data only.
+- **Implementation:** `COUNT_SPREADS` and `standard_spread()` in `backend/app/thresholds.py`, keyed by bundle (`sonovate-ast-head` 0.4.0) and machine type; tiers by the baseline count the threshold was computed from (20+, 30+); 1–2 windows use the 10 s spread, as ADR-014. Any other model keeps ADR-011/012. The stored machine threshold (`machine_thresholds`) stays the 10-baseline Standard rule; each prediction stores the threshold actually applied and its `baseline_count`, and the API returns `threshold_spread`. `ml/analyze.py` (offline tool) still uses the ADR-012 spreads only.
+
 ## Pending decisions
 - Feature representation beyond the EXP-002 setup.
 - Recording hardware and context-sensor strategy.

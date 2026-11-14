@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans, Instrument_Serif } from "next/font/google";
 import { AuthProvider } from "@/components/AuthProvider";
+import { INTRO_SCRIPT } from "@/lib/intro";
 import { THEME_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
@@ -58,6 +59,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: INTRO_SCRIPT }} />
       </head>
       <body>
         <AuthProvider>{children}</AuthProvider>

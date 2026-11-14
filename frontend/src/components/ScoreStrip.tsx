@@ -16,7 +16,7 @@ export function ScoreStrip({ logScore, threshold, plain = false }: Props) {
   const caption = plain
     ? above
       ? "This recording sits past this machine's threshold, on the unusual side."
-      : "This recording sits within this machine's threshold, on the normal side."
+      : "This recording sits within this machine's threshold: not flagged by this analysis."
     : `Log score ${logScore.toFixed(3)} is ${Math.abs(distance).toFixed(3)} ${
         above ? "above" : "below"
       } this machine's baseline threshold of ${threshold.toFixed(3)}.`;
@@ -24,7 +24,7 @@ export function ScoreStrip({ logScore, threshold, plain = false }: Props) {
   return (
     <figure className="score-strip">
       <div className="strip" role="img" aria-label={caption}>
-        <span className="strip-side strip-below">{plain ? "similar to normal" : "below"}</span>
+        <span className="strip-side strip-below">{plain ? "within threshold" : "below"}</span>
         <span className="strip-side strip-above">{plain ? "unusual" : "above"}</span>
         <span className="strip-zone" style={{ left: "50%" }} />
         <span className="strip-track" />

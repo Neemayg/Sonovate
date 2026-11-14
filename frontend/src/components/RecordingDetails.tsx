@@ -3,8 +3,12 @@
 // from the stored prediction; nothing is estimated. Scores are positions
 // against this machine's threshold, never probabilities or health levels.
 
+import Link from "next/link";
 import type { CSSProperties } from "react";
 import type { ContextReading, Prediction } from "@/lib/api";
+import { formatDuration } from "@/lib/monitoring";
+import { ABOVE_LABEL, ABOVE_MEANING, WITHIN_LABEL, WITHIN_MEANING } from "@/lib/results";
+import { Marker } from "./ResultsComparison";
 import { modelInputFor, rangeNotice, type MachineType } from "@/lib/modelInputs";
 import { ScoreStrip } from "./ScoreStrip";
 import { formatDateTime } from "./Status";
@@ -43,31 +47,60 @@ export function ContextList({ readings, machineType }: { readings: ContextReadin
 
 // --- A. verdict ------------------------------------------------------------------
 
-export function VerdictCard({ p }: { p: Prediction }) {
+/** One analysed check, in plain words first and with its stored numbers next to them. */
+export function VerdictCard({ p, durationSeconds }: { p: Prediction; durationSeconds?: number | null }) {
   const above = isAbove(p);
   const high = p.sensitivity === "high";
+  const logScore = p.log_score ?? (p.score > 0 ? Math.log(p.score) : null);
   return (
     <section className={`card verdict ${above ? "is-above" : "is-below"}`} aria-labelledby="verdict-title">
-      <p className="eyebrow">Result · {formatDateTime(p.created_at)}</p>
+      <p className="eyebrow">What happened</p>
+      <p className={`verdict-status ${above ? "is-above" : "is-within"}`}>
+        <span className={`rc-key ${above ? "is-above" : "is-within"}`}>
+          <Marker above={above} />
+        </span>
+        {above ? ABOVE_LABEL : WITHIN_LABEL}
+      </p>
       <h2 id="verdict-title" className="verdict-title">
-        {above ? "Unusual compared with this machine's normal sound." : "Similar to this machine's normal sound."}
+        {above ? `${ABOVE_MEANING}.` : `${WITHIN_MEANING}.`}
       </h2>
       <p className="verdict-body">
         {above
-          ? "This recording differs from the machine's established acoustic baseline. It is worth inspecting, but this does not confirm a fault."
-          : "This recording is relatively similar to the baseline. This does not guarantee that the machine is fault-free."}
+          ? "This recording sounded different from the normal recordings this machine was set up with. It is worth inspecting, but it does not confirm a fault."
+          : "This recording stayed within the range expected from this machine's normal recordings. That does not mean the machine is healthy or fault-free."}
       </p>
-      {high && (
-        <p className="small muted">
-          This machine uses High sensitivity, which catches more unusual sounds but also flags more normal recordings.
-        </p>
-      )}
-      {p.log_score !== null && <ScoreStrip logScore={p.log_score} threshold={p.threshold} plain />}
+      <dl className="verdict-facts">
+        <div>
+          <dt>Score</dt>
+          <dd className="num">{logScore !== null ? logScore.toFixed(2) : "—"}</dd>
+        </div>
+        <div>
+          <dt>Threshold for this recording</dt>
+          <dd className="num">{p.threshold.toFixed(2)}</dd>
+        </div>
+        <div>
+          <dt>Analysed</dt>
+          <dd>{formatDateTime(p.created_at)}</dd>
+        </div>
+        <div>
+          <dt>Judged on</dt>
+          <dd>
+            {durationSeconds ? `${formatDuration(durationSeconds)}, ` : ""}
+            {p.window_count} × 10 s window{p.window_count === 1 ? "" : "s"}
+          </dd>
+        </div>
+      </dl>
+      {logScore !== null && <ScoreStrip logScore={logScore} threshold={p.threshold} plain />}
+      <p className="muted small">
+        The score is this recording&apos;s average over its 10-second windows; above the threshold means unusual for this
+        machine. {SCORE_NOTE}
+        {high && " This machine uses High sensitivity, which flags more recordings, including more normal ones."}
+      </p>
     </section>
   );
 }
 
-// --- C. per-window chart -----------------------------------------------------------
+// --- C. per-window scores -----------------------------------------------------------
 
 /** The stored per-window log scores, or the single score for a 10 s recording. */
 export function windowScores(p: Prediction): number[] {
@@ -75,39 +108,49 @@ export function windowScores(p: Prediction): number[] {
   return p.log_score !== null ? [p.log_score] : [];
 }
 
-// One bar per 10 s window, drawn from the stored scores with the stored
-// threshold as a reference line. The decision uses the mean of the windows
-// (ADR-012), so a single tall bar is context, not a separate verdict, and it
-// does not locate a physical fault.
+// One bar per 10 s window from the stored scores. The decision is made on the
+// average of the windows (ADR-012), so bars are drawn in one neutral colour and
+// are never marked above or below on their own; the threshold line is labelled
+// as applying to the average. A tall bar does not locate a physical fault.
 export function WindowChart({ p }: { p: Prediction }) {
   const scores = windowScores(p);
   if (scores.length === 0) return null;
-  const values = [...scores, p.threshold];
+  const mean = p.log_score ?? scores.reduce((a, b) => a + b, 0) / scores.length;
+  const values = [...scores, p.threshold, mean];
   const lo = Math.min(...values);
   const hi = Math.max(...values);
   const pad = Math.max((hi - lo) * 0.25, 0.25);
   const min = lo - pad;
   const max = hi + pad;
   const pct = (v: number) => ((v - min) / (max - min)) * 100;
-  const label = scores
-    .map((v, i) => `${i * 10} to ${i * 10 + 10} seconds: ${v > p.threshold ? "above" : "below"} the threshold line`)
-    .join("; ");
+  const single = scores.length === 1;
+  const label = scores.map((v, i) => `${i * 10} to ${i * 10 + 10} seconds: ${v.toFixed(2)}`).join("; ");
 
   return (
-    <section className="card" aria-labelledby="windows-title">
-      <div className="card-header">
-        <h2 id="windows-title">Each 10-second window</h2>
-        <span className="muted small">
-          {scores.length} window{scores.length === 1 ? "" : "s"}
-        </span>
-      </div>
-      <div className="wchart" role="img" aria-label={`Window scores against the threshold. ${label}.`}>
-        <div className="wchart-plot" style={{ "--thr": `${pct(p.threshold)}%` } as CSSProperties}>
+    <details className="card technical-card windows-card">
+      <summary>
+        Inside this recording: {scores.length} ten-second window{single ? "" : "s"}
+      </summary>
+      <p className="muted small">
+        {single
+          ? "This recording has one 10-second window, so its window score is the recording's score."
+          : "The result above is decided on the average of these windows, not on any single window. Individual windows are not judged against the threshold."}
+      </p>
+      <div className="wchart" role="img" aria-label={`Window scores: ${label}. Average ${mean.toFixed(2)}; threshold for the average ${p.threshold.toFixed(2)}.`}>
+        <div className="wchart-plot" style={{ "--thr": `${pct(p.threshold)}%`, "--avg": `${pct(mean)}%` } as CSSProperties}>
           <span className="wchart-threshold" aria-hidden="true">
-            <span>threshold</span>
+            <span>threshold (for the average) {p.threshold.toFixed(2)}</span>
           </span>
+          {!single && (
+            <span className="wchart-mean" aria-hidden="true">
+              <span>average {mean.toFixed(2)}</span>
+            </span>
+          )}
           {scores.map((v, i) => (
-            <div key={i} className={`wchart-col ${v > p.threshold ? "is-above" : "is-below"}`}>
+            <div key={i} className="wchart-col">
+              <span className="wchart-value num" aria-hidden="true" style={{ bottom: `${Math.max(2, pct(v))}%` } as CSSProperties}>
+                {v.toFixed(2)}
+              </span>
               <span className="wchart-bar" style={{ height: `${Math.max(2, pct(v))}%` } as CSSProperties} />
             </div>
           ))}
@@ -121,28 +164,38 @@ export function WindowChart({ p }: { p: Prediction }) {
         </div>
       </div>
       <p className="muted small">
-        Taller bars sound less like this machine&apos;s normal recordings. The result is judged on the average of all
-        windows, so one tall bar is not a separate verdict, and the bars do not show where a fault is.
+        Taller bars sounded less like this machine&apos;s normal recordings. The bars do not show where a fault is.
       </p>
-    </section>
+    </details>
   );
 }
 
-// --- D. what to do next -------------------------------------------------------------
+// --- D. what it means and what to do next ---------------------------------------------
 
-export function NextStepsCard({ p }: { p: Prediction }) {
+export function NextStepsCard({
+  p,
+  machineId,
+  recordingId,
+}: {
+  p: Prediction;
+  machineId?: string;
+  recordingId?: string;
+}) {
   const above = isAbove(p);
   const baselines = p.baseline_count ?? 0;
+  const meaning = above
+    ? "Compared with this machine's own normal recordings, this one sounded unusual. A single unusual check can have ordinary causes, such as a different operating setting, background noise or a moved microphone. A machine alert is raised only when at least 2 of the last 3 checks are above threshold."
+    : "This analysis did not flag the recording as unusual for this machine. The detector misses many faults, so keep up normal inspections and regular checks.";
   const steps = above
     ? [
+        "Listen to this recording next to a normal reference (Listen & compare below).",
         "Inspect the machine using your normal maintenance procedures.",
-        "Compare the sound against a normal reference with Listen & compare.",
-        "Record another check under comparable operating conditions if appropriate.",
+        "Record another check under the same operating conditions to see whether it repeats.",
       ]
     : [
         "Continue normal inspections.",
         "Keep recording conditions consistent: same position, distance and operating setting.",
-        "Continue monitoring over time with regular checks.",
+        "Analyse another recording at your usual interval.",
       ];
   const tips: string[] = [];
   if (p.window_count < 6) tips.push("Record 60 seconds next time: longer recordings catch more unusual sounds.");
@@ -150,19 +203,38 @@ export function NextStepsCard({ p }: { p: Prediction }) {
     tips.push(`Adding normal recordings (${30 - baselines} more for the recommended 30) widens the baseline's coverage.`);
   }
   return (
-    <section className="card next-steps" aria-labelledby="next-steps-title">
-      <h2 id="next-steps-title">What to do next</h2>
-      <ul className="next-steps-list">
+    <section className="card next-steps" aria-labelledby="meaning-title">
+      <h2 id="meaning-title">What it means</h2>
+      <p>{meaning}</p>
+      <h2 id="next-steps-title" className="next-steps-heading">
+        What to do next
+      </h2>
+      <ol className="next-steps-list" aria-labelledby="next-steps-title">
         {steps.map((s) => (
           <li key={s}>{s}</li>
         ))}
-      </ul>
+      </ol>
       {tips.length > 0 && (
         <ul className="small muted">
           {tips.map((t) => (
             <li key={t}>{t}</li>
           ))}
         </ul>
+      )}
+      {machineId && (
+        <div className="actions">
+          {above && recordingId && (
+            <a href="#listen" className="btn btn-sm btn-primary">
+              Listen &amp; compare
+            </a>
+          )}
+          <Link href={`/machines/${machineId}#check`} className={`btn btn-sm ${above ? "btn-outline" : "btn-primary"}`}>
+            Analyse another recording
+          </Link>
+          <Link href="/machines" className="btn btn-sm btn-quiet">
+            Back to dashboard
+          </Link>
+        </div>
       )}
     </section>
   );
@@ -184,7 +256,7 @@ export function TechnicalDetails({ p, earlier = [] }: { p: Prediction; earlier?:
       <summary>Technical details</summary>
       <dl className="details">
         <dt>Decision</dt>
-        <dd>{isAbove(p) ? "Above this machine's baseline threshold" : "Below this machine's baseline threshold"}</dd>
+        <dd>{isAbove(p) ? "Above this machine's baseline threshold" : "Within (at or below) this machine's baseline threshold"}</dd>
         <dt>{p.window_count > 1 ? "Mean log score" : "Log score"}</dt>
         <dd className="num">{p.log_score !== null ? p.log_score.toFixed(3) : "—"}</dd>
         <dt>Threshold (log)</dt>
@@ -230,7 +302,7 @@ export function TechnicalDetails({ p, earlier = [] }: { p: Prediction; earlier?:
           <ul className="small">
             {earlier.map((e) => (
               <li key={e.id}>
-                {formatDateTime(e.created_at)}: {isAbove(e) ? "above" : "below"} threshold · log score{" "}
+                {formatDateTime(e.created_at)}: {isAbove(e) ? "above" : "within"} threshold · log score{" "}
                 <span className="num">{e.log_score !== null ? e.log_score.toFixed(3) : "—"}</span> / threshold{" "}
                 <span className="num">{e.threshold.toFixed(3)}</span> · {e.sensitivity === "high" ? "High" : "Standard"}
               </li>

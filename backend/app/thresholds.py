@@ -72,5 +72,35 @@ def high_sensitivity_spread(model_name: str, model_version: str, machine_type: s
     return six if windows >= 6 else three if windows >= 3 else one
 
 
+# ADR-015 (EXP-033): Standard spreads by baseline count. 10-19 baselines keep the ADR-011 / ADR-012
+# spreads; with 20-29 and 30+ baselines the leave-one-out scores fall, so smaller spreads (chosen on
+# development data by ADR-011's rule: mean FPR <= 0.10, every section-domain <= 0.20, and confirmed
+# on held-out data) keep false alarms at about the 10-baseline level. Per machine type, for
+# 1-2 windows (10-29 s), 3-5 windows (30-59 s) and 6 windows (60 s). Tied to bundle 0.4.0.
+COUNT_SPREADS: dict[tuple[str, str], dict[str, dict[int, tuple[float, float, float]]]] = {
+    ("sonovate-ast-head", "0.4.0"): {
+        "gearbox": {20: (1.40, 0.85, 0.65), 30: (1.30, 0.80, 0.60)},
+        "bearing": {20: (1.35, 0.80, 0.65), 30: (1.30, 0.85, 0.60)},
+    },
+}
+
+
+def standard_spread(
+    model_name: str,
+    model_version: str,
+    machine_type: str,
+    windows: int,
+    baselines: int,
+    single_window_spread: float,
+) -> float:
+    """The Standard spread for this recording length and baseline count (ADR-011, ADR-012, ADR-015)."""
+    table = COUNT_SPREADS.get((model_name, model_version), {}).get(machine_type, {})
+    tier = next((table[n] for n in sorted(table, reverse=True) if baselines >= n), None)
+    if tier is None:
+        return recording_spread(windows, single_window_spread)
+    one, three, six = tier
+    return six if windows >= 6 else three if windows >= 3 else one
+
+
 def decide(log_score: float, threshold: float) -> str:
     return "above_threshold" if log_score > threshold else "below_threshold"

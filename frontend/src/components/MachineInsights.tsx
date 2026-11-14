@@ -72,7 +72,7 @@ export function ResultTimeline({ entries }: { entries: HistoryEntry[] }) {
       </div>
       <ol className="rt-track" aria-label="Analysis results, oldest first">
         {points.map((p, i) => {
-          const label = `${p.above ? "Above" : "Below"} threshold · ${formatDateTime(p.analysedAt)} · ${p.filename}`;
+          const label = `${p.above ? "Above" : "Within"} threshold · ${formatDateTime(p.analysedAt)} · ${p.filename}`;
           return (
             <li
               key={p.recordingId}

@@ -1385,3 +1385,34 @@ Status: **Complete: a High-sensitivity spread selected for every machine type an
   - A false alarm rate of 1 in 5–7 means the "2 of the last 3" machine alert (ADR-009) will fire more often on a healthy machine; this was not re-simulated.
 - **Limitations:** pseudo-recordings of independent clips (EXP-025); held-out gearbox set used a fourth time, bearing set a seventh time (weak evidence); lab data only; FPR per draw estimated from few evaluation normals.
 - **Conclusion / next step:** propose ADR-014: an optional per-machine "High sensitivity" setting using these spreads, off by default, with the false-alarm trade-off shown in plain words where it is switched on. Needs approval before any app change; the ADR-009 alert rate under High sensitivity should be re-checked on simulated timelines first or stated as unverified.
+
+### EXP-033 — Threshold calibration by estimator and baseline count (development selection, held-out check)
+Status: **Complete. Robust estimators rejected. Spreads that depend on the baseline count raise recall at 20–30 baselines at about the same false-alarm level as 10 baselines; at 10 baselines nothing beats the current rule.** Plan and selection rule written into the module docstring and config before the run; run on `9b6f594` plus uncommitted EXP-033 files (worktree on `claude/production-deployment` 6ab9a46; the recorded commit is the main checkout the run used as working directory, and the code ran from the worktree). Requested by the user after a manual bearing test (10 baselines at five speeds) missed all three labelled anomalies. Not integrated; proposed as ADR-015.
+- **Date:** 2026-11-14
+- **Trigger (app, local):** MIMII DG bearing section 00 source test clips, 10 baselines at vel 6–22. 60 s anomaly scored 1.251 against a threshold of 1.338; 10 s anomaly −2.331 against 2.676; 10 s normal −5.812. So the model ranked the anomalies above the normal clip, but the threshold, set from baselines spread over five speeds, was loose.
+- **Research question:** for bundle 0.4.0, does a different threshold estimator, or a spread chosen per baseline count, catch more anomalies at the ADR-011 false-alarm level?
+- **Model (unchanged):** bundle `sonovate-ast-head` 0.4.0; gearbox head log score (ADR-010), bearing fusion z-sum (ADR-013), 30 s / 60 s judged on the window mean (ADR-012).
+- **Candidates:** `std` mean + s × std (current); `mad` median + s × 1.4826 × MAD; `trim` mean + s × std after dropping the largest 10% (at least one) leave-one-out scores. Spreads 0–2 in steps of 0.05, plus 2.25, 2.5, 3.0. N ∈ {10, 20, 30}.
+- **Protocol:** as EXP-032 (per section-domain, 200 draws, seed 0, pseudo-recordings of k = 1, 3, 6 independent clips).
+- **Selection (development, MIMII DG `test`, 6 section-domains per type):** per machine type, k and N, each estimator's smallest spread with mean FPR ≤ 0.10 and every section-domain ≤ 0.20 (ADR-011's rule); the candidate is the estimator with the highest development recall.
+- **Confirmation (held-out):** mean FPR ≤ 0.12, every section-domain ≤ 0.20, recall above the current rule (std, current spread) at the same k and N. Gearbox: MIMII DUE evaluation sections 03–05 (fifth use). Bearing: DCASE 2022 evaluation bearing sections 03–05 (eighth use; weak evidence, no untouched bearing set exists).
+- **Reproduction:** `uv run python -m ml.baseline_calibration --config configs/baseline_calibration.json` (from a checkout with `data/raw` and `artifacts/bundles`); pairwise distances are cached in `artifacts/EXP-033/distances/`.
+- **Artifacts path:** `artifacts/EXP-033/` (`SUMMARY.txt`, `results.json`)
+- **Results, held-out, mean FPR (max section-domain) / recall, current rule vs selected:**
+
+  | Machine | N | 10 s | 30 s | 60 s |
+  |---|---|---|---|---|
+  | Gearbox | 10 | 0.09 (0.10) / 0.25 → unchanged (trim selected, not confirmed) | 0.08 / 0.33 → s 0.95: 0.09 / 0.35 | 0.09 / 0.42 → unchanged (s 0.75) |
+  | | 20 | 0.06 / 0.24 → trim s 1.80: 0.08 / 0.26 (std s 1.40: 0.08 / 0.27) | 0.05 / 0.32 → s 0.85: 0.09 / 0.40 | 0.06 / 0.43 → s 0.65: 0.08 / 0.50 |
+  | | 30 | 0.06 / 0.25 → s 1.30: 0.10 / 0.31 | 0.05 / 0.33 → s 0.80: 0.10 / 0.44 | 0.05 / 0.46 → s 0.60: 0.09 / 0.57 |
+  | Bearing | 10 | 0.09 (0.12) / 0.18 → unchanged (s 1.50) | 0.08 / 0.30 → unchanged (s 1.00) | 0.09 (0.13) / 0.43 → unchanged (s 0.75) |
+  | | 20 | 0.06 / 0.17 → s 1.35: 0.08 / 0.25 | 0.05 / 0.37 → s 0.80: 0.10 / 0.52 | 0.05 / 0.54 → s 0.65: 0.08 / 0.63 |
+  | | 30 | 0.05 / 0.19 → s 1.30: 0.08 / 0.31 | 0.05 / 0.42 → s 0.85: 0.08 / 0.54 | 0.05 / 0.60 → s 0.60: 0.09 / 0.72 |
+
+  Every N = 20 / 30 decision was confirmed (max section-domain FPR ≤ 0.11); no N = 10 decision changes the current spread except gearbox 30 s (1.00 → 0.95, +0.02 recall, within noise).
+- **Error analysis:**
+  - `mad` and `trim` were never better on held-out data where `std` was available (for example bearing 60 s, N = 10: std 0.43, trim 0.34, mad 0.29 recall at similar FPR). The "one baseline at another setting inflates the spread" idea does not hold on average: the robust estimates are noisier with 10–30 scores.
+  - The gain at N = 20 / 30 is a calibration effect: with more baselines the leave-one-out scores fall, so the current fixed spread gives only about 5% false alarms. Re-tuning returns false alarms to about 8–10% and buys 1.2–1.7× the recall. It is a trade (false alarms roughly double from 5% to 9%), not a better model; AUC is unchanged.
+  - At 10 baselines, the case the user tested, there is no calibration gain: the miss comes from the model's ranking (held-out single-clip AUC 0.70 bearing, 0.67 gearbox).
+- **Limitations:** held-out sets heavily reused; pseudo-recordings (EXP-025); lab data; the ADR-009 machine-alert rate at about 9% per check was simulated in EXP-011 for the 10-baseline level only.
+- **Conclusion / next step:** propose ADR-015: with 20 or more baselines, use the count-specific std spreads above (std estimator only), keeping false alarms at about the 10-baseline level. Needs approval before any backend change. A real model improvement still needs an untouched test set and new training (Decision needed 2).

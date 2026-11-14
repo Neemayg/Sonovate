@@ -492,6 +492,12 @@ function GuideView() {
               more anomalies are flagged (for 60 s gearbox checks about 57%) but so are more normal recordings (about
               17%).
             </p>
+            <p className="muted small">
+              <strong>With 20 or more normal recordings</strong> the Standard threshold is tuned for that baseline size
+              (ADR-015, EXP-033), so normal recordings are still flagged about 9% of the time while more anomalies are
+              caught. With 30: 60 s checks about 57% (gearbox) and 72% (bearing, weak evidence), 10 s checks about 31%
+              for both. This is why 30 normal recordings are recommended.
+            </p>
             <Tip title="Read these figures with care">
               <ul className="guide-list">
                 <li>They come from lab recordings, not from your machines, microphones or rooms; results in real use can be lower.</li>
