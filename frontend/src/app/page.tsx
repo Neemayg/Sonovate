@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Brand } from "@/components/Brand";
 import { SignalBars, SignalTrace } from "@/components/Decor";
 import { LandingEffects } from "@/components/LandingEffects";
+import { IntroStage } from "@/components/IntroStage";
 import { ModelStory } from "@/components/ModelStory";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { SessionCta } from "@/components/SessionCta";
@@ -200,6 +201,7 @@ const SHOWCASE: Shot[] = [
 export default function Landing() {
   return (
     <div className="landing">
+      <IntroStage />
       <LandingEffects />
       <a href="#main" className="skip-link">
         Skip to content

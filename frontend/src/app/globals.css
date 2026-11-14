@@ -9162,3 +9162,205 @@ button.is-inactive {
     }
   }
 }
+
+/* =========================================================================
+ * Landing intro (lib/intro.ts trigger, IntroStage motion)
+ * Shown only while <html> has .intro-play (set by the inline head script on a
+ * fresh load). Always dark, whatever the theme: the orange-on-black identity.
+ * The backdrop opens from the centre through a feathered radial mask
+ * (--iris, --feather, driven by IntroStage); the mark sits above it.
+ * ========================================================================= */
+
+.intro {
+  display: none;
+}
+
+html.intro-play .intro {
+  --iris: -100vmax;
+  --feather: 30vmax;
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: block;
+  overflow: hidden;
+  contain: strict;
+  /* last resort if every timer fails: never keep the page covered */
+  animation: intro-failsafe 400ms linear 14s forwards;
+}
+
+html.intro-play .intro.is-opening {
+  pointer-events: none;
+}
+
+@keyframes intro-failsafe {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+.intro-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(60vmax 45vmax at 50% 50%, rgba(255, 122, 74, 0.08), transparent 70%),
+    #0b0c0e;
+}
+
+.intro.is-opening .intro-backdrop {
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, transparent var(--iris), #000 calc(var(--iris) + var(--feather)));
+  mask-image: radial-gradient(circle at 50% 50%, transparent var(--iris), #000 calc(var(--iris) + var(--feather)));
+}
+
+.intro-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* depth: a soft vignette over the field */
+.intro-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55));
+}
+
+.intro-stage {
+  position: absolute;
+  inset: 0;
+  perspective: 900px;
+  pointer-events: none;
+}
+
+.intro-mark {
+  --s: clamp(84px, 17vmin, 168px);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--s);
+  height: var(--s);
+  margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+}
+
+.intro-layer {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.intro-bar {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 999px;
+  opacity: 0;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+
+.intro-core .intro-bar {
+  background: linear-gradient(180deg, #ffb08f 0%, #ff7a4a 48%, #e0531c 100%);
+  box-shadow:
+    0 0 calc(var(--s) * 0.08) rgba(255, 122, 74, 0.6),
+    0 0 calc(var(--s) * 0.3) rgba(255, 122, 74, 0.22);
+}
+
+.intro-hi .intro-bar,
+.intro-lo .intro-bar {
+  mix-blend-mode: plus-lighter;
+}
+
+/* a soft mirror image below the mark, as on a dark polished floor */
+.intro-reflect {
+  opacity: 0;
+  transform-origin: 50% 100%;
+  transform: scaleY(-1);
+  transform-style: flat;
+  filter: blur(1.5px);
+  -webkit-mask-image: linear-gradient(to top, #000, transparent 70%);
+  mask-image: linear-gradient(to top, #000, transparent 70%);
+}
+
+.intro-reflect .intro-bar {
+  background: linear-gradient(180deg, #ffb08f 0%, #ff7a4a 48%, #e0531c 100%);
+}
+
+.intro-hi .intro-bar {
+  background: #ffb08f;
+}
+
+.intro-lo .intro-bar {
+  background: #e0531c;
+}
+
+.intro-sheen {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: linear-gradient(180deg, transparent 30%, rgba(255, 244, 236, 0.9) 50%, transparent 70%);
+  mix-blend-mode: plus-lighter;
+  will-change: transform;
+}
+
+.intro-bloom {
+  position: absolute;
+  inset: -110%;
+  border-radius: 50%;
+  opacity: 0;
+  background: radial-gradient(closest-side, rgba(255, 122, 74, 0.42), rgba(255, 122, 74, 0.1) 45%, transparent 72%);
+  will-change: transform, opacity;
+}
+
+/* before the motion code runs (or if it never does): the still mark rises in */
+.intro:not(.is-live) .intro-mark {
+  translate: calc(var(--s) / 18) 0;
+}
+
+.intro:not(.is-live) .intro-core .intro-bar {
+  animation: intro-bar-still 900ms var(--ease-out) calc(300ms + var(--i, 0) * 90ms) both;
+}
+
+.intro:not(.is-live) .intro-core .intro-bar:nth-child(2) { --i: 1; }
+.intro:not(.is-live) .intro-core .intro-bar:nth-child(3) { --i: 2; }
+.intro:not(.is-live) .intro-core .intro-bar:nth-child(4) { --i: 3; }
+
+@keyframes intro-bar-still {
+  from {
+    opacity: 0;
+    transform: scaleY(0.1);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* reduced motion: no field, the mark appears still, then the overlay fades */
+html.intro-reduced .intro-canvas {
+  display: none;
+}
+
+html.intro-reduced .intro-core .intro-bar {
+  opacity: 1;
+  animation: none;
+}
+
+html.intro-reduced .intro-mark {
+  translate: calc(var(--s) / 18) 0;
+}
+
+/* the landing waits underneath: hero entrance paused until the overlay opens,
+   nav logo hidden until the mark lands in it */
+html.intro-hold .landing .hero,
+html.intro-hold .landing .hero * {
+  animation-play-state: paused !important;
+}
+
+html.intro-play:not(.intro-reduced):not(.intro-landed) .landing .l-nav .brand svg {
+  opacity: 0;
+}
