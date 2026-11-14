@@ -82,6 +82,19 @@ simulated JWT claims inside transactions that were rolled back (pgTAP cannot run
 deletion end to end on the deployed stack, and one real alert email from a live analysis (SMTP login
 from the service was verified; nothing was sent).
 
+## Redeploy from main (2026-11-14, evening)
+
+After every branch was merged into `main` (`a16aa30`, README `7d9864f`):
+
+- **Vercel** built both pushes to `main` automatically (Git integration, root directory `frontend`);
+  production `sonovate-mauve.vercel.app` serves `7d9864f`: operator-usability dashboard and result
+  pages, guide note on 20+ baselines, landing intro animation (owner chose to ship it).
+- **Modal**: `SONOVATE_BUNDLES_SRC=artifacts/bundles modal deploy backend/deploy/modal_app.py` from
+  `main` (bundle 0.4.0 unchanged), adding ADR-015's baseline-count spreads. Checked: `/v1/health` ok,
+  401 without a token, CORS allows only the Vercel origin.
+- **Supabase**: nothing to push (no new migrations since `20261114100000_alert_email`).
+- Not checked live: a signed-in analysis on the deployed stack after this redeploy.
+
 ## MCP evaluation (2026-11-14)
 
 Which Model Context Protocol connectors helped the deployment, and which were not worth adding.

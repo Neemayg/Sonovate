@@ -502,8 +502,9 @@ flowchart LR
     GH -- supabase db push<br/>migrations only --> S[Supabase Cloud]
 ```
 
-Deploys are run by the owner with each provider's CLI. Whether Vercel also builds automatically from
-GitHub pushes needs confirmation.
+The Vercel project is connected to GitHub: every push to `main` builds and publishes a production
+deployment (root directory `frontend`). The inference service and database migrations are deployed by
+hand with the Modal and Supabase CLIs.
 
 | Part | Host | Key points |
 |---|---|---|
@@ -666,7 +667,6 @@ repository.
   end-to-end account deletion on the deployed stack and a real alert email are still open.
 - Stage 8, handover.
 - Owner decision pending: acceptance of ADR-013 (bearing fusion).
-- Deploy the latest main (operator usability pages, ADR-015) to Vercel and Modal.
 
 **Possible future work** (ideas, not commitments)
 
