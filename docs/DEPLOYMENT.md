@@ -99,7 +99,7 @@ No new connector was connected without the owner's approval and no MCP address w
 | `CORS_ORIGINS` | Only the production frontend origin. |
 | `SONOVATE_ANALYSES_PER_WINDOW`, `SONOVATE_RATE_WINDOW_SECONDS` | Per-user analysis rate limit (default 20 per 600 s), per process. |
 | `SONOVATE_EMBED_CONCURRENCY` | Transformer passes run at once per process (default 1). |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `ALERT_EMAIL_FROM` | Machine-alert email (all or none). Production: Gmail SMTP (`smtp.gmail.com`, 465) with an app password; the password lives only in the Modal secret `sonovate-smtp`. Without them alerts are recorded with email status `skipped_unconfigured`. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `ALERT_EMAIL_FROM` | Machine-alert email (all or none). Production: Gmail SMTP (`smtp.gmail.com`, 465) with an app password; the password lives only in the Modal secret `custom-secret-2`. Without them alerts are recorded with email status `skipped_unconfigured`. |
 | `SITE_URL` | Public frontend origin, for links in alert emails. |
 
 Run a **fixed number of workers** behind a reverse proxy that terminates TLS and enforces a
