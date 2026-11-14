@@ -98,11 +98,17 @@ evidence. Machines of type **other** can be registered and store recordings, but
   stored with each recording for your records. **They are not used by the model.**
 
 ### Monitoring
-- **Workspace dashboard** with a *Needs attention* list, compact counts and machine cards.
+- **Dashboard** with four exact counts (machines, needing attention, analyses in the last 7 days,
+  ready for a check), one recommended next step, a compact machine table and recent activity
+  (analyses, machine alerts, baseline uploads).
 - Status words that never say "healthy": *Baseline incomplete*, *Ready for first check*,
   *No current machine alert*, *Repeated unusual readings*, *Records only*.
-- **Result page** with a plain verdict, the position against the threshold, one bar per 10 s window
-  and collapsible technical details (scores, threshold, model version, limitations).
+- **Result page** ordered what happened → this machine's checks → what it means → what to do next:
+  *Above threshold* (unusual compared with this machine's baseline) or *Within threshold* (not flagged
+  by this analysis) with the actual score and the threshold applied, previous / next check, and
+  collapsed window scores and technical details.
+- **Comparison chart** of a machine's analysed checks: one marker per check, the threshold applied
+  to each check, above / within filter, tooltips, and markers that open the recording.
 - **Listen & compare:** play the check next to a normal reference, with the frequency band of the
   largest difference shaded. This is a descriptive view, not a fault locator.
 - **History** table with filters, expandable rows and **CSV export**.
@@ -172,6 +178,7 @@ must not change without a new reviewed decision.
 | Scoring | Cosine distance from each window to the **nearest of this machine's own baseline embeddings** (k = 1). | ADR-008, ADR-010 |
 | Threshold | Per machine: mean + spread × standard deviation of the baselines' leave-one-out log distances. Spread 1.5 for single 10 s windows. | ADR-011 |
 | Long recordings | 30–59 s judged on the mean window score with spread 1.0; 60 s with spread 0.75. | ADR-012 |
+| Baseline count | With 20 or more baselines, smaller Standard spreads keep false alarms at about the 10-baseline level and catch more anomalies (30 baselines: gearbox 1.30 / 0.80 / 0.60, bearing 1.30 / 0.85 / 0.60 for 10 / 30 / 60 s). | ADR-015 |
 | Sensitivity | *Standard* uses the spreads above. *High* uses looser spreads (gearbox 1.00 / 0.75 / 0.50, bearing 1.25 / 0.75 / 0.50 for 10 / 30 / 60 s). It catches more anomalies and flags about twice as many normal recordings. | ADR-014 |
 | Machine alert | At least 2 of the last 3 checks above threshold. Chosen on **simulated timelines**, not real machine histories. | ADR-009 |
 | Bearing scoring | Bearings are scored with a fusion of the head embedding and the frozen layer-4 feature. Included in bundle 0.4.0. | ADR-013 (**proposed**, not yet accepted) |
@@ -569,6 +576,10 @@ bundle 0.4.0:
 With **High** sensitivity (EXP-032), 60 s gearbox checks flag about 57% of anomalies, but about 17%
 of normal recordings.
 
+With **30 baselines** (EXP-033, ADR-015, same held-out sets), Standard keeps normal recordings flagged
+at about 9% and flags about 57% (gearbox) and 72% (bearing, weak evidence) of anomalous 60 s
+recordings, and about 31% of anomalous 10 s clips.
+
 Read these figures with their caveats:
 
 - **Lab data only:** recordings of bearings and gearboxes with deliberately induced faults. Real
@@ -596,7 +607,7 @@ Full methods and results: [`docs/EXPERIMENT_LOG.md`](docs/EXPERIMENT_LOG.md),
 | [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md) | Current phase, completed work, blockers, next actions |
 | [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md) | Original problem statement, scope and non-claims |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Phased research and build plan |
-| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Architecture and model decisions (ADR-000 to ADR-014) |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Architecture and model decisions (ADR-000 to ADR-015) |
 | [`docs/EXPERIMENT_LOG.md`](docs/EXPERIMENT_LOG.md) | Every experiment with method, results and caveats |
 | [`docs/DATASET_REGISTER.md`](docs/DATASET_REGISTER.md) | Datasets, licences, provenance and split protocol |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Implemented system design |
@@ -641,7 +652,7 @@ repository.
 
 **Done**
 
-- Dataset audit, reproducible data pipeline and research experiments (EXP-001 to EXP-032).
+- Dataset audit, reproducible data pipeline and research experiments (EXP-001 to EXP-033).
 - Product model `sonovate-ast-head` 0.4.0 with per-machine thresholds, recording-level rules,
   sensitivity setting and the 2-of-3 machine alert.
 - Web app: onboarding, batch baselines, checks, monitoring workspace, result page, Listen &
@@ -654,8 +665,8 @@ repository.
 - Stage 7, production and security verification: main checks done; a second-account browser test,
   end-to-end account deletion on the deployed stack and a real alert email are still open.
 - Stage 8, handover.
-- Owner decisions pending: acceptance of ADR-013 (bearing fusion) and the EXP-012 proposal to
-  recommend 20–30 baselines.
+- Owner decision pending: acceptance of ADR-013 (bearing fusion).
+- Deploy the latest main (operator usability pages, ADR-015) to Vercel and Modal.
 
 **Possible future work** (ideas, not commitments)
 
