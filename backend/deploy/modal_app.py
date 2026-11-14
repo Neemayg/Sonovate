@@ -10,7 +10,7 @@ Secrets are never in this file. Two Modal secrets supply the environment:
 holds only ``SUPABASE_SECRET_KEY`` and is created by the owner in the Modal
 dashboard. Alert emails: ``sonovate-config`` also holds ``SMTP_HOST``,
 ``SMTP_PORT``, ``SMTP_USERNAME``, ``ALERT_EMAIL_FROM`` and ``SITE_URL``;
-``sonovate-smtp`` holds only ``SMTP_PASSWORD`` (owner-created).
+``custom-secret-2`` holds only ``SMTP_PASSWORD`` (owner-created).
 
 Deploy from the repository root:
 
@@ -61,7 +61,7 @@ app = modal.App("sonovate-inference")
     secrets=[
         modal.Secret.from_name("sonovate-config"),
         modal.Secret.from_name("custom-secret"),
-        modal.Secret.from_name("sonovate-smtp"),
+        modal.Secret.from_name("custom-secret-2"),
     ],
     cpu=2.0,
     memory=4096,
