@@ -6,10 +6,12 @@ import { useCallback, useEffect, useState } from "react";
 import { ConfirmDelete } from "@/components/ConfirmDelete";
 import { MachineAlertNotice } from "@/components/MachineAlertNotice";
 import { MachineForm } from "@/components/MachineForm";
-import { ConditionCoverage, ExportHistoryButton, ResultTimeline, analysedPoints } from "@/components/MachineInsights";
-import { AlertPanel, LatestResultCard, MonitoringHeader, SetupModule } from "@/components/MachineStateModules";
+import { JourneySteps } from "@/components/JourneySteps";
+import { ConditionCoverage, ExportHistoryButton, analysedPoints } from "@/components/MachineInsights";
+import { AlertPanel, MonitoringHeader, SetupModule } from "@/components/MachineStateModules";
 import { PageSkeleton, PrototypeNotice } from "@/components/MonitoringStatus";
 import { PageHead } from "@/components/PageHead";
+import { ResultsComparison } from "@/components/ResultsComparison";
 import { RecordingArea } from "@/components/RecordingArea";
 import { RecordingWorkbench, type WorkbenchTab } from "@/components/RecordingWorkbench";
 import { ErrorMessage, formatDateTime } from "@/components/Status";
@@ -26,7 +28,8 @@ import {
   type MachineAlert,
 } from "@/lib/api";
 import { MODEL_INPUTS, machineTypeLabel } from "@/lib/modelInputs";
-import { monitoringState } from "@/lib/monitoring";
+import { monitoringState, recordingNumbers } from "@/lib/monitoring";
+import { checkResults } from "@/lib/results";
 
 // Shown once, right after the machine was created (/machines/new adds ?setup=1).
 function SetupWelcome({ machine, analysable, baselineCount }: { machine: Machine; analysable: boolean; baselineCount: number }) {
@@ -134,7 +137,9 @@ export function MachineDetail({ id }: { id: string }) {
   const modelled = MODEL_INPUTS[machine.machine_type].length > 0;
   const baselineCount = all.filter((r) => r.kind === "baseline").length;
   const analysisCount = all.length - baselineCount;
-  const checksWithResult = analysedPoints(all).length;
+  const points = analysedPoints(all);
+  const checksWithResult = points.length;
+  const results = checkResults(all, recordingNumbers(all));
   const state = monitoringState({
     analysable: modelled,
     baselineCount,
@@ -166,7 +171,7 @@ export function MachineDetail({ id }: { id: string }) {
   return (
     <>
       <PageHead
-        crumbs={[{ href: "/machines", label: "Machines" }]}
+        crumbs={[{ href: "/machines", label: "Dashboard" }]}
         eyebrow={[machineTypeLabel(machine.machine_type), machine.location].filter(Boolean).join(" · ")}
         title={machine.name}
         meta={`${baselineCount} normal reference${baselineCount === 1 ? "" : "s"} · ${analysisCount} ${analysisCount === 1 ? "check" : "checks"}`}
@@ -180,6 +185,16 @@ export function MachineDetail({ id }: { id: string }) {
         }
       />
       {modelled && <PrototypeNotice />}
+
+      {modelled && (
+        <JourneySteps
+          machineId={machine.id}
+          baselineCount={baselineCount}
+          required={BASELINE_REQUIRED}
+          checksWithResult={checksWithResult}
+          latestResultId={points[points.length - 1]?.recordingId ?? null}
+        />
+      )}
 
       {justCreated && <SetupWelcome machine={machine} analysable={modelled} baselineCount={baselineCount} />}
 
@@ -199,7 +214,18 @@ export function MachineDetail({ id }: { id: string }) {
         />
       )}
 
-      {monitoring && <LatestResultCard entries={all} />}
+      {modelled && results.length > 0 && (
+        <section id="results" className="card" aria-labelledby="results-title">
+          <div className="card-header">
+            <div>
+              <h2 id="results-title">Results</h2>
+              <p className="muted small">Every analysed check of {machine.name}, compared with its threshold.</p>
+            </div>
+            <Link href={`/machines/${machine.id}/history`}>Full history</Link>
+          </div>
+          <ResultsComparison results={results} />
+        </section>
+      )}
 
       {monitoring && state !== "alert" && alert && (
         <section className="card" aria-labelledby="machine-alert-title">
@@ -211,21 +237,10 @@ export function MachineDetail({ id }: { id: string }) {
       {workbench}
 
       {modelled && analysisCount > 0 && (
-        <div className="insights">
-          <section className="card" aria-labelledby="timeline-title">
-            <div className="card-header">
-              <h2 id="timeline-title">Result timeline</h2>
-              <span className="muted small">Oldest → newest</span>
-            </div>
-            <ResultTimeline entries={all} />
-          </section>
-          <section className="card" aria-labelledby="coverage-title">
-            <div className="card-header">
-              <h2 id="coverage-title">Operating-condition coverage</h2>
-            </div>
-            <ConditionCoverage machine={machine} entries={all} />
-          </section>
-        </div>
+        <details className="card technical-card">
+          <summary>Operating-condition coverage</summary>
+          <ConditionCoverage machine={machine} entries={all} />
+        </details>
       )}
 
       <section className="card" aria-labelledby="recordings-title">

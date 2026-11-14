@@ -193,6 +193,8 @@ export type MachineOverview = Machine & {
   recent: { above: boolean; created_at: string; recording_id: string }[];
   // Check (analysis) recordings with at least one stored result.
   checksWithResult: number;
+  /** Upload times of the machine's baseline recordings, for the dashboard's activity list. */
+  baselineAddedAt: string[];
   alert: MachineAlert | null;
 };
 
@@ -315,6 +317,7 @@ export function summarise(row: Machine & Partial<Pick<OverviewRow, "recordings">
     latest,
     checksWithResult: recent.length,
     recent: recent.sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-RECENT_RESULTS),
+    baselineAddedAt: recordings.filter((r) => r.kind === "baseline").map((r) => r.created_at),
     alert: null,
   };
 }
@@ -546,6 +549,30 @@ export async function listRecentAnalyses(limit = 5): Promise<{ items: RecentAnal
       model: model_versions,
     })),
   };
+}
+
+// Number of stored results created since `sinceIso` (a re-run counts as another analysis).
+export async function countAnalysesSince(sinceIso: string): Promise<number> {
+  const { count, error } = await supabase()
+    .from("predictions")
+    .select("id", { count: "exact", head: true })
+    .gte("created_at", sinceIso);
+  if (error) fail("Could not count recent analyses.", error);
+  return count ?? 0;
+}
+
+export type AlertEpisode = { machine_id: string; started_at: string; ended_at: string | null };
+
+// The most recent ADR-009 machine-alert episodes (when an alert started and,
+// if so, ended). Read-only for users; RLS limits rows to the owner.
+export async function listAlertEpisodes(limit = 10): Promise<AlertEpisode[]> {
+  const { data, error } = await supabase()
+    .from("machine_alert_episodes")
+    .select("machine_id, started_at, ended_at")
+    .order("started_at", { ascending: false })
+    .limit(limit);
+  if (error) fail("Could not load machine alerts.", error);
+  return data;
 }
 
 export type ModelVersionInfo = Pick<

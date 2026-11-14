@@ -92,7 +92,7 @@ export function MonitoringHeader({
           <dd>
             {latest ? (
               <Link href={`/recordings/${latest.recordingId}`}>
-                {latest.above ? "Unusual" : "Similar to normal"} · {formatDateTime(latest.analysedAt)}
+                {latest.above ? "Above threshold" : "Within threshold"} · {formatDateTime(latest.analysedAt)}
               </Link>
             ) : (
               <span className="muted">None yet</span>
@@ -143,7 +143,7 @@ export function AlertPanel({ alert, entries }: { alert: MachineAlert; entries: H
           {lastThree.map((p) => (
             <li key={p.recordingId} className={p.above ? "is-above" : "is-below"}>
               <Link href={`/recordings/${p.recordingId}`}>
-                <span className="alert-last3-word">{p.above ? "Above · unusual" : "Below · similar"}</span>
+                <span className="alert-last3-word">{p.above ? "Above threshold" : "Within threshold"}</span>
                 <span className="muted small">{formatDateTime(p.analysedAt)}</span>
               </Link>
             </li>

@@ -137,7 +137,7 @@ export function MachineHistory({ id }: { id: string }) {
                   [
                     ["all", "Any result"],
                     ["above", "Above threshold"],
-                    ["below", "Below threshold"],
+                    ["below", "Within threshold"],
                     ["none", "Not analysed"],
                   ] as const
                 ).map(([v, l]) => (
@@ -194,7 +194,7 @@ export function MachineHistory({ id }: { id: string }) {
                                 <span className="muted small">Sets the threshold</span>
                               ) : p ? (
                                 <span className={`decision-pill${isAbove(p) ? " is-above" : ""}`}>
-                                  {isAbove(p) ? "Above · unusual" : "Below · similar"}
+                                  {isAbove(p) ? "Above threshold" : "Within threshold"}
                                 </span>
                               ) : (
                                 <span className="decision-pill is-pending">Not analysed</span>

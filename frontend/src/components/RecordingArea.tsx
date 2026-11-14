@@ -209,7 +209,7 @@ export function RecordingArea({ machineType, entries, analysable, onChanged, onA
                     <>
                       {p ? (
                         <span className={`decision-pill${p.decision === "above_threshold" ? " is-above" : ""}`}>
-                          {p.decision === "above_threshold" ? "Above threshold · unusual" : "Below threshold · similar"}
+                          {p.decision === "above_threshold" ? "Above threshold" : "Within threshold"}
                         </span>
                       ) : (
                         <span className="decision-pill is-pending">Not analysed</span>
